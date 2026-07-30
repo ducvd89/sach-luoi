@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Giữ lại icon nút bấm của audio_service khi build bản release.
+
+  Flutter bật rút gọn tài nguyên cho bản release. audio_service không tham chiếu
+  icon của nó từ XML hay từ mã Java mà tra theo chuỗi tên lúc chạy
+  ("drawable/audio_service_fast_rewind"...), nên bộ rút gọn tưởng không ai dùng
+  và xoá sạch.
+
+  Hậu quả không hề hiện ra như một lỗi build: lúc chạy, setPlaybackState ném
+  IllegalArgumentException "You must specify an icon resource id to build a
+  CustomAction" mỗi lần cập nhật, trạng thái phiên mãi ở NONE, và thẻ "Đang
+  phát" không bao giờ dựng lên — trong khi nút trên tai nghe vẫn chạy vì phiên
+  media thì vẫn tồn tại.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/audio_service_*" />
