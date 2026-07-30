@@ -11,8 +11,9 @@ import 'package:path/path.dart' as p;
 
 import '../core/chunker.dart';
 import '../models/book.dart';
-import '../models/export_job.dart';
 import '../models/settings.dart';
+import '../services/audio_encoder.dart';
+import '../models/export_job.dart';
 import '../services/storage.dart';
 import 'app_scope.dart';
 import 'theme.dart';
@@ -57,7 +58,15 @@ class _ExportPageState extends State<ExportPage> {
     // MP3 64 kbps so với WAV 22 kHz 16-bit — chênh nhau gần năm lần, phải nói
     // trước để người dùng khỏi bất ngờ khi xuất cả cuốn sách.
     final isWav = state.tts.engine(settings.engineId).audioFormat == 'wav';
-    final megabytes = seconds * (isWav ? 352 : 64) / 8 / 1024;
+    // Máy nào không nén được thì mọi lựa chọn đều ra WAV, nói thật ngay ở đây.
+    final dinhDang = (isWav && encoderAvailable) ? settings.exportFormat : ExportFormat.wav;
+    // kbps thật của từng mức: WAV 48 kHz 16-bit mono là 768, Opus/MP3 theo bitrate.
+    final kbps = switch (dinhDang) {
+      ExportFormat.wav => 768.0,
+      ExportFormat.mp3_128 => 128.0,
+      _ => dinhDang.bitrate / 1000.0,
+    };
+    final megabytes = seconds * kbps / 8 / 1024;
 
     final jobs = state.jobs.where((j) => j.bookId == book.id).toList();
 
@@ -118,6 +127,29 @@ class _ExportPageState extends State<ExportPage> {
                           },
                         ),
                       ),
+                    if (isWav)
+                      _field(
+                        'Định dạng file',
+                        DropdownButton<ExportFormat>(
+                          value: dinhDang,
+                          isExpanded: true,
+                          underline: const SizedBox.shrink(),
+                          onChanged: encoderAvailable
+                              ? (value) async {
+                                  if (value == null) return;
+                                  settings.exportFormat = value;
+                                  await AppScope.read(context).saveSettings();
+                                }
+                              : null,
+                          items: [
+                            for (final f in ExportFormat.values)
+                              DropdownMenuItem(
+                                value: f,
+                                child: Text(f.label, overflow: TextOverflow.ellipsis),
+                              ),
+                          ],
+                        ),
+                      ),
                     _field(
                       'Từ chương',
                       _ChonChuong(
@@ -165,7 +197,7 @@ class _ExportPageState extends State<ExportPage> {
                   ),
                   child: Text(
                     'Sẽ xuất ${selected.length} chương — tổng khoảng ${formatTime(seconds)}, '
-                    'chia thành $partCount file ${isWav ? 'WAV' : 'MP3'}, '
+                    'chia thành $partCount file ${dinhDang.extension.toUpperCase()}, '
                     '~${megabytes < 10 ? megabytes.toStringAsFixed(1) : megabytes.round()} MB.\n'
                     'Giọng: ${state.voices.where((v) => v.id == settings.voiceId).map((v) => v.name).firstOrNull ?? settings.voiceId}'
                     ' · tốc độ ${settings.speed}× (được ghi thẳng vào file)'

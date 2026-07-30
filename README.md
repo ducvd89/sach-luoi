@@ -10,7 +10,7 @@ Mô hình giọng nói chạy trong chính tiến trình của ứng dụng qua 
 
 ## Cài đặt
 
-**Windows** — chạy bộ cài `SachLuoi-Setup-1.0.2.exe` (~33 MB). Không cần quyền quản trị: nó cài vào
+**Windows** — chạy bộ cài `SachLuoi-Setup-1.1.0.exe` (~33 MB). Không cần quyền quản trị: nó cài vào
 `%LOCALAPPDATA%\Programs\SachLuoi`, tạo lối tắt Start Menu và trình gỡ cài. Lúc gỡ có **hỏi riêng**
 trước khi xoá thư viện sách — mặc định giữ lại.
 
@@ -35,11 +35,15 @@ Hai engine, đổi qua lại trong **Cài đặt**:
 | Chất lượng | cao nhất (48 kHz) | khá, hơi máy (22 kHz) |
 | Tốc độ | ~2–3× thời gian thực | nhanh hơn nhiều |
 | Dung lượng tải | 206 MB | 21–64 MB mỗi gói |
-| File xuất ra | WAV¹ | WAV¹ |
+| File xuất ra | Opus / MP3 / WAV¹ | Opus / MP3 / WAV¹ |
 | Giấy phép | CC BY-NC 4.0 — phi thương mại² | Apache-2.0 / MIT |
 
-¹ Cả hai mô hình trả về mẫu âm thô. Nhúng bộ mã hoá MP3 vào ứng dụng còn nặng hơn cả mô hình giọng
-  nói, nên file xuất ra là WAV — cùng thời lượng thì nặng gấp khoảng năm lần MP3.
+¹ Chọn trong *Xuất file → Định dạng file*: **Opus 32 kbps** (mặc định, nhỏ nhất), Opus 64 kbps,
+  MP3 128 kbps, hoặc WAV không nén. Đo trên một file thật 29,9 phút: WAV 164 MB · Opus 32k 6,8 MB ·
+  Opus 64k 14 MB · MP3 128k 27 MB. Opus nhỏ hơn hẳn ở cùng chất lượng vì nó thiết kế cho dải bitrate
+  thấp; MP3 giữ lại vì đầu đĩa và dàn xe hơi cũ chỉ đọc được nó. **Bản Android hiện chỉ ra WAV** —
+  hai thư viện nén không biên dịch chéo được sang Android, phần dùng MediaCodec của hệ điều hành
+  đang được làm.
 ² Mô hình và bộ giọng của VieNeu-TTS chỉ dùng cho mục đích phi thương mại và cần ghi công tác giả
   (Phạm Nguyễn Ngọc Bảo — pnnbao-ump). Mỗi đoạn âm thanh sinh ra đều được đóng dấu chìm.
 
