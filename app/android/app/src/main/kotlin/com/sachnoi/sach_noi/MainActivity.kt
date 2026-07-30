@@ -1,6 +1,7 @@
 package com.sachnoi.sach_noi
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -18,7 +19,7 @@ class MainActivity : AudioServiceActivity() {
         xinQuyenThongBao()
     }
 
-    /// Nối cầu để Dart nhờ Android nén file âm thanh.
+    /// Nối cầu để Dart nhờ Android nén file âm thanh và cất file xuất ra.
     ///
     /// Bản máy tính nén bằng thư viện Rust qua FFI; ở đây dùng MediaCodec của hệ
     /// điều hành nên không phải nhồi thêm thư viện nào vào APK.
@@ -26,30 +27,20 @@ class MainActivity : AudioServiceActivity() {
         super.configureFlutterEngine(engine)
         MethodChannel(engine.dartExecutor.binaryMessenger, KENH_MA_HOA)
             .setMethodCallHandler { goi, tra ->
-                if (goi.method != "nen" && goi.method != "dangKy") {
+                // Mở màn hình chọn thư mục phải ở luồng giao diện, và kết quả về
+                // sau ở onActivityResult chứ không trả ngay tại đây được.
+                if (goi.method == "chonThuMuc") {
+                    moManHinhChonThuMuc(tra)
+                    return@setMethodCallHandler
+                }
+                if (goi.method !in VIEC_NEN) {
                     tra.notImplemented()
                     return@setMethodCallHandler
                 }
                 // Nén một file 30 phút mất vài giây; chạy trên luồng chính thì
                 // giao diện đứng, nên đẩy sang luồng nền rồi trả kết quả về.
                 Thread {
-                    val ketQua = runCatching {
-                        if (goi.method == "nen") {
-                            MaHoaAudio.nen(
-                                goi.argument<String>("wavPath")!!,
-                                goi.argument<String>("outBase")!!,
-                                goi.argument<String>("dinhDang")!!,
-                                goi.argument<Int>("bitrate")!!,
-                            )
-                        } else {
-                            XuatRaThuVien.dangKy(
-                                applicationContext,
-                                goi.argument<String>("nguon")!!,
-                                goi.argument<String>("thuMucCon")!!,
-                                goi.argument<String>("tenFile")!!,
-                            )
-                        }
-                    }
+                    val ketQua = runCatching { lamViec(goi.method, goi) }
                     runOnUiThread {
                         ketQua.fold(
                             onSuccess = { tra.success(it) },
@@ -58,6 +49,76 @@ class MainActivity : AudioServiceActivity() {
                     }
                 }.start()
             }
+    }
+
+    private fun lamViec(viec: String, goi: io.flutter.plugin.common.MethodCall): Any = when (viec) {
+        "nen" -> MaHoaAudio.nen(
+            goi.argument<String>("wavPath")!!,
+            goi.argument<String>("outBase")!!,
+            goi.argument<String>("dinhDang")!!,
+            goi.argument<Int>("bitrate")!!,
+        )
+        "dangKy" -> XuatRaThuVien.dangKy(
+            applicationContext,
+            goi.argument<String>("nguon")!!,
+            goi.argument<String>("thuMucCon")!!,
+            goi.argument<String>("tenFile")!!,
+        )
+        "chepVaoThuMuc" -> ThuMucNguoiDung.chep(
+            applicationContext,
+            goi.argument<String>("nguon")!!,
+            goi.argument<String>("cay")!!,
+            goi.argument<String>("thuMucCon") ?: "",
+            goi.argument<String>("tenFile")!!,
+        )
+        "tenThuMuc" -> ThuMucNguoiDung.ten(applicationContext, goi.argument<String>("cay")!!)
+        "conQuyenThuMuc" -> ThuMucNguoiDung.conQuyen(applicationContext, goi.argument<String>("cay")!!)
+        else -> throw IllegalStateException("không có việc '$viec'")
+    }
+
+    /// Mở màn hình chọn thư mục của hệ thống.
+    private fun moManHinhChonThuMuc(tra: MethodChannel.Result) {
+        if (choThuMuc != null) {
+            tra.error("dang_cho", "đang có một lượt chọn thư mục chưa xong", null)
+            return
+        }
+        val y = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).addFlags(
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                Intent.FLAG_GRANT_WRITE_URI_PERMISSION or
+                Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION,
+        )
+        try {
+            choThuMuc = tra
+            startActivityForResult(y, MA_CHON_THU_MUC)
+        } catch (e: Exception) {
+            choThuMuc = null
+            tra.error("khong_mo_duoc", "máy không có trình chọn thư mục: ${e.message}", null)
+        }
+    }
+
+    override fun onActivityResult(ma: Int, ketQua: Int, du: Intent?) {
+        if (ma != MA_CHON_THU_MUC) {
+            super.onActivityResult(ma, ketQua, du)
+            return
+        }
+        val tra = choThuMuc
+        choThuMuc = null
+        val cay = du?.data
+        if (ketQua != RESULT_OK || cay == null) {
+            tra?.success(null) // người dùng bấm quay lại
+            return
+        }
+        // Không giữ lại thì quyền mất ngay khi thoát app, lần xuất sau ghi là lỗi.
+        try {
+            contentResolver.takePersistableUriPermission(
+                cay,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+            )
+        } catch (e: SecurityException) {
+            tra?.error("khong_giu_duoc_quyen", "không giữ được quyền ghi: ${e.message}", null)
+            return
+        }
+        tra?.success(cay.toString())
     }
 
     /// Xin quyền hiện thông báo.
@@ -79,8 +140,13 @@ class MainActivity : AudioServiceActivity() {
         requestPermissions(arrayOf(quyen), MA_XIN_THONG_BAO)
     }
 
+    /// Chỗ giữ lời hứa trả kết quả trong lúc màn hình chọn thư mục đang mở.
+    private var choThuMuc: MethodChannel.Result? = null
+
     private companion object {
         const val MA_XIN_THONG_BAO = 1001
+        const val MA_CHON_THU_MUC = 1002
         const val KENH_MA_HOA = "sachnoi/ma_hoa"
+        val VIEC_NEN = setOf("nen", "dangKy", "chepVaoThuMuc", "tenThuMuc", "conQuyenThuMuc")
     }
 }

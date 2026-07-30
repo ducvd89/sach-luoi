@@ -96,6 +96,7 @@ class AppSettings {
     this.splitMode = SplitMode.duration,
     this.partMinutes = 30,
     this.alignChapter = true,
+    this.exportTreeUri = '',
     this.serviceUrl = defaultServiceHost,
     this.autoStartService = true,
     this.darkMode,
@@ -135,6 +136,11 @@ class AppSettings {
   int partMinutes;
   bool alignChapter;
 
+  /// Android: thư mục người dùng đã chọn để cất file xuất ra, dạng "tree URI"
+  /// của Storage Access Framework. Rỗng nghĩa là dùng mặc định — MediaStore đưa
+  /// file vào Music/Sách lười. Không phải đường dẫn thật, đừng ghép vào File().
+  String exportTreeUri;
+
   /// Địa chỉ dịch vụ giọng nói. Trên điện thoại có thể trỏ sang máy ở nhà.
   String serviceUrl;
 
@@ -155,6 +161,7 @@ class AppSettings {
         'splitMode': splitMode.id,
         'partMinutes': partMinutes,
         'alignChapter': alignChapter,
+        'exportTreeUri': exportTreeUri,
         'serviceUrl': serviceUrl,
         'autoStartService': autoStartService,
         'darkMode': darkMode,
@@ -176,6 +183,7 @@ class AppSettings {
         splitMode: SplitMode.fromId(json['splitMode'] as String?),
         partMinutes: (json['partMinutes'] as num?)?.toInt() ?? 30,
         alignChapter: json['alignChapter'] as bool? ?? true,
+        exportTreeUri: json['exportTreeUri'] as String? ?? '',
         serviceUrl: json['serviceUrl'] as String? ?? defaultServiceHost,
         autoStartService: json['autoStartService'] as bool? ?? true,
         darkMode: json['darkMode'] as bool?,

@@ -15,6 +15,7 @@ import '../models/settings.dart';
 import '../services/audio_encoder.dart';
 import '../models/export_job.dart';
 import '../services/storage.dart';
+import '../services/thu_muc_xuat.dart';
 import 'app_scope.dart';
 import 'theme.dart';
 
@@ -306,6 +307,9 @@ class _FolderRow extends StatefulWidget {
 class _FolderRowState extends State<_FolderRow> {
   String? _resolved;
 
+  /// Android: tên thư mục người dùng đã chọn, null nghĩa là đang dùng mặc định.
+  String? _tenThuMuc;
+
   @override
   void initState() {
     super.initState();
@@ -313,19 +317,56 @@ class _FolderRowState extends State<_FolderRow> {
   }
 
   Future<void> _resolve() async {
+    if (Platform.isAndroid) {
+      final cay = AppScope.read(context).settings.exportTreeUri;
+      if (cay.isEmpty) return;
+      // Quyền có thể đã bị rút trong Cài đặt của máy hoặc mất khi cài lại app —
+      // hiện tên một thư mục không ghi được nữa thì còn tệ hơn không hiện gì.
+      final ten = await conQuyenThuMuc(cay) ? await tenThuMuc(cay) : null;
+      if (mounted) setState(() => _tenThuMuc = ten);
+      return;
+    }
     if (widget.path != null) return;
     final dir = await AppScope.read(context).defaultExportDir(widget.book);
     if (mounted) setState(() => _resolved = dir);
   }
 
+  /// Android: mở trình chọn thư mục của hệ thống, nhớ lại lựa chọn.
+  ///
+  /// Không dùng FilePicker.getDirectoryPath ở đây: trên Android nó cũng mở
+  /// Storage Access Framework nhưng trả về một đường dẫn suy ra từ tree URI, ghi
+  /// thẳng vào đó là EACCES. Phải giữ nguyên tree URI và ghi qua SAF.
+  Future<void> _chonThuMucAndroid() async {
+    final state = AppScope.read(context);
+    try {
+      final cay = await chonThuMuc();
+      if (cay == null || !mounted) return;
+      state.settings.exportTreeUri = cay;
+      await state.saveSettings();
+      final ten = await tenThuMuc(cay);
+      if (mounted) setState(() => _tenThuMuc = ten);
+    } catch (err) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Không chọn được thư mục: $err')),
+        );
+      }
+    }
+  }
+
+  /// Bỏ thư mục đã chọn, quay về thư viện nhạc của máy.
+  Future<void> _veMacDinh() async {
+    final state = AppScope.read(context);
+    state.settings.exportTreeUri = '';
+    await state.saveSettings();
+    if (mounted) setState(() => _tenThuMuc = null);
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Trên Android, đường dẫn thật là vùng riêng của app và người dùng không cần
-    // biết tới nó — file hoàn chỉnh nằm ở Music/Sách lười, chỗ mà ứng dụng Files
-    // và các app nghe nhạc đều thấy. Hiện chỗ đó cho đúng thực tế.
-    final path = Platform.isAndroid
-        ? 'Music/Sách lười/${sanitizeFileName(widget.book.title)}  (thư viện nhạc của máy)'
-        : (widget.path ?? _resolved ?? '…');
+    if (Platform.isAndroid) return _hangAndroid(context);
+
+    final path = widget.path ?? _resolved ?? '…';
     return Row(
       children: [
         Icon(Icons.folder_outlined, size: 19, color: Theme.of(context).hintColor),
@@ -338,16 +379,59 @@ class _FolderRowState extends State<_FolderRow> {
             style: const TextStyle(fontSize: 13),
           ),
         ),
-        // Android không cho chọn thư mục: mọi đường ghi thẳng vào bộ nhớ chung
-        // đều bị chặn, nên file luôn đi vào Music/Sách lười qua MediaStore.
-        if (!Platform.isAndroid)
-          TextButton(
-            onPressed: () async {
-              final chosen =
-                  await FilePicker.platform.getDirectoryPath(dialogTitle: 'Chọn nơi lưu file');
-              if (chosen != null) widget.onChanged(chosen);
-            },
-            child: const Text('Đổi thư mục'),
+        TextButton(
+          onPressed: () async {
+            final chosen =
+                await FilePicker.platform.getDirectoryPath(dialogTitle: 'Chọn nơi lưu file');
+            if (chosen != null) widget.onChanged(chosen);
+          },
+          child: const Text('Đổi thư mục'),
+        ),
+      ],
+    );
+  }
+
+  /// Android: đường dẫn thật là vùng riêng của app và người dùng không cần biết
+  /// tới nó. Chỉ hiện chỗ file hoàn chỉnh sẽ nằm.
+  Widget _hangAndroid(BuildContext context) {
+    final sach = sanitizeFileName(widget.book.title);
+    final daChon = _tenThuMuc != null;
+    final noiLuu = daChon
+        ? '$_tenThuMuc/$sach'
+        : 'Music/Sách lười/$sach  (thư viện nhạc của máy)';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.folder_outlined, size: 19, color: Theme.of(context).hintColor),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Text(
+                noiLuu,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 13),
+              ),
+            ),
+            TextButton(
+              onPressed: _chonThuMucAndroid,
+              child: Text(daChon ? 'Đổi thư mục' : 'Chọn thư mục'),
+            ),
+          ],
+        ),
+        if (daChon)
+          Padding(
+            padding: const EdgeInsets.only(left: 28),
+            child: TextButton(
+              onPressed: _veMacDinh,
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                minimumSize: const Size(0, 30),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text('Dùng lại thư viện nhạc của máy', style: TextStyle(fontSize: 12.5)),
+            ),
           ),
       ],
     );

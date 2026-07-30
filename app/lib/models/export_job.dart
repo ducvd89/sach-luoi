@@ -118,6 +118,7 @@ class ExportJob {
     required this.fromChunk,
     required this.toChunk,
     required this.outputDir,
+    this.treeUri = '',
     this.status = JobStatus.queued,
     int? cursor,
     this.doneChunks = 0,
@@ -155,6 +156,11 @@ class ExportJob {
   /// Thư mục người dùng chọn để lưu file MP3.
   final String outputDir;
 
+  /// Android: thư mục người dùng chọn, dạng tree URI. Chép lại vào job lúc tạo
+  /// chứ không đọc từ cài đặt lúc ghi — đổi cài đặt giữa chừng thì job đang chạy
+  /// vẫn cất file đúng chỗ nó đã hứa.
+  final String treeUri;
+
   JobStatus status;
 
   /// Đoạn tiếp theo cần xử lý.
@@ -189,6 +195,7 @@ class ExportJob {
         'fromChunk': fromChunk,
         'toChunk': toChunk,
         'outputDir': outputDir,
+        'treeUri': treeUri,
         'status': status.id,
         'cursor': cursor,
         'doneChunks': doneChunks,
@@ -218,6 +225,7 @@ class ExportJob {
         fromChunk: json['fromChunk'] as int,
         toChunk: json['toChunk'] as int,
         outputDir: json['outputDir'] as String? ?? '',
+        treeUri: json['treeUri'] as String? ?? '',
         status: JobStatus.fromId(json['status'] as String?),
         cursor: json['cursor'] as int?,
         doneChunks: json['doneChunks'] as int? ?? 0,

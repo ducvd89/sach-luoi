@@ -16,6 +16,7 @@ import '../services/library_service.dart';
 import '../services/media_session.dart';
 import '../services/player_controller.dart';
 import '../services/storage.dart';
+import '../services/thu_muc_xuat.dart';
 import '../services/tts/tts_engine.dart';
 import '../services/tts/tts_manager.dart';
 
@@ -334,12 +335,22 @@ class AppState extends ChangeNotifier {
     final loi = await Storage.checkWritable(outputDir);
     if (loi != null) throw ExportDirException(loi);
 
+    // Android: thư mục người dùng chọn cũng phải kiểm — quyền có thể đã bị rút
+    // trong Cài đặt của máy, hoặc mất sau khi cài lại app.
+    final cay = settings.exportTreeUri;
+    if (cay.isNotEmpty && !await conQuyenThuMuc(cay)) {
+      throw const ExportDirException(
+        'Không còn quyền ghi vào thư mục đã chọn. Bấm "Đổi thư mục" để chọn lại.',
+      );
+    }
+
     final voiceName = voices.where((v) => v.id == settings.voiceId).map((v) => v.name).firstOrNull ?? settings.voiceId;
     final job = await exports.createJob(
       book: book,
       settings: settings,
       voiceName: voiceName,
       outputDir: outputDir,
+      treeUri: cay,
       fromChunk: fromChunk,
       toChunk: toChunk,
     );

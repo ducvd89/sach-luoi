@@ -20,6 +20,7 @@ import '../models/export_job.dart';
 import '../models/settings.dart';
 import 'audio_encoder.dart';
 import 'storage.dart';
+import 'thu_muc_xuat.dart';
 import 'tts/tts_manager.dart';
 
 /// Số đoạn tổng hợp trước để không phải chờ mạng/GPU giữa chừng.
@@ -83,6 +84,7 @@ class ExportService {
     required AppSettings settings,
     required String voiceName,
     required String outputDir,
+    required String treeUri,
     required int fromChunk,
     required int toChunk,
   }) async {
@@ -108,6 +110,7 @@ class ExportService {
       fromChunk: fromChunk,
       toChunk: toChunk,
       outputDir: outputDir,
+      treeUri: treeUri,
     );
 
     await _workDir(id).create(recursive: true);
@@ -299,22 +302,33 @@ class ExportService {
         }
       }
 
-      // Android: đưa vào thư viện nhạc của hệ thống. Đây là đường duy nhất vừa
-      // không cần quyền, vừa cho ra file người dùng thấy và copy được — ghi
-      // thẳng vào bộ nhớ chung thì bị chặn, mà ghi vào Android/data thì từ
-      // Android 11 chính người dùng cũng không vào xem được.
+      // Android: file vừa ghi đang nằm trong vùng riêng của app, chỗ mà từ
+      // Android 11 chính người dùng cũng không mở ra xem được. Phải đưa nó ra
+      // ngoài — hoặc vào thư mục người dùng đã chọn, hoặc vào thư viện nhạc của
+      // hệ thống. Ghi thẳng bằng File API vào bộ nhớ chung thì bị chặn.
       final soByte = await thanhPham.length();
       var tenHienThi = p.basename(thanhPham.path);
       if (needsMediaStore) {
+        final thuMuc = sanitizeFileName(job.bookTitle);
+        final thuMucCon = thuMuc.isEmpty ? job.bookId : thuMuc;
         try {
-          final thuMuc = sanitizeFileName(job.bookTitle);
-          tenHienThi = await publishToMusicLibrary(
-            nguon: thanhPham.path,
-            thuMucCon: 'Sách lười/${thuMuc.isEmpty ? job.bookId : thuMuc}',
-            tenFile: p.basename(thanhPham.path),
-          );
+          tenHienThi = job.treeUri.isEmpty
+              ? await publishToMusicLibrary(
+                  nguon: thanhPham.path,
+                  thuMucCon: 'Sách lười/$thuMucCon',
+                  tenFile: p.basename(thanhPham.path),
+                )
+              : await chepVaoThuMuc(
+                  nguon: thanhPham.path,
+                  cay: job.treeUri,
+                  thuMucCon: thuMucCon,
+                  tenFile: p.basename(thanhPham.path),
+                );
         } catch (err) {
-          job.error = 'Không đưa được vào thư viện nhạc: $err';
+          // Giữ nguyên file trong vùng riêng chứ không xoá: chép hụt mà xoá mất
+          // thì cả phần vừa đọc đi tong. Người dùng chọn lại thư mục rồi xuất
+          // lại phần này là xong.
+          job.error = 'Không cất được file ra ngoài: $err';
         }
       }
 
