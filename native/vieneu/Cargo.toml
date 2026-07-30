@@ -32,3 +32,18 @@ opt-level = 3
 lto = true
 codegen-units = 1
 panic = "abort"
+
+# Bộ mã hoá âm thanh cho việc xuất file — CHỈ cho máy tính.
+#
+# libopus và libmp3lame là mã C. Trên Windows chúng dựng sạch, còn biên dịch
+# chéo sang Android thì audiopus_sys không mang theo mã nguồn libopus (nó đi tìm
+# thư viện hệ thống qua pkg-config, target Android không có gì để tìm), và
+# mp3lame-sys thì đụng stdint.h của NDK.
+#
+# Không phải sửa hai chỗ đó: Android có sẵn MediaCodec trong hệ điều hành, mã
+# hoá được Opus và AAC mà không cần thư viện nào. Nên khai theo target — bản
+# Android không kéo chúng vào, và cũng không phải nhồi ffmpeg vào bộ cài.
+[target.'cfg(not(target_os = "android"))'.dependencies]
+mp3lame-encoder = "0.2"
+audiopus = "0.2"
+ogg = "0.9"
