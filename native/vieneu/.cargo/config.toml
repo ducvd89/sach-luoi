@@ -11,3 +11,14 @@ linker = "C:/Users/ducvd/AppData/Local/Android/Sdk/ndk/28.2.13676358/toolchains/
 
 [target.x86_64-linux-android]
 linker = "C:/Users/ducvd/AppData/Local/Android/Sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/bin/x86_64-linux-android24-clang.cmd"
+
+# Các bộ mã hoá âm thanh (libopus, libmp3lame) là mã C, nên cc-rs cần biết lấy
+# trình biên dịch nào cho từng target. Nó tự đoán ra "aarch64-linux-android-clang"
+# — cái tên NDK không có — nên phải chỉ tay.
+#
+# NDK chỉ phát hành clang.exe kèm cờ --target, không có bản riêng cho mỗi kiến
+# trúc; các file *-clang.cmd là lớp bọc đã cài sẵn cờ đó.
+[env]
+CC_aarch64-linux-android = "C:/Users/ducvd/AppData/Local/Android/Sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/bin/aarch64-linux-android24-clang.cmd"
+AR_aarch64-linux-android = "C:/Users/ducvd/AppData/Local/Android/Sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/bin/llvm-ar.exe"
+CFLAGS_aarch64-linux-android = "-O2 -fPIC"

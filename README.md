@@ -10,7 +10,7 @@ Mô hình giọng nói chạy trong chính tiến trình của ứng dụng qua 
 
 ## Cài đặt
 
-**Windows** — chạy bộ cài `SachLuoi-Setup-1.0.1.exe` (~33 MB). Không cần quyền quản trị: nó cài vào
+**Windows** — chạy bộ cài `SachLuoi-Setup-1.0.2.exe` (~33 MB). Không cần quyền quản trị: nó cài vào
 `%LOCALAPPDATA%\Programs\SachLuoi`, tạo lối tắt Start Menu và trình gỡ cài. Lúc gỡ có **hỏi riêng**
 trước khi xoá thư viện sách — mặc định giữ lại.
 
@@ -106,8 +106,11 @@ file gốc — giữ nguyên chỗ đang nghe.
 
 ### Khoảng nghỉ giữa các đoạn
 
-*Cài đặt → Cách đọc → Khoảng nghỉ giữa các đoạn* (mặc định 0,55 giây; hết một tiêu đề chương thì
-nghỉ gấp 1,8 lần). Khoảng nghỉ được chèn lúc phát và lúc ghép file chứ không nằm trong âm thanh đã
+*Cài đặt → Cách đọc → Khoảng nghỉ giữa các đoạn* (mặc định **0,9 giây**, kéo được tới 2 giây; hết
+một tiêu đề chương thì nghỉ gấp 1,8 lần). Con số này chọn theo số đo chứ không theo cảm giác: nhịp
+nghỉ mà mô hình tự sinh ra giữa hai câu có trung vị 0,23 s và **dài nhất 0,50 s**, nên khoảng nghỉ
+giữa đoạn phải vượt hẳn khỏi dải đó mới nghe ra là ranh giới đoạn. Bản 1.0.1 đặt 0,55 s — chỉ hơn
+cái nghỉ dài nhất giữa hai câu 0,05 s, nghe như các đoạn dính liền nhau. Khoảng nghỉ được chèn lúc phát và lúc ghép file chứ không nằm trong âm thanh đã
 tổng hợp, nên kéo thanh trượt là nghe khác ngay, không phải đọc lại cuốn sách và không mất bộ nhớ
 đệm đã có.
 
