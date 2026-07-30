@@ -9,6 +9,10 @@
 //! mỗi khung 16 phép nhân ma trận 768×1024 cộng lấy mẫu. Đó là vòng chạy nóng,
 //! đặt ở Rust thì nhanh ngang numpy, còn mảng typed của Dart chậm hơn vài lần.
 
+// Bộ mã hoá khi xuất file — chỉ có trên máy tính, Android dùng MediaCodec.
+#[cfg(not(target_os = "android"))]
+pub mod ma_hoa;
+
 pub mod engine;
 pub mod enroll;
 pub mod fbank;
