@@ -145,6 +145,16 @@ báo tính theo cả cuốn sách.
 **Xuất file** — chọn độ dài mỗi file (5–120 phút), hoặc mỗi chương một file, hoặc gộp tất cả làm một.
 Chọn xuất từ chương nào đến chương nào. Có tuỳ chọn *ưu tiên kết thúc file ở cuối chương*.
 
+Trên máy tính, việc xuất file chạy **nhiều đoạn cùng lúc**: ứng dụng mở thêm vài bản mô hình, mỗi
+bản một luồng riêng. Đo trên máy 12 nhân — 2,87× thời gian thực khi chạy một luồng, **8,94×** khi
+chạy sáu luồng, tức sách 10 giờ mất hơn một tiếng thay vì ba tiếng rưỡi. Số luồng lấy theo số nhân
+của máy, tối đa sáu. Chỉ bật lúc xuất file: nghe trực tiếp một luồng đã nhanh hơn tốc độ nghe, mở
+thêm chỉ tốn RAM (mỗi bản mô hình khoảng 250 MB) và làm máy nóng. Điện thoại luôn giữ một luồng.
+
+Không dùng GPU. Lý do nằm ở chỗ mô hình được xuất ra ONNX với chiều batch **cố định bằng 1** — GPU
+chỉ thắng khi gộp được nhiều đoạn vào một lượt, mà đồ thị hiện tại không cho gộp; chạy từng đoạn
+một thì card rời còn chậm hơn CPU (đo được 1,83× so với 2,94×).
+
 **Lưu tiến trình**
 
 - *Nghe*: lưu tự động mỗi 10 giây, khi tạm dừng và khi đóng ứng dụng — mở lại là nghe tiếp
