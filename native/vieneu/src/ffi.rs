@@ -407,3 +407,176 @@ fn remove_voice_from_file(path: &Path, name: &str) -> Result<(), String> {
     presets.remove(name);
     write_profiles(path, &root)
 }
+
+// -- nén file khi xuất --------------------------------------------------------
+
+/// Đặt chuỗi lỗi vào tham số ra. Bên gọi giải phóng bằng `vieneu_string_free`.
+#[cfg(not(target_os = "android"))]
+fn dat_loi(loi_ra: *mut *mut c_char, message: String) -> c_int {
+    if !loi_ra.is_null() {
+        if let Ok(s) = CString::new(message) {
+            unsafe { *loi_ra = s.into_raw() };
+        }
+    }
+    1
+}
+
+/// Nén một file WAV sang Opus (`.opus`) hoặc MP3. Trả 0 khi xong, 1 khi lỗi.
+///
+/// [dinh_dang]: 0 = Opus, 1 = MP3.
+/// [bitrate]: với Opus tính theo bit/s (32000, 64000), với MP3 theo kbps (128).
+///
+/// Vào ra bằng đường dẫn file chứ không qua buffer: một file 30 phút là hàng
+/// trăm MB, đẩy qua FFI rồi lại copy sang bộ nhớ Dart thì tốn vô ích.
+///
+/// Ghi vào file tạm rồi đổi tên, nên nếu máy tắt giữa lúc nén thì không để lại
+/// một file .opus dở dang mà phần xuất file tưởng là đã xong.
+#[cfg(not(target_os = "android"))]
+#[unsafe(no_mangle)]
+pub extern "C" fn sachnoi_ma_hoa_file(
+    wav_path: *const c_char,
+    out_path: *const c_char,
+    dinh_dang: c_int,
+    bitrate: c_int,
+    loi_ra: *mut *mut c_char,
+) -> c_int {
+    if !loi_ra.is_null() {
+        unsafe { *loi_ra = ptr::null_mut() };
+    }
+    let (Some(vao), Some(ra)) = (to_str(wav_path), to_str(out_path)) else {
+        return dat_loi(loi_ra, "đường dẫn không đọc được".into());
+    };
+    if bitrate <= 0 {
+        return dat_loi(loi_ra, format!("bitrate không hợp lệ: {bitrate}"));
+    }
+
+    let byte = match std::fs::read(vao) {
+        Ok(v) => v,
+        Err(e) => return dat_loi(loi_ra, format!("không đọc được {vao}: {e}")),
+    };
+    let (pcm, sr) = match crate::ma_hoa::doc_wav_mono(&byte) {
+        Ok(v) => v,
+        Err(e) => return dat_loi(loi_ra, e),
+    };
+
+    let nen = match dinh_dang {
+        0 => crate::ma_hoa::wav_sang_opus(&pcm, sr, bitrate),
+        1 => crate::ma_hoa::wav_sang_mp3(&pcm, sr, bitrate as u32),
+        _ => Err(format!("định dạng lạ: {dinh_dang}")),
+    };
+    let nen = match nen {
+        Ok(v) => v,
+        Err(e) => return dat_loi(loi_ra, e),
+    };
+
+    let tam = format!("{ra}.tmp");
+    if let Err(e) = std::fs::write(&tam, &nen) {
+        return dat_loi(loi_ra, format!("không ghi được {tam}: {e}"));
+    }
+    // Windows không cho rename đè lên file đang tồn tại.
+    let _ = std::fs::remove_file(ra);
+    if let Err(e) = std::fs::rename(&tam, ra) {
+        let _ = std::fs::remove_file(&tam);
+        return dat_loi(loi_ra, format!("không đổi tên sang {ra}: {e}"));
+    }
+    0
+}
+
+#[cfg(all(test, not(target_os = "android")))]
+mod kiem_thu_ma_hoa {
+    use super::*;
+
+    fn wav_mot_giay() -> Vec<u8> {
+        let mau: Vec<i16> = (0..48_000)
+            .map(|i| {
+                let t = i as f32 / 48_000.0;
+                ((t * 330.0 * std::f32::consts::TAU).sin() * 9000.0) as i16
+            })
+            .collect();
+        let than: Vec<u8> = mau.iter().flat_map(|s| s.to_le_bytes()).collect();
+        let mut w = Vec::new();
+        w.extend_from_slice(b"RIFF");
+        w.extend_from_slice(&(36 + than.len() as u32).to_le_bytes());
+        w.extend_from_slice(b"WAVEfmt ");
+        w.extend_from_slice(&16u32.to_le_bytes());
+        w.extend_from_slice(&1u16.to_le_bytes());
+        w.extend_from_slice(&1u16.to_le_bytes());
+        w.extend_from_slice(&48_000u32.to_le_bytes());
+        w.extend_from_slice(&96_000u32.to_le_bytes());
+        w.extend_from_slice(&2u16.to_le_bytes());
+        w.extend_from_slice(&16u16.to_le_bytes());
+        w.extend_from_slice(b"data");
+        w.extend_from_slice(&(than.len() as u32).to_le_bytes());
+        w.extend_from_slice(&than);
+        w
+    }
+
+    /// Gọi đúng qua cổng C như Dart sẽ gọi, kể cả phần chuỗi lỗi.
+    fn goi(vao: &str, ra: &str, dinh_dang: c_int, bitrate: c_int) -> Result<(), String> {
+        let a = CString::new(vao).unwrap();
+        let b = CString::new(ra).unwrap();
+        let mut loi: *mut c_char = ptr::null_mut();
+        let ma = sachnoi_ma_hoa_file(a.as_ptr(), b.as_ptr(), dinh_dang, bitrate, &mut loi);
+        if ma == 0 {
+            assert!(loi.is_null(), "thành công thì không được đặt chuỗi lỗi");
+            return Ok(());
+        }
+        assert!(!loi.is_null(), "lỗi thì phải nói lý do");
+        let text = unsafe { CStr::from_ptr(loi) }.to_string_lossy().into_owned();
+        vieneu_string_free(loi);
+        Err(text)
+    }
+
+    #[test]
+    fn nen_qua_cong_c_ra_ca_hai_dinh_dang() {
+        let d = std::env::temp_dir().join("sachluoi_ffi_ma_hoa");
+        std::fs::create_dir_all(&d).unwrap();
+        let vao = d.join("vao.wav");
+        std::fs::write(&vao, wav_mot_giay()).unwrap();
+
+        for (dd, br, ten, dau) in [(0, 32_000, "ra.opus", &b"OggS"[..]), (1, 128, "ra.mp3", &b"\xff"[..])] {
+            let ra = d.join(ten);
+            goi(vao.to_str().unwrap(), ra.to_str().unwrap(), dd, br).unwrap();
+            let byte = std::fs::read(&ra).unwrap();
+            assert!(byte.starts_with(dau), "{ten} sai chữ ký đầu file");
+            assert!(byte.len() > 1000, "{ten} chỉ có {} byte", byte.len());
+            // Không được để lại file tạm.
+            assert!(!d.join(format!("{ten}.tmp")).exists(), "còn sót file tạm");
+        }
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn nen_de_len_file_cu_duoc() {
+        let d = std::env::temp_dir().join("sachluoi_ffi_de_len");
+        std::fs::create_dir_all(&d).unwrap();
+        let vao = d.join("vao.wav");
+        std::fs::write(&vao, wav_mot_giay()).unwrap();
+        let ra = d.join("ra.opus");
+        std::fs::write(&ra, b"rac cu").unwrap();
+
+        goi(vao.to_str().unwrap(), ra.to_str().unwrap(), 0, 32_000).unwrap();
+        assert!(std::fs::read(&ra).unwrap().starts_with(b"OggS"));
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn loi_thi_noi_ly_do_chu_khong_sap() {
+        let d = std::env::temp_dir().join("sachluoi_ffi_loi");
+        std::fs::create_dir_all(&d).unwrap();
+        let vao = d.join("vao.wav");
+        std::fs::write(&vao, wav_mot_giay()).unwrap();
+        let ra = d.join("ra.bin");
+        let v = vao.to_str().unwrap();
+        let r = ra.to_str().unwrap();
+
+        assert!(goi("khong-co-file-nay.wav", r, 0, 32_000).is_err());
+        assert!(goi(v, r, 7, 32_000).unwrap_err().contains("định dạng lạ"));
+        assert!(goi(v, r, 0, 0).unwrap_err().contains("bitrate"));
+        // WAV hỏng.
+        let xau = d.join("xau.wav");
+        std::fs::write(&xau, b"khong phai wav").unwrap();
+        assert!(goi(xau.to_str().unwrap(), r, 1, 128).is_err());
+        std::fs::remove_dir_all(&d).ok();
+    }
+}
