@@ -8,8 +8,25 @@ library;
 import '../models/book.dart';
 import 'text_normalizer.dart';
 
-const int chunkTargetChars = 400;
-const int chunkMaxChars = 680;
+/// Độ dài đoạn, tính bằng ký tự.
+///
+/// Bị chặn bởi bộ nhớ, không phải bởi nhịp đọc. Bộ giải mã âm của VieNeu tự-chú-ý
+/// trên toàn bộ khung của cả đoạn một lượt, nên RAM tỉ lệ với **bình phương** độ
+/// dài. Đo thật trên một mô hình:
+///
+///   4,6 giây âm thanh   ->  0,2 GB
+///  12,8 giây            ->  1,3 GB
+///  25,0 giây            ->  4,9 GB
+///  ~50 giây             ->  hết bộ nhớ, ONNX Runtime báo bad allocation
+///
+/// Bản đầu đặt 400/680 ký tự, tức khoảng 27 và 47 giây — mỗi đoạn thường ngốn
+/// gần 5 GB, và nhân với số worker chạy song song lúc xuất file thì lên vài chục
+/// GB rồi chết. Giờ chặn ở khoảng 14 và 22 giây.
+///
+/// Cách sửa gốc là giải mã theo cửa sổ có gối đầu thay vì cả đoạn một lượt; khi
+/// nào làm xong thì mới nới lại được hai con số này.
+const int chunkTargetChars = 200;
+const int chunkMaxChars = 320;
 
 /// Số ký tự đọc được trong một giây ở tốc độ chuẩn — đo thực tế với giọng vi-VN.
 const double charsPerSecond = 14.5;

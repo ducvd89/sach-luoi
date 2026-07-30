@@ -201,8 +201,8 @@ class _ExportPageState extends State<ExportPage> {
                     '~${megabytes < 10 ? megabytes.toStringAsFixed(1) : megabytes.round()} MB.\n'
                     'Giọng: ${state.voices.where((v) => v.id == settings.voiceId).map((v) => v.name).firstOrNull ?? settings.voiceId}'
                     ' · tốc độ ${settings.speed}× (được ghi thẳng vào file)'
-                    '${isWav ? '\nWAV nặng vì không nén — cùng thời lượng thì Opus nhỏ hơn khoảng 30 lần. Mục '
-                        'chọn định dạng đang được làm.' : ''}',
+                    '${isWav ? '\nWAV không nén nên nặng nhất — chọn Opus thì nhỏ hơn khoảng 30 lần mà nghe gần như không khác. Đổi ở mục '
+                        'Định dạng file phía trên.' : ''}',
                     style: const TextStyle(fontSize: 13, height: 1.5),
                   ),
                 ),
@@ -320,7 +320,12 @@ class _FolderRowState extends State<_FolderRow> {
 
   @override
   Widget build(BuildContext context) {
-    final path = widget.path ?? _resolved ?? '…';
+    // Trên Android, đường dẫn thật là vùng riêng của app và người dùng không cần
+    // biết tới nó — file hoàn chỉnh nằm ở Music/Sách lười, chỗ mà ứng dụng Files
+    // và các app nghe nhạc đều thấy. Hiện chỗ đó cho đúng thực tế.
+    final path = Platform.isAndroid
+        ? 'Music/Sách lười/${sanitizeFileName(widget.book.title)}  (thư viện nhạc của máy)'
+        : (widget.path ?? _resolved ?? '…');
     return Row(
       children: [
         Icon(Icons.folder_outlined, size: 19, color: Theme.of(context).hintColor),
@@ -328,18 +333,22 @@ class _FolderRowState extends State<_FolderRow> {
         Expanded(
           child: Text(
             path,
-            maxLines: 1,
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(fontSize: 13),
           ),
         ),
-        TextButton(
-          onPressed: () async {
-            final chosen = await FilePicker.platform.getDirectoryPath(dialogTitle: 'Chọn nơi lưu file MP3');
-            if (chosen != null) widget.onChanged(chosen);
-          },
-          child: const Text('Đổi thư mục'),
-        ),
+        // Android không cho chọn thư mục: mọi đường ghi thẳng vào bộ nhớ chung
+        // đều bị chặn, nên file luôn đi vào Music/Sách lười qua MediaStore.
+        if (!Platform.isAndroid)
+          TextButton(
+            onPressed: () async {
+              final chosen =
+                  await FilePicker.platform.getDirectoryPath(dialogTitle: 'Chọn nơi lưu file');
+              if (chosen != null) widget.onChanged(chosen);
+            },
+            child: const Text('Đổi thư mục'),
+          ),
       ],
     );
   }

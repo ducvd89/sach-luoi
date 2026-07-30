@@ -4,9 +4,12 @@
 /// gói thành WAV: nhúng bộ mã hoá MP3 vào Flutter còn nặng hơn cả mô hình.
 library;
 
+import 'dart:ffi';
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
+
+import 'package:ffi/ffi.dart';
 
 import '../../core/wav.dart';
 import 'model_store.dart';
@@ -32,13 +35,45 @@ class OnDeviceVieNeuEngine implements TtsEngine {
 
   /// Số worker chạy song song lúc xuất file.
   ///
-  /// Đo trên máy 12 nhân / 24 luồng: 1 worker×4 thread 2,87× thời gian thực,
-  /// 3×4 6,85×, **6×2 8,94×** — bão hoà đúng ở số nhân vật lý. Mỗi worker giữ
-  /// một bản mô hình riêng (~250 MB) nên điện thoại không mở thêm: RAM ở đó
-  /// quý hơn, mà xuất file trên điện thoại cũng hiếm.
+  /// Chặn theo **cả số nhân lẫn RAM**, vì một bản mô hình tốn nhiều hơn tưởng.
+  /// Đo thật: một mô hình đứng ở 575-815 MB tuỳ độ dài đoạn (bộ cấp phát arena
+  /// của ONNX Runtime phình tới mức lớn nhất từng cần rồi giữ luôn, không trả
+  /// lại). Bản đầu ghi "~250 MB" là sai gấp ba, và với 6 worker thì riêng phần
+  /// nền đã 5 GB — máy 8 GB là hết đường thở.
+  ///
+  /// Tốc độ đo được: 1 worker 2,87× thời gian thực, 3 worker 6,85×, 6 worker
+  /// 8,94×. Đường cong đã phẳng dần nên bớt worker mất ít tốc độ mà đổi lại
+  /// nhiều RAM.
   static int get _bulkWorkers {
     if (Platform.isAndroid || Platform.isIOS) return 1;
-    return (Platform.numberOfProcessors ~/ 4).clamp(1, 6);
+    // Chặn ở 3, không phải 6. Mỗi worker cần chỗ cho đỉnh bộ nhớ của bộ giải mã
+    // âm, mà đỉnh đó tỉ lệ bình phương độ dài đoạn (xem chunker.dart): khoảng
+    // 1,6 GB cho đoạn 14 giây. Sáu worker là hơn 10 GB chỉ để xuất file.
+    final theoNhan = (Platform.numberOfProcessors ~/ 4).clamp(1, 3);
+    final ram = _tongRamGb();
+    if (ram == null) return 2; // không biết RAM thì dè dặt
+    // Dành tối đa một phần tư RAM máy, mỗi worker tính 2 GB.
+    final theoRam = (ram ~/ 8).clamp(1, 3);
+    return theoNhan < theoRam ? theoNhan : theoRam;
+  }
+
+  /// Tổng RAM máy, tính bằng GB. null nếu không hỏi được.
+  static int? _tongRamGb() {
+    if (!Platform.isWindows) return null;
+    try {
+      final kernel = DynamicLibrary.open('kernel32.dll');
+      final hoi = kernel.lookupFunction<Int32 Function(Pointer<Uint64>),
+          int Function(Pointer<Uint64>)>('GetPhysicallyInstalledSystemMemory');
+      final ra = calloc<Uint64>();
+      try {
+        if (hoi(ra) == 0) return null;
+        return (ra.value ~/ (1024 * 1024)).toInt(); // hàm trả về KB
+      } finally {
+        calloc.free(ra);
+      }
+    } catch (_) {
+      return null;
+    }
   }
 
   /// Mỗi worker chỉ 2 thread: 6×2 nhanh hơn 3×4 vì lấp kín được số nhân mà
@@ -132,7 +167,7 @@ class OnDeviceVieNeuEngine implements TtsEngine {
   /// Mở thêm hoặc đóng bớt worker.
   ///
   /// Nối vào [_resizing] để hai lần bật/tắt liên tiếp không cùng lúc mở mô hình
-  /// — mỗi bản tốn khoảng 250 MB, mở nhầm gấp đôi là thấy ngay.
+  /// — mỗi bản tốn 575-815 MB, mở nhầm gấp đôi là thấy ngay.
   @override
   Future<void> setBulkMode(bool on) {
     if (on == _bulk) return _resizing ?? Future.value();

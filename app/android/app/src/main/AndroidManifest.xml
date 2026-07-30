@@ -9,6 +9,10 @@
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <!-- Từ Android 13, hiện thông báo "Đang phát" phải xin quyền. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Chỉ cho máy trước Android 10. Từ Android 10 việc đưa file xuất ra vào
+         thư viện nhạc đi qua MediaStore, không cần quyền nào. -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28"/>
 
     <application
         android:label="Sách lười"

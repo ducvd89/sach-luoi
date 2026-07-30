@@ -26,7 +26,7 @@ class MainActivity : AudioServiceActivity() {
         super.configureFlutterEngine(engine)
         MethodChannel(engine.dartExecutor.binaryMessenger, KENH_MA_HOA)
             .setMethodCallHandler { goi, tra ->
-                if (goi.method != "nen") {
+                if (goi.method != "nen" && goi.method != "dangKy") {
                     tra.notImplemented()
                     return@setMethodCallHandler
                 }
@@ -34,12 +34,21 @@ class MainActivity : AudioServiceActivity() {
                 // giao diện đứng, nên đẩy sang luồng nền rồi trả kết quả về.
                 Thread {
                     val ketQua = runCatching {
-                        MaHoaAudio.nen(
-                            goi.argument<String>("wavPath")!!,
-                            goi.argument<String>("outBase")!!,
-                            goi.argument<String>("dinhDang")!!,
-                            goi.argument<Int>("bitrate")!!,
-                        )
+                        if (goi.method == "nen") {
+                            MaHoaAudio.nen(
+                                goi.argument<String>("wavPath")!!,
+                                goi.argument<String>("outBase")!!,
+                                goi.argument<String>("dinhDang")!!,
+                                goi.argument<Int>("bitrate")!!,
+                            )
+                        } else {
+                            XuatRaThuVien.dangKy(
+                                applicationContext,
+                                goi.argument<String>("nguon")!!,
+                                goi.argument<String>("thuMucCon")!!,
+                                goi.argument<String>("tenFile")!!,
+                            )
+                        }
                     }
                     runOnUiThread {
                         ketQua.fold(

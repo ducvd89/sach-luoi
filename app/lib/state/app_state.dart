@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
 
 import '../models/book.dart';
 import '../models/export_job.dart';
@@ -379,13 +380,12 @@ class AppState extends ChangeNotifier {
     final name = sanitizeFileName(book.title);
     final sub = name.isEmpty ? book.id : name;
 
-    // Android: thư mục riêng của app trên bộ nhớ ngoài. Ghi được không cần quyền
-    // nào, mà vẫn thấy được từ ứng dụng quản lý file và từ máy tính khi cắm dây
-    // — khác với thư mục trong /data/user/0 mà bản trước dùng, chỗ đó người dùng
-    // không lấy file ra được.
-    final ngoai = await Storage.instance.externalRoot();
-    if (ngoai != null) {
-      return '${ngoai.path}${Platform.pathSeparator}Sách nói${Platform.pathSeparator}$sub';
+    // Android: ghi vào vùng riêng của app — chỗ duy nhất luôn ghi được. File
+    // hoàn chỉnh sau đó được đăng ký vào Music/Sách lười của hệ thống qua
+    // MediaStore rồi bản tạm này bị xoá, nên người dùng không bao giờ phải mở
+    // thư mục này ra.
+    if (Platform.isAndroid) {
+      return p.join(Storage.instance.root.path, 'xuat', sub);
     }
 
     final home = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? Storage.instance.root.path;

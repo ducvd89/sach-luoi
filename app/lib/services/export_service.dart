@@ -299,12 +299,31 @@ class ExportService {
         }
       }
 
+      // Android: đưa vào thư viện nhạc của hệ thống. Đây là đường duy nhất vừa
+      // không cần quyền, vừa cho ra file người dùng thấy và copy được — ghi
+      // thẳng vào bộ nhớ chung thì bị chặn, mà ghi vào Android/data thì từ
+      // Android 11 chính người dùng cũng không vào xem được.
+      final soByte = await thanhPham.length();
+      var tenHienThi = p.basename(thanhPham.path);
+      if (needsMediaStore) {
+        try {
+          final thuMuc = sanitizeFileName(job.bookTitle);
+          tenHienThi = await publishToMusicLibrary(
+            nguon: thanhPham.path,
+            thuMucCon: 'Sách lười/${thuMuc.isEmpty ? job.bookId : thuMuc}',
+            tenFile: p.basename(thanhPham.path),
+          );
+        } catch (err) {
+          job.error = 'Không đưa được vào thư viện nhạc: $err';
+        }
+      }
+
       job.parts.add(ExportPart(
         index: current.index,
-        fileName: p.basename(thanhPham.path),
+        fileName: tenHienThi,
         title: partTitle,
         seconds: current.seconds,
-        bytes: await thanhPham.length(),
+        bytes: soByte,
         chunkFrom: current.chunkFrom,
         chunkTo: chunkTo,
       ));

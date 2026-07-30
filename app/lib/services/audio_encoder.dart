@@ -117,3 +117,34 @@ void _encodeBlocking(String lib, String wavPath, String outPath, int code, int b
     calloc.free(errPtr);
   }
 }
+
+/// Android có đưa file ra thư viện nhạc được không.
+///
+/// Trên Android mọi đường ghi thẳng vào bộ nhớ chung đều bị chặn, nên file phải
+/// đi qua MediaStore mới tới được chỗ người dùng lấy được.
+bool get needsMediaStore => Platform.isAndroid;
+
+/// Chép [nguon] vào `Music/[thuMucCon]/[tenFile]` của hệ thống rồi xoá bản gốc.
+///
+/// Trả về đường dẫn người dùng thấy. Chỉ gọi trên Android.
+Future<String> publishToMusicLibrary({
+  required String nguon,
+  required String thuMucCon,
+  required String tenFile,
+}) async {
+  try {
+    final ra = await _kenh.invokeMethod<String>('dangKy', {
+      'nguon': nguon,
+      'thuMucCon': thuMucCon,
+      'tenFile': tenFile,
+    });
+    if (ra == null || ra.isEmpty) {
+      throw const EncodeException('MediaStore không trả về đường dẫn');
+    }
+    return ra;
+  } on PlatformException catch (err) {
+    throw EncodeException(err.message ?? '$err');
+  } on MissingPluginException {
+    throw const EncodeException('Bản này chưa nối MediaStore');
+  }
+}
