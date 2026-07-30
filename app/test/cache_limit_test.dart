@@ -90,4 +90,38 @@ void main() {
     expect(cacheLimitChoices, contains(defaultCacheLimitMb));
     expect(cacheLimitChoices, contains(0));
   });
+
+  _testGhiDuoc();
 }
+
+
+void _testGhiDuoc() {
+  group('Kiểm tra thư mục xuất file ghi được', () {
+    test('thư mục ghi được thì trả về null', () async {
+      final d = await Directory.systemTemp.createTemp('sachnoi_ghi_');
+      addTearDown(() => d.deleteSync(recursive: true));
+      expect(await Storage.checkWritable(d.path), isNull);
+      // Không được để lại file thử.
+      expect(d.listSync(), isEmpty);
+    });
+
+    test('thư mục chưa có thì tự tạo', () async {
+      final d = await Directory.systemTemp.createTemp('sachnoi_ghi2_');
+      addTearDown(() => d.deleteSync(recursive: true));
+      final sau = p.join(d.path, 'chua', 'co', 'nay');
+      expect(await Storage.checkWritable(sau), isNull);
+      expect(Directory(sau).existsSync(), isTrue);
+    });
+
+    test('đường dẫn không tạo được thì giải thích rõ', () async {
+      // Tên file làm thư mục cha: không thể tạo thư mục con bên trong một file.
+      final d = await Directory.systemTemp.createTemp('sachnoi_ghi3_');
+      addTearDown(() => d.deleteSync(recursive: true));
+      final f = File(p.join(d.path, 'la-mot-file'))..writeAsStringSync('x');
+      final loi = await Storage.checkWritable(p.join(f.path, 'con'));
+      expect(loi, isNotNull);
+      expect(loi, contains('Không'));
+    });
+  });
+}
+

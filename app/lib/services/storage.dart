@@ -67,6 +67,48 @@ class Storage {
 
   Directory bookDir(String id) => Directory(p.join(booksDir.path, id));
 
+  /// Thư mục của app trên bộ nhớ ngoài, dùng làm nơi xuất file trên Android.
+  ///
+  /// Từ Android 10, app không ghi thẳng vào Download hay Music bằng dart:io
+  /// được nữa — scoped storage chặn. Nhưng thư mục này thì ghi được mà **không
+  /// cần xin quyền nào**, và người dùng vẫn lấy file ra được: nó hiện trong ứng
+  /// dụng quản lý file và cả khi cắm máy vào máy tính.
+  ///
+  /// Trả về null trên nền không có khái niệm đó (Windows).
+  Future<Directory?> externalRoot() async {
+    if (!Platform.isAndroid) return null;
+    try {
+      return await getExternalStorageDirectory();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Thử ghi thật vào [dir] xem có được không.
+  ///
+  /// Trả về null khi ghi được, hoặc câu giải thích khi không. Kiểm trước khi bắt
+  /// đầu còn hơn để người dùng chờ nửa tiếng rồi mới báo lỗi ở file đầu tiên —
+  /// và đường dẫn mà bộ chọn thư mục của Android trả về thường là loại không
+  /// ghi thẳng được.
+  static Future<String?> checkWritable(String dir) async {
+    final target = Directory(dir);
+    try {
+      await target.create(recursive: true);
+    } catch (err) {
+      return 'Không tạo được thư mục $dir ($err)';
+    }
+    final probe = File(p.join(dir, '.sachluoi-thu-ghi'));
+    try {
+      await probe.writeAsString('x', flush: true);
+      await probe.delete();
+      return null;
+    } catch (err) {
+      return 'Không ghi được vào $dir. Trên Android, ứng dụng chỉ ghi thẳng được '
+          'vào thư mục riêng của nó — chọn lại thư mục mặc định, hoặc chép file '
+          'ra sau khi xuất xong. ($err)';
+    }
+  }
+
   /// Ghi qua file tạm rồi đổi tên: mất điện giữa chừng cũng không hỏng dữ liệu cũ.
   static Future<void> writeJson(File file, Object value) => writeJsonText(file, jsonEncode(value));
 

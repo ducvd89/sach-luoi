@@ -18,6 +18,14 @@ import '../services/storage.dart';
 import '../services/tts/tts_engine.dart';
 import '../services/tts/tts_manager.dart';
 
+/// Thư mục xuất file không ghi được.
+class ExportDirException implements Exception {
+  const ExportDirException(this.message);
+  final String message;
+  @override
+  String toString() => message;
+}
+
 class AppState extends ChangeNotifier {
   AppState._(this.settings) {
     player = PlayerController(tts, library)..attachStreams();
@@ -320,6 +328,11 @@ class AppState extends ChangeNotifier {
     required int fromChunk,
     required int toChunk,
   }) async {
+    // Kiểm tra ghi được trước khi tạo job: sai thư mục thì nói ngay chứ đừng để
+    // người dùng chờ rồi mới vỡ ở file đầu tiên.
+    final loi = await Storage.checkWritable(outputDir);
+    if (loi != null) throw ExportDirException(loi);
+
     final voiceName = voices.where((v) => v.id == settings.voiceId).map((v) => v.name).firstOrNull ?? settings.voiceId;
     final job = await exports.createJob(
       book: book,
@@ -363,10 +376,21 @@ class AppState extends ChangeNotifier {
 
   /// Thư mục mặc định để lưu file MP3 xuất ra.
   Future<String> defaultExportDir(Book book) async {
-    final home = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? Storage.instance.root.path;
     final name = sanitizeFileName(book.title);
+    final sub = name.isEmpty ? book.id : name;
+
+    // Android: thư mục riêng của app trên bộ nhớ ngoài. Ghi được không cần quyền
+    // nào, mà vẫn thấy được từ ứng dụng quản lý file và từ máy tính khi cắm dây
+    // — khác với thư mục trong /data/user/0 mà bản trước dùng, chỗ đó người dùng
+    // không lấy file ra được.
+    final ngoai = await Storage.instance.externalRoot();
+    if (ngoai != null) {
+      return '${ngoai.path}${Platform.pathSeparator}Sách nói${Platform.pathSeparator}$sub';
+    }
+
+    final home = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'] ?? Storage.instance.root.path;
     return '$home${Platform.pathSeparator}Music${Platform.pathSeparator}Sách nói'
-        '${Platform.pathSeparator}${name.isEmpty ? book.id : name}';
+        '${Platform.pathSeparator}$sub';
   }
 
   @override
