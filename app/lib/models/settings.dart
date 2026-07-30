@@ -57,6 +57,32 @@ Duration pauseAfterChunk({required bool heading, required int pauseMs}) {
   return Duration(milliseconds: (pauseMs * (heading ? headingPauseFactor : 1.0)).round());
 }
 
+/// Định dạng file xuất ra.
+///
+/// WAV không nén nên nặng gấp khoảng 30 lần Opus ở cùng thời lượng. Đo trên một
+/// file thật 29,9 phút: WAV 164 MB, Opus 32k 6,8 MB, Opus 64k 14 MB, MP3 128k
+/// 27 MB. Opus nhỏ hơn hẳn ở cùng chất lượng vì nó được thiết kế cho dải bitrate
+/// thấp, còn MP3 giữ lại vì đầu đĩa và dàn xe hơi cũ chỉ đọc được nó.
+enum ExportFormat {
+  opus32('opus32', 'Opus 32 kbps — nhỏ nhất', 'opus', 32000),
+  opus64('opus64', 'Opus 64 kbps — chất lượng cao hơn', 'opus', 64000),
+  mp3_128('mp3_128', 'MP3 128 kbps — máy nào cũng đọc được', 'mp3', 128),
+  wav('wav', 'WAV — không nén, nặng nhất', 'wav', 0);
+
+  const ExportFormat(this.id, this.label, this.extension, this.bitrate);
+  final String id;
+  final String label;
+  final String extension;
+
+  /// Opus tính theo bit/s, MP3 theo kbps — đúng như thư viện native nhận.
+  final int bitrate;
+
+  bool get isWav => this == ExportFormat.wav;
+
+  static ExportFormat fromId(String? id) =>
+      ExportFormat.values.firstWhere((f) => f.id == id, orElse: () => ExportFormat.opus32);
+}
+
 class AppSettings {
   AppSettings({
     this.engineId = 'vieneu',
@@ -64,6 +90,7 @@ class AppSettings {
     this.speed = 1.0,
     this.chunkPauseMs = defaultChunkPauseMs,
     this.cacheLimitMb = defaultCacheLimitMb,
+    this.exportFormat = ExportFormat.opus32,
     this.expandNumbers = true,
     this.removeBoilerplate = true,
     this.splitMode = SplitMode.duration,
@@ -92,6 +119,9 @@ class AppSettings {
   /// Trần dung lượng bộ nhớ đệm âm thanh, tính bằng MB. 0 nghĩa là không hạn.
   int cacheLimitMb;
 
+  /// Định dạng file xuất ra.
+  ExportFormat exportFormat;
+
   /// Trần tính theo byte, 0 nghĩa là không hạn.
   int get cacheLimitBytes => cacheLimitMb <= 0 ? 0 : cacheLimitMb * 1024 * 1024;
 
@@ -119,6 +149,7 @@ class AppSettings {
         'speed': speed,
         'chunkPauseMs': chunkPauseMs,
         'cacheLimitMb': cacheLimitMb,
+        'exportFormat': exportFormat.id,
         'expandNumbers': expandNumbers,
         'removeBoilerplate': removeBoilerplate,
         'splitMode': splitMode.id,
@@ -139,6 +170,7 @@ class AppSettings {
         speed: (json['speed'] as num?)?.toDouble() ?? 1.0,
         chunkPauseMs: _napKhoangNghi(json['chunkPauseMs']),
         cacheLimitMb: (json['cacheLimitMb'] as num?)?.toInt() ?? defaultCacheLimitMb,
+        exportFormat: ExportFormat.fromId(json['exportFormat'] as String?),
         expandNumbers: json['expandNumbers'] as bool? ?? true,
         removeBoilerplate: json['removeBoilerplate'] as bool? ?? true,
         splitMode: SplitMode.fromId(json['splitMode'] as String?),

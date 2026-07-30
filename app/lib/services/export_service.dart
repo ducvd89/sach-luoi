@@ -18,6 +18,7 @@ import '../core/wav.dart';
 import '../models/book.dart';
 import '../models/export_job.dart';
 import '../models/settings.dart';
+import 'audio_encoder.dart';
 import 'storage.dart';
 import 'tts/tts_manager.dart';
 
@@ -99,6 +100,8 @@ class ExportService {
       voiceName: voiceName,
       speed: settings.speed,
       pauseMs: settings.chunkPauseMs,
+      // Máy không nén được (điện thoại) thì đừng hứa Opus rồi lại ra WAV.
+      formatId: encoderAvailable ? settings.exportFormat.id : ExportFormat.wav.id,
       splitMode: settings.splitMode,
       partMinutes: settings.partMinutes,
       alignChapter: settings.alignChapter,
@@ -203,6 +206,8 @@ class ExportService {
     // nhau: MP3 nối thẳng khung dữ liệu và gắn thẻ ID3, WAV thì nối phần mẫu âm
     // rồi dựng lại phần đầu file khi đóng.
     final isWav = _tts.engine(job.engineId).audioFormat == 'wav';
+    // Định dạng đích của job. null khi engine trả về MP3 sẵn (không nén lại).
+    final dinhDang = isWav ? ExportFormat.fromId(job.formatId) : null;
     var wavRate = 22050;
 
     String chapterTitleOf(int chunkIndex) {
@@ -251,8 +256,11 @@ class ExportService {
           : '${job.bookTitle} — Phần ${current.index + 1}';
 
       final base = sanitizeFileName(job.bookTitle);
-      final fileName = '${(current.index + 1).toString().padLeft(3, '0')} - '
-          '${base.isEmpty ? 'sach-noi' : base}.${isWav ? 'wav' : 'mp3'}';
+      final tenGoc = '${(current.index + 1).toString().padLeft(3, '0')} - '
+          '${base.isEmpty ? 'sach-noi' : base}';
+      // Luôn ghi WAV trước rồi mới nén, nên bước này lúc nào cũng là .wav khi
+      // engine trả về mẫu âm thô.
+      final fileName = '$tenGoc.${isWav ? 'wav' : 'mp3'}';
       final target = File(p.join(job.outputDir, fileName));
 
       // WAV không có chỗ ghi tên sách như thẻ ID3 của MP3, chỉ cần đúng phần đầu
@@ -269,12 +277,33 @@ class ExportService {
       await target.writeAsBytes(output.takeBytes(), flush: true);
       await file.delete();
 
+      // Nén sau khi WAV đã hoàn chỉnh, chứ không nén từng đoạn: nối các khung
+      // Opus lại với nhau là hỏng container, mà nén cả file một lần cũng cho ra
+      // thời lượng và việc tua chính xác. Mất 5-9 giây cho một file 30 phút.
+      var thanhPham = target;
+      if (dinhDang != null && !dinhDang.isWav) {
+        final nen = File(p.join(job.outputDir, '$tenGoc.${dinhDang.extension}'));
+        try {
+          await encodeAudioFile(
+            wavPath: target.path,
+            outPath: nen.path,
+            format: dinhDang.extension == 'opus' ? EncodeFormat.opus : EncodeFormat.mp3,
+            bitrate: dinhDang.bitrate,
+          );
+          await target.delete();
+          thanhPham = nen;
+        } catch (err) {
+          // Nén lỗi thì giữ WAV lại — thà file nặng còn hơn mất cả phần vừa đọc.
+          job.error = 'Không nén được ${nen.path}: $err (giữ nguyên WAV)';
+        }
+      }
+
       job.parts.add(ExportPart(
         index: current.index,
-        fileName: fileName,
+        fileName: p.basename(thanhPham.path),
         title: partTitle,
         seconds: current.seconds,
-        bytes: await target.length(),
+        bytes: await thanhPham.length(),
         chunkFrom: current.chunkFrom,
         chunkTo: chunkTo,
       ));

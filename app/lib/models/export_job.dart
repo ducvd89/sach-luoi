@@ -111,6 +111,7 @@ class ExportJob {
     required this.voiceName,
     required this.speed,
     required this.pauseMs,
+    this.formatId = 'wav',
     required this.splitMode,
     required this.partMinutes,
     required this.alignChapter,
@@ -141,6 +142,10 @@ class ExportJob {
   /// Khoảng nghỉ chèn giữa các đoạn, ghi lại theo job để chạy tiếp giữ đúng nhịp
   /// dù người dùng đã đổi cài đặt.
   final int pauseMs;
+
+  /// Định dạng chốt lúc tạo job — đổi cài đặt giữa lúc đang xuất thì job đang
+  /// chạy vẫn ra đúng loại file mà nó đã bắt đầu.
+  final String formatId;
   final SplitMode splitMode;
   final int partMinutes;
   final bool alignChapter;
@@ -177,6 +182,7 @@ class ExportJob {
         'voiceName': voiceName,
         'speed': speed,
         'pauseMs': pauseMs,
+        'formatId': formatId,
         'splitMode': splitMode.id,
         'partMinutes': partMinutes,
         'alignChapter': alignChapter,
@@ -205,6 +211,7 @@ class ExportJob {
         // Job tạo trước khi có khoảng nghỉ thì giữ nguyên cách ghép cũ, nếu
         // không phần chạy tiếp sẽ lệch nhịp so với phần đã xuất.
         pauseMs: (json['pauseMs'] as num?)?.toInt() ?? 0,
+        formatId: json['formatId'] as String? ?? 'wav',
         splitMode: SplitMode.fromId(json['splitMode'] as String?),
         partMinutes: (json['partMinutes'] as num?)?.toInt() ?? 30,
         alignChapter: json['alignChapter'] as bool? ?? true,
