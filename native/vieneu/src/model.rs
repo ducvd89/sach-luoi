@@ -200,8 +200,18 @@ impl Model {
         let tokenizer = tokenizers::Tokenizer::from_file(model_dir.join("tokenizer.json"))
             .map_err(|e| format!("không đọc được tokenizer.json: {e}"))?;
 
+        // Ít luồng lại nhanh hơn nhiều luồng. Đo trên máy 12 nhân / 24 luồng
+        // (xem examples/do_toc_do.rs, 6 vòng đảo thứ tự để trừ ảnh hưởng nhiệt):
+        //
+        //   4 luồng  2.98× thời gian thực
+        //   8 luồng  2.75×
+        //  12 luồng  2.61×
+        //
+        // Vòng sinh token chạy từng bước một, mỗi bước chỉ là một token với ma
+        // trận 768×768 — việc chia cho mỗi luồng còn nhỏ hơn chi phí đồng bộ để
+        // chia. Thêm luồng chỉ thêm phần chờ nhau.
         let threads = if threads == 0 {
-            std::thread::available_parallelism().map(|n| n.get() / 2).unwrap_or(4).clamp(1, 8)
+            std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4).clamp(1, 4)
         } else {
             threads
         };
