@@ -5,6 +5,8 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
+import 'fast_scrollbar.dart';
 import 'package:path/path.dart' as p;
 
 import '../core/chunker.dart';
@@ -118,34 +120,18 @@ class _ExportPageState extends State<ExportPage> {
                       ),
                     _field(
                       'Từ chương',
-                      DropdownButton<int>(
-                        value: from.index,
-                        isExpanded: true,
-                        underline: const SizedBox.shrink(),
-                        items: [
-                          for (var i = 0; i < chapters.length; i++)
-                            DropdownMenuItem(
-                              value: chapters[i].index,
-                              child: Text('${i + 1}. ${chapters[i].title}', overflow: TextOverflow.ellipsis),
-                            ),
-                        ],
-                        onChanged: (value) => setState(() => _fromChapter = value),
+                      _ChonChuong(
+                        chapters: chapters,
+                        selected: from.index,
+                        onPicked: (value) => setState(() => _fromChapter = value),
                       ),
                     ),
                     _field(
                       'Đến hết chương',
-                      DropdownButton<int>(
-                        value: effectiveTo.index,
-                        isExpanded: true,
-                        underline: const SizedBox.shrink(),
-                        items: [
-                          for (var i = 0; i < chapters.length; i++)
-                            DropdownMenuItem(
-                              value: chapters[i].index,
-                              child: Text('${i + 1}. ${chapters[i].title}', overflow: TextOverflow.ellipsis),
-                            ),
-                        ],
-                        onChanged: (value) => setState(() => _toChapter = value),
+                      _ChonChuong(
+                        chapters: chapters,
+                        selected: effectiveTo.index,
+                        onPicked: (value) => setState(() => _toChapter = value),
                       ),
                     ),
                   ],
@@ -183,8 +169,8 @@ class _ExportPageState extends State<ExportPage> {
                     '~${megabytes < 10 ? megabytes.toStringAsFixed(1) : megabytes.round()} MB.\n'
                     'Giọng: ${state.voices.where((v) => v.id == settings.voiceId).map((v) => v.name).firstOrNull ?? settings.voiceId}'
                     ' · tốc độ ${settings.speed}× (được ghi thẳng vào file)'
-                    '${isWav ? '\nGiọng nhẹ chạy trong ứng dụng chỉ xuất được WAV. Muốn file MP3 gọn hơn thì '
-                        'chọn VieNeu-TTS hoặc giọng Edge.' : ''}',
+                    '${isWav ? '\nWAV nặng vì không nén — cùng thời lượng thì Opus nhỏ hơn khoảng 30 lần. Mục '
+                        'chọn định dạng đang được làm.' : ''}',
                     style: const TextStyle(fontSize: 13, height: 1.5),
                   ),
                 ),
@@ -504,4 +490,179 @@ class _JobCard extends StatelessWidget {
 
 extension _FirstOrNull<T> on Iterable<T> {
   T? get firstOrNull => isEmpty ? null : first;
+}
+
+/// Chọn một chương trong danh sách dài.
+///
+/// Thay cho DropdownButton: với 2.466 chương thì menu buông xuống dựng cả 2.466
+/// ô một lượt, cuộn nặng và thanh cuộn thì bé xíu không kéo được. Bảng mở từ
+/// dưới lên vừa dựng ô theo nhu cầu, vừa có thanh cuộn kéo tay và ô tìm theo tên.
+class _ChonChuong extends StatelessWidget {
+  const _ChonChuong({required this.chapters, required this.selected, required this.onPicked});
+
+  final List<Chapter> chapters;
+  final int selected;
+  final ValueChanged<int> onPicked;
+
+  @override
+  Widget build(BuildContext context) {
+    final at = chapters.indexWhere((c) => c.index == selected);
+    final nhan = at < 0 ? 'Chọn chương' : '${at + 1}. ${chapters[at].title}';
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () async {
+        final chon = await showModalBottomSheet<int>(
+          context: context,
+          isScrollControlled: true,
+          showDragHandle: true,
+          builder: (_) => FractionallySizedBox(
+            heightFactor: 0.88,
+            child: _BangChonChuong(chapters: chapters, selected: selected),
+          ),
+        );
+        if (chon != null) onPicked(chon);
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 9),
+        child: Row(
+          children: [
+            Expanded(child: Text(nhan, maxLines: 1, overflow: TextOverflow.ellipsis)),
+            const Icon(Icons.arrow_drop_down),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BangChonChuong extends StatefulWidget {
+  const _BangChonChuong({required this.chapters, required this.selected});
+  final List<Chapter> chapters;
+  final int selected;
+
+  @override
+  State<_BangChonChuong> createState() => _BangChonChuongState();
+}
+
+class _BangChonChuongState extends State<_BangChonChuong> {
+  final _controller = ItemScrollController();
+  final _positions = ItemPositionsListener.create();
+  int _firstVisible = 0;
+  String _tim = '';
+
+  bool get _dungThanhKeo => Platform.isAndroid || Platform.isIOS;
+
+  List<Chapter> get _hien {
+    if (_tim.isEmpty) return widget.chapters;
+    final k = _tim.toLowerCase();
+    return widget.chapters.where((c) => c.title.toLowerCase().contains(k)).toList();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _firstVisible = _viTriChon();
+    _positions.itemPositions.addListener(_theoDoi);
+  }
+
+  @override
+  void dispose() {
+    _positions.itemPositions.removeListener(_theoDoi);
+    super.dispose();
+  }
+
+  int _viTriChon() {
+    final at = widget.chapters.indexWhere((c) => c.index == widget.selected);
+    return at < 0 ? 0 : at;
+  }
+
+  void _theoDoi() {
+    final v = _positions.itemPositions.value;
+    if (v.isEmpty) return;
+    final dau = v.where((p) => p.itemTrailingEdge > 0).fold<int>(
+        v.first.index, (nho, p) => p.index < nho ? p.index : nho);
+    if (dau != _firstVisible && mounted) setState(() => _firstVisible = dau);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final ds = _hien;
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+          child: TextField(
+            autofocus: false,
+            decoration: InputDecoration(
+              isDense: true,
+              prefixIcon: const Icon(Icons.search, size: 20),
+              hintText: 'Tìm trong ${widget.chapters.length} chương',
+              border: const OutlineInputBorder(),
+            ),
+            onChanged: (v) => setState(() => _tim = v),
+          ),
+        ),
+        const Divider(height: 1),
+        Expanded(
+          child: ds.isEmpty
+              ? const Center(child: Text('Không có chương nào khớp'))
+              : Stack(
+                  children: [
+                    ScrollablePositionedList.builder(
+                      itemScrollController: _controller,
+                      itemPositionsListener: _positions,
+                      // Ô tìm đổi thì danh sách ngắn lại, không nhảy nữa.
+                      initialScrollIndex: _tim.isEmpty ? _viTriChon() : 0,
+                      initialAlignment: 0.2,
+                      padding: EdgeInsets.only(
+                          top: 6, bottom: 6, left: 8, right: _dungThanhKeo ? 42 : 8),
+                      itemCount: ds.length,
+                      itemBuilder: (context, i) {
+                        final c = ds[i];
+                        final chon = c.index == widget.selected;
+                        final so = widget.chapters.indexOf(c) + 1;
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(9),
+                          onTap: () => Navigator.of(context).pop(c.index),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: chon ? scheme.primaryContainer.withValues(alpha: 0.55) : null,
+                              borderRadius: BorderRadius.circular(9),
+                            ),
+                            child: Text(
+                              '$so. ${c.title}',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 13.5,
+                                color: chon ? scheme.primary : null,
+                                fontWeight: chon ? FontWeight.w600 : null,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    if (_dungThanhKeo && ds.length > 12)
+                      Positioned(
+                        top: 4,
+                        bottom: 4,
+                        right: 0,
+                        child: FastScrollBar(
+                          count: ds.length,
+                          firstVisible: _firstVisible,
+                          labelBuilder: (i) => i < ds.length ? ds[i].title : '',
+                          onJump: (i) => _controller.jumpTo(index: i),
+                        ),
+                      ),
+                  ],
+                ),
+        ),
+      ],
+    );
+  }
 }
