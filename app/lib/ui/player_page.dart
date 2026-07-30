@@ -1,11 +1,15 @@
 /// Màn hình nghe: danh sách chương, nội dung đang đọc và thanh điều khiển.
 library;
 
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:flutter/services.dart';
 
 import '../models/book.dart';
 import 'app_scope.dart';
+import 'fast_scrollbar.dart';
 import 'reading_pane.dart';
 import 'theme.dart';
 
@@ -97,7 +101,7 @@ class _PlayerPageState extends State<PlayerPage> {
   }
 }
 
-class _ChapterList extends StatelessWidget {
+class _ChapterList extends StatefulWidget {
   const _ChapterList({required this.book, required this.currentChapter, this.onPicked});
   final Book book;
   final Chapter? currentChapter;
@@ -106,7 +110,51 @@ class _ChapterList extends StatelessWidget {
   final VoidCallback? onPicked;
 
   @override
+  State<_ChapterList> createState() => _ChapterListState();
+}
+
+class _ChapterListState extends State<_ChapterList> {
+  final _controller = ItemScrollController();
+  final _positions = ItemPositionsListener.create();
+  int _firstVisible = 0;
+
+  /// Thanh cuộn kéo tay chỉ có ích khi vuốt là cách duy nhất để đi — trên máy
+  /// tính đã có chuột và bánh xe.
+  bool get _dungThanhKeo => Platform.isAndroid || Platform.isIOS;
+
+  @override
+  void initState() {
+    super.initState();
+    // Mở ra là thấy ngay chương đang nghe. Sách 2.467 chương mà bắt đầu từ
+    // chương 1 thì người dùng phải tự cuộn tìm chỗ mình đang đọc.
+    _firstVisible = _viTriHienTai();
+    _positions.itemPositions.addListener(_theoDoi);
+  }
+
+  @override
+  void dispose() {
+    _positions.itemPositions.removeListener(_theoDoi);
+    super.dispose();
+  }
+
+  int _viTriHienTai() {
+    final at = widget.book.chapters.indexWhere((c) => c.index == widget.currentChapter?.index);
+    return at < 0 ? 0 : at;
+  }
+
+  void _theoDoi() {
+    final hien = _positions.itemPositions.value;
+    if (hien.isEmpty) return;
+    final dau = hien.where((p) => p.itemTrailingEdge > 0).fold<int>(
+        hien.first.index, (nho, p) => p.index < nho ? p.index : nho);
+    if (dau != _firstVisible && mounted) setState(() => _firstVisible = dau);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final book = widget.book;
+    final currentChapter = widget.currentChapter;
+    final onPicked = widget.onPicked;
     final state = AppScope.of(context);
     final hint = Theme.of(context).hintColor;
     final scheme = Theme.of(context).colorScheme;
@@ -131,8 +179,15 @@ class _ChapterList extends StatelessWidget {
         ),
         const Divider(height: 1),
         Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+          child: Stack(
+            children: [
+              ScrollablePositionedList.builder(
+            itemScrollController: _controller,
+            itemPositionsListener: _positions,
+            initialScrollIndex: _viTriHienTai(),
+            initialAlignment: 0.25,
+            padding: EdgeInsets.only(
+                top: 6, bottom: 6, left: 8, right: _dungThanhKeo ? 42 : 8),
             itemCount: book.chapters.length,
             itemBuilder: (context, i) {
               final chapter = book.chapters[i];
@@ -170,6 +225,20 @@ class _ChapterList extends StatelessWidget {
                 ),
               );
             },
+          ),
+              if (_dungThanhKeo && book.chapters.length > 12)
+                Positioned(
+                  top: 4,
+                  bottom: 4,
+                  right: 0,
+                  child: FastScrollBar(
+                    count: book.chapters.length,
+                    firstVisible: _firstVisible,
+                    labelBuilder: (i) => book.chapters[i].title,
+                    onJump: (i) => _controller.jumpTo(index: i),
+                  ),
+                ),
+            ],
           ),
         ),
       ],

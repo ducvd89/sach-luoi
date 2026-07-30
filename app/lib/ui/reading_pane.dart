@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../models/book.dart';
+import 'fast_scrollbar.dart';
 
 /// Đoạn đang đọc được đặt ở khoảng một phần ba từ trên xuống — mắt hay dừng ở
 /// đó, và còn chỗ để thấy phần sắp đọc.
@@ -188,7 +189,7 @@ class _ReadingPaneState extends State<ReadingPane> {
             top: 0,
             bottom: 0,
             right: 0,
-            child: _FastScrollBar(
+            child: FastScrollBar(
               count: _count,
               firstVisible: _firstVisible,
               onJump: (row) {
@@ -273,95 +274,6 @@ class _Paragraph extends StatelessWidget {
 /// Kéo theo chỉ số đoạn chứ không theo pixel: một chương có thể dài vài trăm
 /// đoạn với chiều cao rất khác nhau, tính theo pixel thì thanh nhảy giật cục và
 /// không đoán được mình đang ở đâu.
-class _FastScrollBar extends StatefulWidget {
-  const _FastScrollBar({
-    required this.count,
-    required this.firstVisible,
-    required this.onJump,
-  });
-
-  final int count;
-  final int firstVisible;
-  final void Function(int row) onJump;
-
-  @override
-  State<_FastScrollBar> createState() => _FastScrollBarState();
-}
-
-class _FastScrollBarState extends State<_FastScrollBar> {
-  static const _width = 38.0;
-  static const _thumbHeight = 56.0;
-
-  bool _dragging = false;
-
-  void _jumpFromOffset(double dy, double height) {
-    final usable = (height - _thumbHeight).clamp(1.0, double.infinity);
-    final fraction = ((dy - _thumbHeight / 2) / usable).clamp(0.0, 1.0);
-    widget.onJump((fraction * (widget.count - 1)).round());
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final height = constraints.maxHeight;
-        final fraction = widget.count <= 1 ? 0.0 : widget.firstVisible / (widget.count - 1);
-        final top = fraction.clamp(0.0, 1.0) * (height - _thumbHeight);
-
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onVerticalDragStart: (d) {
-            setState(() => _dragging = true);
-            _jumpFromOffset(d.localPosition.dy, height);
-          },
-          onVerticalDragUpdate: (d) => _jumpFromOffset(d.localPosition.dy, height),
-          onVerticalDragEnd: (_) => setState(() => _dragging = false),
-          onVerticalDragCancel: () => setState(() => _dragging = false),
-          // Chạm một chỗ bất kỳ trên thanh cũng nhảy tới đó.
-          onTapDown: (d) => _jumpFromOffset(d.localPosition.dy, height),
-          child: SizedBox(
-            width: _width,
-            height: height,
-            child: Stack(
-              children: [
-                Positioned(
-                  top: top,
-                  left: _dragging ? 4 : 12,
-                  right: 6,
-                  height: _thumbHeight,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 120),
-                    decoration: BoxDecoration(
-                      color: _dragging
-                          ? scheme.primary
-                          : scheme.primary.withValues(alpha: 0.45),
-                      borderRadius: BorderRadius.circular(99),
-                    ),
-                    child: _dragging
-                        ? Center(
-                            child: Text(
-                              '${widget.firstVisible + 1}',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: scheme.onPrimary,
-                              ),
-                            ),
-                          )
-                        : null,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
 /// Nút nhỏ để quay lại đoạn đang đọc ngay, không cần đợi hết 30 giây.
 class _BackToReading extends StatelessWidget {
   const _BackToReading({required this.onTap});
