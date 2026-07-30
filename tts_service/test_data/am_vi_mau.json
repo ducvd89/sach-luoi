@@ -1,0 +1,77 @@
+{
+ "nguon": "sea-g2p (Python)",
+ "cases": [
+  {
+   "text": "Xin chào, đây là bản đọc thử.",
+   "punc_norm": false,
+   "normalized": "xin chào, đây là bản đọc thử.",
+   "phonemes": "sˈin tʃˈaː2w, ɗˈəɪ lˌaː2 bˈaː4n ɗˈɔ6k tˈy4."
+  },
+  {
+   "text": "Xin chào",
+   "punc_norm": true,
+   "normalized": "xin chào.",
+   "phonemes": "sˈin tʃˈaː2w."
+  },
+  {
+   "text": "Năm 1975, cả nước thống nhất.",
+   "punc_norm": false,
+   "normalized": "năm một nghìn chín trăm bảy mươi lăm, cả nước thống nhất.",
+   "phonemes": "nˈam mˈo6t̪ ŋˈi2n tʃˈiɜn tʃˈam bˈa4j mˈyəj lˈam, kˈaː4 nˈyəɜc tˈoɜŋ ɲˈəɜt̪."
+  },
+  {
+   "text": "Ngày 20/11/1954 trời mưa rất to.",
+   "punc_norm": false,
+   "normalized": "ngày hai mươi tháng mười một năm một nghìn chín trăm năm mươi bốn trời mưa rất to.",
+   "phonemes": "ŋˈa2j hˈaːj mˈyəj tˈaːɜŋ mˈyə2j mˈo6t̪ nˈam mˈo6t̪ ŋˈi2n tʃˈiɜn tʃˈam nˈam mˈyəj bˈoɜn tʃˈəː2j mˈyə ɹˈəɜt̪ t̪ˈɔ."
+  },
+  {
+   "text": "Giá một cân gạo là 12.500 đồng.",
+   "punc_norm": false,
+   "normalized": "giá một cân gạo là mười hai nghìn năm trăm đồng.",
+   "phonemes": "zˈaːɜ mˈo6t̪ kˈən ɣˈaː6w lˌaː2 mˈyə2j hˈaːj ŋˈi2n nˈam tʃˈam ɗˈo2ŋ."
+  },
+  {
+   "text": "Ruộng nhà ông rộng 3.500 m2, cách nhà chừng 2 km.",
+   "punc_norm": false,
+   "normalized": "ruộng nhà ông rộng ba nghìn năm trăm mét vuông, cách nhà chừng hai ki lô mét.",
+   "phonemes": "ɹˈuə6ŋ ɲˈaː2 ˈoŋ ɹˈo6ŋ bˈaː ŋˈi2n nˈam tʃˈam mˈɛɜt̪ vˈuəŋ, kˈe-ɜc ɲˈaː2 tʃˈy2ŋ hˈaːj kˈi lˈo mˈɛɜt̪."
+  },
+  {
+   "text": "PGS.TS Nguyễn Văn A phát biểu lúc 10:30.",
+   "punc_norm": false,
+   "normalized": "phó giáo sư tiến sĩ nguyễn văn a phát biểu lúc mười giờ ba mươi phút.",
+   "phonemes": "fˈɔɜ zˈaːɜw sˈy t̪ˈiɛɜn sˈi5 ŋwˈiɛ5n vˈan ˈaː fˈaːɜt̪ bˈiɛ4w lˌuɜc mˈyə2j zˈəː2 bˈaː mˈyəj fˈuɜt̪."
+  },
+  {
+   "text": "Phía đông bắc thành Thăng Long có một xóm nhà lá sập sệ.",
+   "punc_norm": false,
+   "normalized": "phía đông bắc thành thăng long có một xóm nhà lá sập sệ.",
+   "phonemes": "fˈiəɜ ɗˈoŋ bˈaɜc tˈe-2ɲ tˈaŋ lˈɔŋ kˈɔɜ mˈo6t̪ sˈɔɜm ɲˈaː2 lˈaːɜ sˈə6p sˈe6."
+  },
+  {
+   "text": "Họ sống chen chúc với chuột, gián, rết, bọ.",
+   "punc_norm": true,
+   "normalized": "họ sống chen chúc với chuột, gián, rết, bọ.",
+   "phonemes": "hˈɔ6 sˈoɜŋ tʃˈɛn tʃˈuɜc vˌəːɜj tʃˈuə6t̪, zˈaːɜn, ɹˈeɜt̪, bˈɔ6."
+  },
+  {
+   "text": "Nàng kéo tay Liễu Thạch đi dạo phố với vẻ mặt rất hào hứng.",
+   "punc_norm": false,
+   "normalized": "nàng kéo tay liễu thạch đi dạo phố với vẻ mặt rất hào hứng.",
+   "phonemes": "nˈaː2ŋ kˈɛɜw t̪ˈaj lˈiɛ5w tˈe-6c ɗˈi zˈaː6w fˈoɜ vˌəːɜj vˈɛ4 mˈa6t̪ ɹˈəɜt̪ hˈaː2w hˈyɜŋ."
+  },
+  {
+   "text": "Tỉ số chung cuộc là 2-1 nghiêng về đội khách.",
+   "punc_norm": false,
+   "normalized": "tỉ số chung cuộc là hai đến một nghiêng về đội khách.",
+   "phonemes": "t̪ˈi4 sˈoɜ tʃˈuŋ kˈuə6c lˌaː2 hˈaːj ɗˌeɜn mˈo6t̪ ŋˈiɛŋ vˈe2 ɗˈo6j xˈe-ɜc."
+  },
+  {
+   "text": "Nhiệt độ hôm nay khoảng 30-32 độ C, độ ẩm 75%.",
+   "punc_norm": false,
+   "normalized": "nhiệt độ hôm nay khoảng ba mươi đến ba mươi hai độ xê, độ ẩm bảy mươi lăm phần trăm.",
+   "phonemes": "ɲˈiɛ6t̪ ɗˈo6 hˈom nˈaj xwˌaː4ŋ bˈaː mˈyəj ɗˌeɜn bˈaː mˈyəj hˈaːj ɗˈo6 sˈe, ɗˈo6 ˈə4m bˈa4j mˈyəj lˈam fˈə2n tʃˈam."
+  }
+ ]
+}

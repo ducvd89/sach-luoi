@@ -1,0 +1,49 @@
+name: sach_noi
+description: "Sách lười — chuyển sách EPUB/TXT thành sách nói tiếng Việt"
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # Phát âm thanh: media_kit dùng libmpv, ổn định trên Windows và có sẵn
+  # đường lên Android/iOS sau này.
+  media_kit: ^1.2.0
+  media_kit_libs_windows_audio: ^1.0.9
+  media_kit_libs_android_audio: ^1.3.7
+
+  # Đọc EPUB (là file zip) và chọn file từ máy
+  archive: ^4.0.7
+  file_picker: ^10.3.4
+
+  # Lưu trữ, mã hoá, mạng
+  path: ^1.9.1
+  path_provider: ^2.1.5
+  crypto: ^3.0.6
+  http: ^1.5.0
+  web_socket_channel: ^3.0.3
+  intl: ^0.20.2
+  ffi: ^2.2.0
+  audio_service: ^0.18.19
+  sherpa_onnx: ^1.13.4
+  scrollable_positioned_list: ^0.3.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    # Từ điển âm vị tiếng Việt và hồ sơ hai giọng nhân bản. Đi kèm ứng dụng vì
+    # không có nguồn tải công khai ổn định; mô hình thì tải riêng lúc chạy.
+    - assets/sea_g2p.bin
+    - assets/giong.json

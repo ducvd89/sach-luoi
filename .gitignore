@@ -1,0 +1,35 @@
+# Kết quả build và các thứ máy tự sinh ra. Thư viện Rust cho Android
+# (app/android/app/src/main/jniLibs) thì CÓ trong repo, vì thiếu nó là không
+# build được APK mà không cài sẵn Rust và Android NDK.
+
+# Rust — riêng thư mục target đã gần 1 GB toàn file trung gian
+native/*/target/
+
+# Bản đóng gói: dựng lại bằng dong-goi.ps1 và flutter build apk
+dist/
+
+# Python của các script chuẩn bị dữ liệu
+tts_service/.venv*/
+__pycache__/
+*.pyc
+
+# Flutter (app/.gitignore lo phần còn lại)
+app/build/
+app/.dart_tool/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/windows/flutter/ephemeral/
+app/android/.gradle/
+app/android/local.properties
+app/android/.kotlin/
+app/.idea/
+
+# Rác của biên tập
+*.bak
+*.log
+*.swp
+.DS_Store
+Thumbs.db
+
+# Cai dat rieng cua may nay
+.claude/settings.local.json

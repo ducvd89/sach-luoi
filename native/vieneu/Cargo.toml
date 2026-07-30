@@ -1,0 +1,34 @@
+[package]
+name = "sachnoi-vieneu"
+version = "0.1.0"
+edition = "2021"
+description = "Chạy mô hình VieNeu-TTS trên máy, không cần Python"
+
+[lib]
+name = "sachnoi_vieneu"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Chuyển chữ sang âm vị — dùng lại lõi Rust của sea-g2p đã port sang Android.
+sea-g2p-rs = { path = "../sea-g2p", default-features = false, features = ["ffi"] }
+
+# ONNX Runtime. `load-dynamic` nghĩa là nạp libonnxruntime lúc chạy chứ không
+# liên kết lúc build: cross-compile sang Android khỏi cần thư viện của Android
+# lúc dựng, và bản .so của Microsoft đi kèm APK là dùng được ngay.
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["load-dynamic", "ndarray"] }
+
+ndarray = "0.17"
+rand = "0.8"
+
+# Chính là thư viện Rust mà `tokenizers` bên Python bọc lại, nên tách token ra
+# kết quả giống hệt. Bỏ các tính năng cần thư viện C để cross-compile cho gọn.
+tokenizers = { version = "0.21", default-features = false, features = ["fancy-regex"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

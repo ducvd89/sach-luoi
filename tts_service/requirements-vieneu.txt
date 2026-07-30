@@ -1,0 +1,13 @@
+# Thu vien cho engine VieNeu-TTS (moi truong ao rieng .venv-vieneu).
+#
+# Goi vieneu tu keo theo moi thu no can: sea-g2p (chuyen chu sang am tieng Viet),
+# onnxruntime (duong CPU, khong can PyTorch), huggingface_hub, soundfile...
+#
+# PyTorch KHONG nam trong file nay:
+#   - May co card NVIDIA thi file .bat cai ban CUDA 12.8 tu kho rieng cua PyTorch.
+#   - May khong co card thi bo qua luon, VieNeu chay bang ONNX Runtime.
+vieneu>=3.2
+
+# Ma hoa MP3 (khong can ffmpeg) cho dich vu HTTP.
+lameenc>=1.8
+numpy>=1.26

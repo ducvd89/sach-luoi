@@ -1,0 +1,35 @@
+[package]
+name = "sea-g2p-rs"
+version = "0.7.20"
+edition = "2021"
+
+[lib]
+name = "sea_g2p_rs"
+# cdylib để dùng độc lập, rlib để crate suy luận VieNeu gọi trực tiếp — gộp cả
+# hai vào một thư viện native thì Dart chỉ phải nạp một file.
+crate-type = ["cdylib", "rlib"]
+
+# Bản gốc chỉ dựng được cho Python. Tách làm hai chế độ để cùng một mã nguồn vừa
+# chạy trên máy tính qua PyO3, vừa dựng được thư viện .so cổng C cho Android.
+[features]
+default = ["python"]
+python = ["dep:pyo3", "dep:pyo3-build-config"]
+ffi = []
+
+[dependencies]
+pyo3 = { version = "0.23", features = ["extension-module", "abi3-py310", "generate-import-lib"], optional = true }
+regex = "1.10"
+fancy-regex = "0.13"
+once_cell = "1.19"
+memmap2 = "0.9"
+rayon = "1.10"
+unicode-normalization = "0.1"
+
+[build-dependencies]
+pyo3-build-config = { version = "0.23", optional = true }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
