@@ -40,8 +40,12 @@ const modelFiles = <ModelFile>[
   ModelFile('vieneu_v3_heads.npz', '$_modelRepo/vieneu_v3_heads.npz', 49.8),
   ModelFile('config.json', '$_modelRepo/config.json', 0.01),
   ModelFile('tokenizer.json', '$_modelRepo/tokenizer.json', 0.05),
-  ModelFile('moss_audio_tokenizer_decode_full.onnx',
-      '$_codecRepo/moss_audio_tokenizer_decode_full.onnx', 1.0, folder: 'codec'),
+  // Bản `_step` giải mã theo cửa sổ cuốn chiếu chứ không nuốt cả đoạn một lượt:
+  // ra đúng từng mẫu như bản `_full` nhưng thời gian tuyến tính và bộ nhớ có
+  // trần (xem KHUNG_MOI_LUOT trong native/vieneu/src/engine.rs). Hai bản dùng
+  // chung file trọng số bên dưới nên đổi sang đây không tốn thêm gì đáng kể.
+  ModelFile('moss_audio_tokenizer_decode_step.onnx',
+      '$_codecRepo/moss_audio_tokenizer_decode_step.onnx', 0.4, folder: 'codec'),
   ModelFile('moss_audio_tokenizer_decode_shared.data',
       '$_codecRepo/moss_audio_tokenizer_decode_shared.data', 43.0, folder: 'codec'),
 ];

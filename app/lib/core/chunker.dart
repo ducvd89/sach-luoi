@@ -10,21 +10,21 @@ import 'text_normalizer.dart';
 
 /// Độ dài đoạn, tính bằng ký tự.
 ///
-/// Bị chặn bởi bộ nhớ, không phải bởi nhịp đọc. Bộ giải mã âm của VieNeu tự-chú-ý
-/// trên toàn bộ khung của cả đoạn một lượt, nên RAM tỉ lệ với **bình phương** độ
-/// dài. Đo thật trên một mô hình:
+/// Từng bị chặn bởi bộ nhớ: bộ giải mã âm tự-chú-ý trên toàn bộ khung của cả
+/// đoạn một lượt, nên RAM tỉ lệ với **bình phương** độ dài — 25 giây ngốn 4,9 GB
+/// và khoảng 50 giây thì ONNX Runtime báo bad allocation. Hai con số dưới đây
+/// (khoảng 14 và 22 giây) sinh ra để né chỗ đó.
 ///
-///   4,6 giây âm thanh   ->  0,2 GB
-///  12,8 giây            ->  1,3 GB
-///  25,0 giây            ->  4,9 GB
-///  ~50 giây             ->  hết bộ nhớ, ONNX Runtime báo bad allocation
+/// Bức tường ấy không còn: bộ giải mã âm giờ chạy cuốn chiếu theo cửa sổ 3 giây
+/// và mang bộ nhớ đệm sang cửa sổ sau, nên bộ nhớ có trần và thời gian tuyến
+/// tính (xem KHUNG_MOI_LUOT trong native/vieneu/src/engine.rs). Đo lại: một đoạn
+/// 121 giây chạy trọn trong 1,16 GB cho cả tiến trình.
 ///
-/// Bản đầu đặt 400/680 ký tự, tức khoảng 27 và 47 giây — mỗi đoạn thường ngốn
-/// gần 5 GB, và nhân với số worker chạy song song lúc xuất file thì lên vài chục
-/// GB rồi chết. Giờ chặn ở khoảng 14 và 22 giây.
-///
-/// Cách sửa gốc là giải mã theo cửa sổ có gối đầu thay vì cả đoạn một lượt; khi
-/// nào làm xong thì mới nới lại được hai con số này.
+/// Cái còn giữ hai con số này ở mức thấp giờ là chuyện khác: đoạn là đơn vị
+/// phát, đơn vị cache, đơn vị lưu tiến trình và đơn vị ghép file. Đoạn dài thì
+/// nghe câu đầu tiên lâu hơn, dừng giữa chừng mất nhiều hơn, và bộ nhớ đệm
+/// khoá/giá trị của vòng sinh vẫn lớn dần theo độ dài đoạn — nhân với số worker
+/// chạy song song lúc xuất file thì vẫn phải dè chừng.
 const int chunkTargetChars = 200;
 const int chunkMaxChars = 320;
 

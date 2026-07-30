@@ -220,7 +220,9 @@ impl Model {
             prefill: open_session(model_dir.join("vieneu_prefill.onnx"), threads)?,
             decode: open_session(model_dir.join("vieneu_decode_step.onnx"), threads)?,
             acoustic: open_session(model_dir.join("vieneu_acoustic_cached.onnx"), threads)?,
-            codec: open_session(codec_dir.join("moss_audio_tokenizer_decode_full.onnx"), threads)?,
+            // Bản `_step` chứ không phải `_full`: xem KHUNG_MOI_LUOT trong engine.rs.
+            // Hai đồ thị dùng chung file trọng số moss_audio_tokenizer_decode_shared.data.
+            codec: open_session(codec_dir.join("moss_audio_tokenizer_decode_step.onnx"), threads)?,
             cfg,
             weights,
             tokenizer,

@@ -2,16 +2,38 @@
 //!
 //! Mỗi giây âm thanh cần 12,5 khung. Mỗi khung chạy một bước của mạng chính rồi
 //! 16 bước của bộ giải mã âm sắc để lấy 16 mã. Xong hết mới đưa toàn bộ mã qua
-//! bộ giải mã âm để dựng lại sóng.
+//! bộ giải mã âm — theo từng cửa sổ cuốn chiếu — để dựng lại sóng.
 
 use std::collections::HashSet;
 
-use ndarray::{Array2, Array3, Array4};
+use ndarray::{Array2, Array3, Array4, ArrayD, IxDyn};
+use ort::session::Session;
 use ort::value::Value;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
 use crate::model::{sample, Model, Sampling, Voice};
+
+/// Bao nhiêu khung đưa vào bộ giải mã âm mỗi lượt.
+///
+/// Bộ giải mã tự-chú-ý trên toàn bộ khung đưa vào một lượt, nên cả thời gian lẫn
+/// bộ nhớ đi theo BÌNH PHƯƠNG độ dài — đó là lý do đoạn phải bị cắt ngắn (xem
+/// ghi chú ở `app/lib/core/chunker.dart`).
+///
+/// Bản `decode_step` của cùng bộ mã nhận thêm khoá/giá trị đã đệm của lượt
+/// trước, nên cắt nhỏ rồi cuốn chiếu cho ra ĐÚNG từng mẫu như giải mã cả đoạn
+/// một lượt (đo được lệch nhiều nhất 3e-6, tức đúng tới sai số của float32),
+/// mà thời gian thành tuyến tính và bộ nhớ thành hằng số. Đo trên máy 12 nhân,
+/// 4 luồng, cùng một chuỗi mã:
+///
+///    khung   cả đoạn   cuốn chiếu
+///      125     0,56s        0,48s
+///      375     7,18s        2,56s
+///     1000    69,44s        7,83s
+///
+/// 38 khung (khoảng 3 giây) là chỗ rẻ nhất: nhỏ hơn thì chi phí mỗi lượt gọi
+/// lấn át, lớn hơn thì phần bình phương bên trong một lượt bắt đầu ngóc lên.
+const KHUNG_MOI_LUOT: usize = 38;
 
 /// Lấy tensor float32 từ kết quả chạy, trả về (hình dạng, dữ liệu).
 fn take_f32(outputs: &ort::session::SessionOutputs, name: &str) -> Result<(Vec<usize>, Vec<f32>), String> {
@@ -22,6 +44,17 @@ fn take_f32(outputs: &ort::session::SessionOutputs, name: &str) -> Result<(Vec<u
     let (shape, data) = value
         .try_extract_tensor::<f32>()
         .map_err(|e| format!("đầu ra '{name}' không phải float32: {e}"))?;
+    Ok((shape.iter().map(|d| *d as usize).collect(), data.to_vec()))
+}
+
+/// Như [take_f32] nhưng cho tensor số nguyên 32 bit.
+fn take_i32(outputs: &ort::session::SessionOutputs, name: &str) -> Result<(Vec<usize>, Vec<i32>), String> {
+    let value = outputs
+        .get(name)
+        .ok_or_else(|| format!("thiếu đầu ra '{name}'"))?;
+    let (shape, data) = value
+        .try_extract_tensor::<i32>()
+        .map_err(|e| format!("đầu ra '{name}' không phải int32: {e}"))?;
     Ok((shape.iter().map(|d| *d as usize).collect(), data.to_vec()))
 }
 
@@ -266,38 +299,142 @@ fn acoustic_frame(
     Ok((codes, done))
 }
 
-/// Đưa toàn bộ mã qua bộ giải mã âm để dựng lại sóng 48 kHz.
+/// Một ô nhớ đệm của bộ giải mã âm, cuốn từ lượt này sang lượt sau.
+enum O {
+    F(ArrayD<f32>),
+    I(ArrayD<i32>),
+}
+
+/// Toàn bộ trạng thái cuốn chiếu: khoá, giá trị, vị trí đã đệm và các con trỏ.
+///
+/// Không viết cứng tên hay số lớp — đọc thẳng từ đồ thị, để đổi bản mô hình khác
+/// số lớp thì đây không phải sửa. Mỗi đầu vào `x_<i>` có đầu ra tương ứng tên
+/// `x_out_<i>`.
+struct BoNhoGiaiMa {
+    o: Vec<(String, String, O)>,
+}
+
+fn ten_dau_ra(ten_vao: &str) -> String {
+    match ten_vao.rsplit_once('_') {
+        Some((dau, so)) => format!("{dau}_out_{so}"),
+        None => format!("{ten_vao}_out"),
+    }
+}
+
+impl BoNhoGiaiMa {
+    /// Trạng thái lúc chưa giải mã khung nào.
+    fn rong(codec: &Session) -> Result<Self, String> {
+        let mut o = Vec::new();
+        for dau_vao in codec.inputs() {
+            let ten = dau_vao.name();
+            if ten == "audio_codes" || ten == "audio_code_lengths" {
+                continue;
+            }
+            let hinh = dau_vao
+                .dtype()
+                .tensor_shape()
+                .ok_or_else(|| format!("đầu vào '{ten}' của bộ giải mã âm không phải tensor"))?;
+            let dims: Vec<usize> = hinh
+                .iter()
+                .map(|d| if *d < 0 { 0 } else { *d as usize })
+                .collect();
+            let ix = IxDyn(&dims);
+
+            // Bản gốc điền -1 cho vùng đệm chưa dùng, KHÔNG phải 0: 0 là một vị
+            // trí hợp lệ nên mô hình sẽ chú ý vào khoá rỗng và ra tiếng rè.
+            // (modeling_moss_audio_tokenizer.py, chỗ cached_positions.fill_(-1))
+            let gia_tri = if ten.contains("positions") {
+                O::I(ArrayD::from_elem(ix, -1i32))
+            } else if ten.contains("keys") || ten.contains("values") {
+                O::F(ArrayD::zeros(ix))
+            } else {
+                O::I(ArrayD::zeros(ix))
+            };
+            o.push((ten.to_string(), ten_dau_ra(ten), gia_tri));
+        }
+        if o.is_empty() {
+            return Err("bộ giải mã âm không có đầu vào nhớ đệm — nạp nhầm bản _full?".into());
+        }
+        Ok(BoNhoGiaiMa { o })
+    }
+}
+
+/// Đưa mã qua bộ giải mã âm để dựng lại sóng 48 kHz.
+///
+/// Cắt thành từng cửa sổ [KHUNG_MOI_LUOT] khung, mang bộ nhớ đệm của lượt trước
+/// sang lượt sau nên ranh giới cửa sổ không để lại vết gì — không phải gối đầu,
+/// không phải hoà tiếng, và cũng không cần canh chỗ ngắt câu.
 fn decode_codes(model: &mut Model, frames: &[i32], frame_count: usize) -> Result<Vec<f32>, String> {
     let n_vq = model.cfg.n_vq;
-    let codes = Array3::from_shape_vec((1, frame_count, n_vq), frames.to_vec())
-        .map_err(|e| format!("mã sai hình dạng: {e}"))?;
-    let lengths = ndarray::Array1::from_vec(vec![frame_count as i32]);
+    let mut bo_nho = BoNhoGiaiMa::rong(&model.codec)?;
+    let mut out: Vec<f32> = Vec::with_capacity(frame_count * 3840);
 
-    let outputs = model
-        .codec
-        .run(ort::inputs![
-            "audio_codes" => Value::from_array(codes).map_err(|e| e.to_string())?,
-            "audio_code_lengths" => Value::from_array(lengths).map_err(|e| e.to_string())?
-        ])
-        .map_err(|e| format!("lỗi giải mã âm: {e}"))?;
+    let mut at = 0usize;
+    while at < frame_count {
+        let so_khung = KHUNG_MOI_LUOT.min(frame_count - at);
+        let lat = frames[at * n_vq..(at + so_khung) * n_vq].to_vec();
+        let codes = Array3::from_shape_vec((1, so_khung, n_vq), lat)
+            .map_err(|e| format!("mã sai hình dạng: {e}"))?;
+        let lengths = ndarray::Array1::from_vec(vec![so_khung as i32]);
 
-    let (shape, data) = take_f32(&outputs, "audio")?;
-    // (1, số kênh, số mẫu) — lấy trung bình các kênh như bản gốc.
-    if shape.len() != 3 {
-        return Err(format!("bộ giải mã âm trả về hình dạng lạ: {shape:?}"));
-    }
-    let channels = shape[1];
-    let samples = shape[2];
-    let mut out = vec![0.0f32; samples];
-    for c in 0..channels {
-        let base = c * samples;
-        for (i, v) in out.iter_mut().enumerate() {
-            *v += data[base + i];
+        let mut feed: Vec<(std::borrow::Cow<'_, str>, ort::session::SessionInputValue<'_>)> = vec![
+            ("audio_codes".into(), Value::from_array(codes).map_err(|e| e.to_string())?.into()),
+            ("audio_code_lengths".into(), Value::from_array(lengths).map_err(|e| e.to_string())?.into()),
+        ];
+        for (ten, _, gia_tri) in &bo_nho.o {
+            let v = match gia_tri {
+                O::F(a) => Value::from_array(a.clone()).map_err(|e| e.to_string())?.into_dyn(),
+                O::I(a) => Value::from_array(a.clone()).map_err(|e| e.to_string())?.into_dyn(),
+            };
+            feed.push((ten.clone().into(), v.into()));
         }
-    }
-    let scale = 1.0 / channels as f32;
-    for v in out.iter_mut() {
-        *v *= scale;
+
+        let outputs = model
+            .codec
+            .run(feed)
+            .map_err(|e| format!("lỗi giải mã âm (khung {at}..{}): {e}", at + so_khung))?;
+
+        let (shape, data) = take_f32(&outputs, "audio")?;
+        // (1, số kênh, số mẫu) — lấy trung bình các kênh như bản gốc.
+        if shape.len() != 3 {
+            return Err(format!("bộ giải mã âm trả về hình dạng lạ: {shape:?}"));
+        }
+        let channels = shape[1];
+        let samples = shape[2];
+        let dau = out.len();
+        out.resize(dau + samples, 0.0);
+        for c in 0..channels {
+            let base = c * samples;
+            for (i, v) in out[dau..].iter_mut().enumerate() {
+                *v += data[base + i];
+            }
+        }
+        let scale = 1.0 / channels as f32;
+        for v in out[dau..].iter_mut() {
+            *v *= scale;
+        }
+
+        let mut moi = Vec::with_capacity(bo_nho.o.len());
+        for (_, ten_ra, cu) in &bo_nho.o {
+            moi.push(match cu {
+                O::F(_) => {
+                    let (s, d) = take_f32(&outputs, ten_ra)?;
+                    O::F(ArrayD::from_shape_vec(IxDyn(&s), d)
+                        .map_err(|e| format!("'{ten_ra}' sai hình dạng: {e}"))?)
+                }
+                O::I(_) => {
+                    let (s, d) = take_i32(&outputs, ten_ra)?;
+                    O::I(ArrayD::from_shape_vec(IxDyn(&s), d)
+                        .map_err(|e| format!("'{ten_ra}' sai hình dạng: {e}"))?)
+                }
+            });
+        }
+        drop(outputs);
+        for ((_, _, o), gia_tri) in bo_nho.o.iter_mut().zip(moi) {
+            *o = gia_tri;
+        }
+
+        at += so_khung;
     }
     Ok(out)
 }
