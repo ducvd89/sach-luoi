@@ -21,6 +21,30 @@ class OnDeviceVieNeuEngine implements TtsEngine {
   String? _error;
   bool _starting = false;
 
+  /// Các bản sao mô hình dùng thêm lúc xuất file. Mỗi bản là một isolate với
+  /// mô hình riêng, nên tổng hợp được nhiều đoạn cùng lúc.
+  final List<VieNeuNative> _extra = [];
+
+  /// Số đoạn đang chạy ở từng worker, để đưa đoạn mới cho worker rảnh nhất.
+  final Map<VieNeuNative, int> _busy = {};
+  bool _bulk = false;
+  Future<void>? _resizing;
+
+  /// Số worker chạy song song lúc xuất file.
+  ///
+  /// Đo trên máy 12 nhân / 24 luồng: 1 worker×4 thread 2,87× thời gian thực,
+  /// 3×4 6,85×, **6×2 8,94×** — bão hoà đúng ở số nhân vật lý. Mỗi worker giữ
+  /// một bản mô hình riêng (~250 MB) nên điện thoại không mở thêm: RAM ở đó
+  /// quý hơn, mà xuất file trên điện thoại cũng hiếm.
+  static int get _bulkWorkers {
+    if (Platform.isAndroid || Platform.isIOS) return 1;
+    return (Platform.numberOfProcessors ~/ 4).clamp(1, 6);
+  }
+
+  /// Mỗi worker chỉ 2 thread: 6×2 nhanh hơn 3×4 vì lấp kín được số nhân mà
+  /// không để các luồng trong cùng một phiên phải chờ nhau.
+  static const _bulkThreadsPerWorker = 2;
+
   @override
   String get id => 'vieneu';
 
@@ -91,6 +115,65 @@ class OnDeviceVieNeuEngine implements TtsEngine {
     return native;
   }
 
+  /// Worker đang rảnh nhất. Lúc nghe chỉ có một nên hàm này trả về luôn nó.
+  VieNeuNative _leastBusy(VieNeuNative primary) {
+    var chon = primary;
+    var it = _busy[primary] ?? 0;
+    for (final w in _extra) {
+      final n = _busy[w] ?? 0;
+      if (n < it) {
+        chon = w;
+        it = n;
+      }
+    }
+    return chon;
+  }
+
+  /// Mở thêm hoặc đóng bớt worker.
+  ///
+  /// Nối vào [_resizing] để hai lần bật/tắt liên tiếp không cùng lúc mở mô hình
+  /// — mỗi bản tốn khoảng 250 MB, mở nhầm gấp đôi là thấy ngay.
+  @override
+  Future<void> setBulkMode(bool on) {
+    if (on == _bulk) return _resizing ?? Future.value();
+    _bulk = on;
+    final truoc = _resizing ?? Future.value();
+    return _resizing = truoc.then((_) => _applyBulk()).catchError((Object _) {});
+  }
+
+  Future<void> _applyBulk() async {
+    if (!_bulk) {
+      final dong = [..._extra];
+      _extra.clear();
+      for (final w in dong) {
+        _busy.remove(w);
+        w.close();
+      }
+      return;
+    }
+    if (_native == null) return; // chưa nạp xong thì thôi, lần sau sẽ mở
+    final can = _bulkWorkers - 1; // worker chính đã có sẵn
+    if (can <= 0) return;
+
+    final paths = await _store.paths();
+    for (var i = _extra.length; i < can; i++) {
+      try {
+        _extra.add(await VieNeuNative.start(VieNeuPaths(
+          modelDir: paths.modelDir,
+          codecDir: paths.codecDir,
+          dictPath: paths.dictPath,
+          voicesPath: paths.voicesPath,
+          libraryPath: paths.libraryPath,
+          threads: _bulkThreadsPerWorker,
+        )));
+      } catch (_) {
+        // Hết RAM hay lỗi nạp: chạy với số worker đang có, chậm hơn chứ không hỏng.
+        break;
+      }
+      if (!_bulk) break; // xuất file vừa xong giữa chừng
+    }
+  }
+
   @override
   Future<List<TtsVoice>> voices() async {
     final native = await _ensure();
@@ -115,14 +198,27 @@ class OnDeviceVieNeuEngine implements TtsEngine {
     required String voiceId,
     double speed = 1.0,
   }) async {
-    final native = await _ensure();
+    final primary = await _ensure();
+    final native = _leastBusy(primary);
     final voice = voiceId.isEmpty ? (native.voices.firstOrNull ?? '') : voiceId;
     if (voice.isEmpty) throw TtsException('Chưa có giọng nào trong mô hình');
 
     // Hạt giống cố định theo nội dung: cùng một đoạn phải luôn cho cùng kết quả,
     // nếu không bộ nhớ đệm của ứng dụng mất hết ý nghĩa.
     final seed = _seedOf('$voice|$text');
-    var samples = await native.synthesize(text, voice, seed: seed);
+    _busy[native] = (_busy[native] ?? 0) + 1;
+    final Float32List raw;
+    try {
+      raw = await native.synthesize(text, voice, seed: seed);
+    } finally {
+      final con = (_busy[native] ?? 1) - 1;
+      if (con <= 0) {
+        _busy.remove(native);
+      } else {
+        _busy[native] = con;
+      }
+    }
+    var samples = raw;
 
     if ((speed - 1.0).abs() > 0.01) {
       samples = _resample(samples, speed);
@@ -171,15 +267,28 @@ class OnDeviceVieNeuEngine implements TtsEngine {
       codecEncoder: _store.codecEncoder.path,
       voicesPath: _store.voicesFile.path,
     );
+    _dongWorkerPhu();
   }
 
   /// Xoá một giọng tự thêm. Giọng dựng sẵn thì thư viện native từ chối.
   Future<void> removeVoice(String name) async {
     final native = await _ensure();
     await native.removeVoice(name, _store.voicesFile.path);
+    _dongWorkerPhu();
+  }
+
+  /// Danh sách giọng của các worker phụ đã cũ sau khi thêm/xoá giọng — đóng
+  /// hết, lần xuất file sau chúng sẽ được mở lại với hồ sơ giọng mới.
+  void _dongWorkerPhu() {
+    for (final w in _extra) {
+      _busy.remove(w);
+      w.close();
+    }
+    _extra.clear();
   }
 
   void dispose() {
+    _dongWorkerPhu();
     _native?.close();
     _native = null;
   }

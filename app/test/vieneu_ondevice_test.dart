@@ -130,6 +130,72 @@ void main() {
     expect(status.message, contains('Chưa tải mô hình'));
   });
 
+  test('nhiều bản mô hình chạy song song thì xong nhanh hơn hẳn', () async {
+    final paths = _paths();
+    if (paths == null || (Platform.environment['ORT_DYLIB_PATH'] ?? '').isEmpty) {
+      markTestSkipped('Chưa có mô hình — bỏ qua');
+      return;
+    }
+    // Máy ít nhân thì chạy song song không nhanh hơn được, đo cũng vô nghĩa.
+    if (Platform.numberOfProcessors < 8) {
+      markTestSkipped('Máy dưới 8 luồng — bỏ qua phép đo song song');
+      return;
+    }
+
+    const doan = [
+      'Buổi sáng hôm ấy trời trong xanh và gió nhẹ, người thợ già dậy từ rất sớm.',
+      'Ông pha một ấm trà nóng rồi ngồi lặng lẽ bên hiên nhà, nhìn ra con đường đất.',
+      'Ngày ấy cả xóm còn nghèo, nhưng ai cũng thương nhau như người một nhà.',
+      'Mùa gặt đến thì sân nhà nào cũng vàng rực, tiếng máy tuốt lúa chạy suốt đêm.',
+    ];
+
+    // Một worker, làm lần lượt — đây là cách bản cũ xuất file.
+    final mot = await VieNeuNative.start(paths);
+    addTearDown(mot.close);
+    final giong = mot.voices.first;
+    await mot.synthesize(doan.first, giong, seed: 1); // làm nóng, không tính
+
+    final t1 = Stopwatch()..start();
+    var mauLanLuot = 0;
+    for (final d in doan) {
+      mauLanLuot += (await mot.synthesize(d, giong, seed: 1)).length;
+    }
+    t1.stop();
+
+    // Bốn worker, chạy cùng lúc — đây là cách bản mới xuất file.
+    final nhieu = <VieNeuNative>[];
+    for (var i = 0; i < doan.length; i++) {
+      nhieu.add(await VieNeuNative.start(VieNeuPaths(
+        modelDir: paths.modelDir,
+        codecDir: paths.codecDir,
+        dictPath: paths.dictPath,
+        voicesPath: paths.voicesPath,
+        libraryPath: paths.libraryPath,
+        threads: 2,
+      )));
+    }
+    addTearDown(() {
+      for (final w in nhieu) {
+        w.close();
+      }
+    });
+    await Future.wait([for (var i = 0; i < doan.length; i++) nhieu[i].synthesize(doan[i], giong, seed: 1)]);
+
+    final t2 = Stopwatch()..start();
+    final ket = await Future.wait(
+        [for (var i = 0; i < doan.length; i++) nhieu[i].synthesize(doan[i], giong, seed: 1)]);
+    t2.stop();
+
+    final mauSongSong = ket.fold<int>(0, (t, m) => t + m.length);
+    expect(mauSongSong, mauLanLuot, reason: 'phải ra cùng lượng âm thanh');
+
+    final nhanhHon = t1.elapsedMicroseconds / t2.elapsedMicroseconds;
+    // Đo được 3,1x trên máy 12 nhân. Đòi 1,5x thôi cho máy yếu và máy đang bận.
+    expect(nhanhHon, greaterThan(1.5),
+        reason: 'song song ${t2.elapsed.inMilliseconds}ms so với lần lượt '
+            '${t1.elapsed.inMilliseconds}ms — chỉ nhanh hơn ${nhanhHon.toStringAsFixed(2)}x');
+  }, timeout: const Timeout(Duration(minutes: 10)));
+
   _testModelStore();
   _testEnroll();
 }

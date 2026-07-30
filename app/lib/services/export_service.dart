@@ -22,7 +22,11 @@ import 'storage.dart';
 import 'tts/tts_manager.dart';
 
 /// Số đoạn tổng hợp trước để không phải chờ mạng/GPU giữa chừng.
-const _lookahead = 3;
+/// Số đoạn tổng hợp trước trong lúc đang ghi đoạn hiện tại.
+///
+/// Phải nhiều hơn số worker chạy song song, không thì có worker ngồi không.
+/// Mỗi đoạn chờ sẵn chỉ tốn vài trăm KB trong bộ nhớ đệm nên để rộng tay.
+const _lookahead = 10;
 
 class ExportService {
   ExportService(this._tts);
@@ -139,13 +143,21 @@ class ExportService {
     job.error = null;
     await _save(job);
 
+    // Mở thêm luồng tổng hợp trong lúc xuất file. Đo được 8,94x thời gian thực
+    // thay vì 2,87x — sách 10 giờ mất hơn một tiếng thay vì ba tiếng rưỡi.
+    await _tts.engine(job.engineId).setBulkMode(true);
+
     unawaited(_run(job, chunks, chapters, control).catchError((Object err) async {
       if (job.status != JobStatus.canceled) {
         job.status = JobStatus.error;
         job.error = err.toString();
         await _save(job);
       }
-    }).whenComplete(() => _controls.remove(job.id)));
+    }).whenComplete(() async {
+      _controls.remove(job.id);
+      // Còn job khác đang chạy thì giữ nguyên; hết mới trả RAM về.
+      if (_controls.isEmpty) await _tts.engine(job.engineId).setBulkMode(false);
+    }));
   }
 
   Future<void> pause(ExportJob job) async {

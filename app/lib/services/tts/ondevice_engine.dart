@@ -80,6 +80,11 @@ class OnDeviceTtsEngine implements TtsEngine {
   final _pending = <int, Completer<_Result>>{};
   var _nextId = 0;
 
+  /// Piper nhẹ tới mức một luồng đã nhanh hơn nhiều lần thời gian thực, mở thêm
+  /// bản sao mô hình chỉ tốn RAM chứ không rút ngắn được gì đáng kể.
+  @override
+  Future<void> setBulkMode(bool on) async {}
+
   @override
   String get id => 'piper';
 

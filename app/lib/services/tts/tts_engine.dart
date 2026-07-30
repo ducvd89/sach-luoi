@@ -101,4 +101,11 @@ abstract class TtsEngine {
     required String voiceId,
     double speed = 1.0,
   });
+
+  /// Báo cho engine biết sắp có nhiều đoạn cần tổng hợp liên tiếp (xuất file).
+  ///
+  /// Engine nào tận dụng được thì mở thêm luồng chạy song song; engine không
+  /// quan tâm thì bỏ qua. Nghe trực tiếp không bật cờ này: một luồng đã nhanh
+  /// hơn tốc độ nghe, mở thêm chỉ tốn RAM và làm máy nóng vô ích.
+  Future<void> setBulkMode(bool on) async {}
 }
