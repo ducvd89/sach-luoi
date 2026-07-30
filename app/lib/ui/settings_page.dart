@@ -195,10 +195,10 @@ class _SettingsPageState extends State<SettingsPage> {
                   children: [
                     Expanded(
                       child: Slider(
-                        value: settings.chunkPauseMs.toDouble().clamp(0, 1500),
+                        value: settings.chunkPauseMs.toDouble().clamp(0, 2000),
                         min: 0,
-                        max: 1500,
-                        divisions: 30,
+                        max: 2000,
+                        divisions: 40,
                         label: settings.chunkPauseMs == 0
                             ? 'Không nghỉ'
                             : '${(settings.chunkPauseMs / 1000).toStringAsFixed(2)} giây',

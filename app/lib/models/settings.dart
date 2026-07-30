@@ -26,9 +26,18 @@ String migrateEngineId(String id) => _renamedEngines[id] ?? id;
 
 /// Khoảng nghỉ mặc định giữa hai đoạn (mili giây).
 ///
-/// Mô hình đã ngắt sẵn ở dấu chấm, nhưng ranh giới đoạn thì cần dài hơn thế một
-/// chút thì nghe mới xuôi tai — đọc liền một mạch gây cảm giác hụt hơi.
-const int defaultChunkPauseMs = 550;
+/// Đo trên một file xuất ra thật (930 câu): nhịp nghỉ mà mô hình tự sinh ra
+/// giữa hai câu có trung vị 0,23 s, phân vị 90 là 0,45 s và **dài nhất 0,50 s**.
+///
+/// Bản đầu đặt 550 ms — chỉ hơn cái nghỉ dài nhất giữa hai câu đúng 0,05 s, nên
+/// tai không phân biệt được hết câu với hết đoạn và nghe như bị dính vào nhau.
+/// Muốn ranh giới đoạn nghe ra là ranh giới đoạn thì nó phải vượt hẳn khỏi dải
+/// nghỉ tự nhiên, chứ không phải nhích hơn một chút.
+const int defaultChunkPauseMs = 900;
+
+/// Giá trị mặc định của bản trước. Ai chưa từng kéo thanh trượt thì được nâng
+/// lên mức mới; ai đã tự chọn 550 thì giữ nguyên ý họ.
+const int _chunkPauseMsCu = 550;
 
 /// Các mức bộ nhớ đệm cho người dùng chọn, tính bằng MB. 0 nghĩa là không hạn.
 const cacheLimitChoices = <int>[100, 200, 500, 1024, 0];
@@ -128,7 +137,7 @@ class AppSettings {
         // Giọng của engine cũ không còn tồn tại; để trống cho ứng dụng tự chọn.
         voiceId: engineId == savedEngine ? (json['voiceId'] as String? ?? '') : '',
         speed: (json['speed'] as num?)?.toDouble() ?? 1.0,
-        chunkPauseMs: ((json['chunkPauseMs'] as num?)?.toInt() ?? defaultChunkPauseMs).clamp(0, 3000),
+        chunkPauseMs: _napKhoangNghi(json['chunkPauseMs']),
         cacheLimitMb: (json['cacheLimitMb'] as num?)?.toInt() ?? defaultCacheLimitMb,
         expandNumbers: json['expandNumbers'] as bool? ?? true,
         removeBoilerplate: json['removeBoilerplate'] as bool? ?? true,
@@ -142,4 +151,14 @@ class AppSettings {
   }
 
   AppSettings copy() => AppSettings.fromJson(toJson());
+}
+
+/// Đọc khoảng nghỉ đã lưu, nâng mức mặc định cũ lên mức mới.
+int _napKhoangNghi(Object? luu) {
+  final so = (luu as num?)?.toInt();
+  if (so == null) return defaultChunkPauseMs;
+  // Đúng bằng mặc định cũ nghĩa là người dùng chưa từng đụng vào thanh trượt —
+  // họ nhận cái mặc định chứ không chọn con số đó.
+  if (so == _chunkPauseMsCu) return defaultChunkPauseMs;
+  return so.clamp(0, 3000);
 }

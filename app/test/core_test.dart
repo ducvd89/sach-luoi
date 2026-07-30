@@ -200,4 +200,36 @@ void main() {
       expect(normalizePeak(quiet), quiet);
     });
   });
+
+  group('Khoảng nghỉ giữa các đoạn', () {
+    test('chưa từng kéo thanh trượt thì được nâng lên mức mới', () {
+      // 550 là mặc định của bản trước — nhỏ hơn cả nhịp nghỉ dài nhất mà mô
+      // hình tự sinh ra giữa hai câu (0,50 s), nên nghe như dính liền.
+      final cu = AppSettings.fromJson({'chunkPauseMs': 550});
+      expect(cu.chunkPauseMs, defaultChunkPauseMs);
+      expect(defaultChunkPauseMs, greaterThan(550));
+    });
+
+    test('người dùng tự chọn con số khác thì giữ nguyên', () {
+      expect(AppSettings.fromJson({'chunkPauseMs': 0}).chunkPauseMs, 0);
+      expect(AppSettings.fromJson({'chunkPauseMs': 300}).chunkPauseMs, 300);
+      expect(AppSettings.fromJson({'chunkPauseMs': 1800}).chunkPauseMs, 1800);
+    });
+
+    test('giá trị vô lý bị kẹp lại, thiếu thì lấy mặc định', () {
+      expect(AppSettings.fromJson({'chunkPauseMs': 99999}).chunkPauseMs, 3000);
+      expect(AppSettings.fromJson({'chunkPauseMs': -5}).chunkPauseMs, 0);
+      expect(AppSettings.fromJson(<String, dynamic>{}).chunkPauseMs, defaultChunkPauseMs);
+    });
+
+    test('tiêu đề chương nghỉ lâu hơn đoạn thường', () {
+      final doan = pauseAfterChunk(heading: false, pauseMs: defaultChunkPauseMs);
+      final tieuDe = pauseAfterChunk(heading: true, pauseMs: defaultChunkPauseMs);
+      expect(tieuDe, greaterThan(doan));
+      // Phải vượt hẳn dải nghỉ tự nhiên của mô hình (dài nhất đo được 0,50 s),
+      // không thì hết đoạn nghe giống hết câu.
+      expect(doan.inMilliseconds, greaterThan(700));
+      expect(pauseAfterChunk(heading: false, pauseMs: 0), Duration.zero);
+    });
+  });
 }
