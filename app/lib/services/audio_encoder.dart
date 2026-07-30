@@ -1,7 +1,9 @@
 /// Nén file WAV đã xuất sang Opus hoặc MP3, gọi thư viện Rust.
 ///
-/// Chỉ có trên máy tính. Điện thoại sẽ dùng MediaCodec của hệ điều hành, nên
-/// [encoderAvailable] trả về false ở đó và phần xuất file giữ nguyên WAV.
+/// Máy tính dùng libopus/libmp3lame liên kết trong thư viện Rust; Android dùng
+/// MediaCodec của hệ điều hành qua platform channel. Hai đường cho ra định dạng
+/// hơi khác nhau (Android không có bộ mã hoá MP3, và Opus chỉ có từ API 29), nên
+/// hàm nén **trả về đường dẫn thật đã ghi** thay vì tin vào đuôi file đoán trước.
 library;
 
 import 'dart:ffi';
@@ -9,6 +11,7 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:ffi/ffi.dart';
+import 'package:flutter/services.dart';
 
 /// Định dạng nén, khớp với mã số bên Rust.
 enum EncodeFormat {
@@ -37,11 +40,10 @@ class EncodeException implements Exception {
   String toString() => message;
 }
 
-/// Máy này nén được không.
-///
-/// Android không có bộ mã hoá trong thư viện native (xem Cargo.toml), nên hỏi
-/// trước còn hơn để lời gọi vỡ ở tầng FFI.
-bool get encoderAvailable => !Platform.isAndroid && !Platform.isIOS;
+/// Máy này nén được không. iOS chưa có đường nào nên vẫn ra WAV.
+bool get encoderAvailable => !Platform.isIOS;
+
+const _kenh = MethodChannel('sachnoi/ma_hoa');
 
 /// Đường dẫn thư viện, để kiểm thử trỏ vào bản dựng trong native/.
 String? encoderLibraryOverride;
@@ -52,21 +54,44 @@ String get _libraryName {
   return 'libsachnoi_vieneu.so';
 }
 
-/// Nén [wavPath] thành [outPath]. Ném [EncodeException] kèm lý do nếu lỗi.
+/// Nén [wavPath], ghi cạnh [outBase] với đuôi do bộ mã hoá quyết định.
 ///
-/// Chạy ở isolate riêng: một part 30 phút mất khoảng 5–9 giây, đủ lâu để làm
-/// đứng giao diện nếu chạy ngay trên isolate chính.
-Future<void> encodeAudioFile({
+/// Trả về đường dẫn file đã ghi. Trên Android xin MP3 sẽ nhận `.m4a` (AAC) vì
+/// hệ điều hành không có bộ mã hoá MP3, và máy dưới Android 10 xin Opus cũng
+/// nhận AAC — nên bên gọi phải dùng đường dẫn trả về, đừng tự ghép đuôi.
+///
+/// Ném [EncodeException] kèm lý do nếu lỗi.
+Future<String> encodeAudioFile({
   required String wavPath,
-  required String outPath,
+  required String outBase,
   required EncodeFormat format,
   required int bitrate,
 }) async {
   if (!encoderAvailable) {
     throw const EncodeException('Máy này không nén được, giữ nguyên WAV');
   }
+  if (Platform.isAndroid) {
+    try {
+      final ra = await _kenh.invokeMethod<String>('nen', {
+        'wavPath': wavPath,
+        'outBase': outBase,
+        'dinhDang': format.extension,
+        'bitrate': bitrate,
+      });
+      if (ra == null || ra.isEmpty) throw const EncodeException('MediaCodec không trả về đường dẫn');
+      return ra;
+    } on PlatformException catch (err) {
+      throw EncodeException(err.message ?? '$err');
+    } on MissingPluginException {
+      throw const EncodeException('Bản này chưa nối MediaCodec');
+    }
+  }
+  // Máy tính: gọi thư viện Rust ở isolate riêng, một part 30 phút mất 5-9 giây
+  // nên chạy trên isolate chính là thấy giao diện đứng.
   final lib = encoderLibraryOverride ?? _libraryName;
+  final outPath = '$outBase.${format.extension}';
   await Isolate.run(() => _encodeBlocking(lib, wavPath, outPath, format.code, bitrate));
+  return outPath;
 }
 
 /// Phần chạy đồng bộ trong isolate nền.

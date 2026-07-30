@@ -5,6 +5,8 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import com.ryanheise.audioservice.AudioServiceActivity
+import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodChannel
 
 /// Kế thừa AudioServiceActivity thay vì FlutterActivity: nút trên tai nghe và
 /// lệnh từ màn hình khoá cần đánh thức đúng activity này, nếu không Android sẽ
@@ -14,6 +16,39 @@ class MainActivity : AudioServiceActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         xinQuyenThongBao()
+    }
+
+    /// Nối cầu để Dart nhờ Android nén file âm thanh.
+    ///
+    /// Bản máy tính nén bằng thư viện Rust qua FFI; ở đây dùng MediaCodec của hệ
+    /// điều hành nên không phải nhồi thêm thư viện nào vào APK.
+    override fun configureFlutterEngine(engine: FlutterEngine) {
+        super.configureFlutterEngine(engine)
+        MethodChannel(engine.dartExecutor.binaryMessenger, KENH_MA_HOA)
+            .setMethodCallHandler { goi, tra ->
+                if (goi.method != "nen") {
+                    tra.notImplemented()
+                    return@setMethodCallHandler
+                }
+                // Nén một file 30 phút mất vài giây; chạy trên luồng chính thì
+                // giao diện đứng, nên đẩy sang luồng nền rồi trả kết quả về.
+                Thread {
+                    val ketQua = runCatching {
+                        MaHoaAudio.nen(
+                            goi.argument<String>("wavPath")!!,
+                            goi.argument<String>("outBase")!!,
+                            goi.argument<String>("dinhDang")!!,
+                            goi.argument<Int>("bitrate")!!,
+                        )
+                    }
+                    runOnUiThread {
+                        ketQua.fold(
+                            onSuccess = { tra.success(it) },
+                            onFailure = { tra.error("ma_hoa", it.message ?: "$it", null) },
+                        )
+                    }
+                }.start()
+            }
     }
 
     /// Xin quyền hiện thông báo.
@@ -37,5 +72,6 @@ class MainActivity : AudioServiceActivity() {
 
     private companion object {
         const val MA_XIN_THONG_BAO = 1001
+        const val KENH_MA_HOA = "sachnoi/ma_hoa"
     }
 }

@@ -55,7 +55,7 @@ void main() {
     ]) {
       final ra = File(p.join(dir.path, ten));
       await encodeAudioFile(
-          wavPath: wav.path, outPath: ra.path, format: format, bitrate: bitrate);
+          wavPath: wav.path, outBase: p.withoutExtension(ra.path), format: format, bitrate: bitrate);
 
       expect(ra.existsSync(), isTrue, reason: '$ten phải được tạo');
       final bytes = ra.readAsBytesSync();
@@ -79,9 +79,9 @@ void main() {
     final nho = File(p.join(dir.path, 'nho.opus'));
     final to = File(p.join(dir.path, 'to.opus'));
     await encodeAudioFile(
-        wavPath: wav.path, outPath: nho.path, format: EncodeFormat.opus, bitrate: 32000);
+        wavPath: wav.path, outBase: p.withoutExtension(nho.path), format: EncodeFormat.opus, bitrate: 32000);
     await encodeAudioFile(
-        wavPath: wav.path, outPath: to.path, format: EncodeFormat.opus, bitrate: 64000);
+        wavPath: wav.path, outBase: p.withoutExtension(to.path), format: EncodeFormat.opus, bitrate: 64000);
     expect(to.lengthSync(), greaterThan(nho.lengthSync()));
   }, timeout: const Timeout(Duration(minutes: 3)));
 
@@ -94,7 +94,7 @@ void main() {
     await expectLater(
       encodeAudioFile(
           wavPath: p.join(dir.path, 'khong-co.wav'),
-          outPath: p.join(dir.path, 'ra.opus'),
+          outBase: p.join(dir.path, 'ra'),
           format: EncodeFormat.opus,
           bitrate: 32000),
       throwsA(isA<EncodeException>()),
@@ -105,7 +105,7 @@ void main() {
     await expectLater(
       encodeAudioFile(
           wavPath: xau.path,
-          outPath: p.join(dir.path, 'ra2.opus'),
+          outBase: p.join(dir.path, 'ra2'),
           format: EncodeFormat.opus,
           bitrate: 32000),
       throwsA(isA<EncodeException>()),

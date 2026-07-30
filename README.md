@@ -41,9 +41,9 @@ Hai engine, đổi qua lại trong **Cài đặt**:
 ¹ Chọn trong *Xuất file → Định dạng file*: **Opus 32 kbps** (mặc định, nhỏ nhất), Opus 64 kbps,
   MP3 128 kbps, hoặc WAV không nén. Đo trên một file thật 29,9 phút: WAV 164 MB · Opus 32k 6,8 MB ·
   Opus 64k 14 MB · MP3 128k 27 MB. Opus nhỏ hơn hẳn ở cùng chất lượng vì nó thiết kế cho dải bitrate
-  thấp; MP3 giữ lại vì đầu đĩa và dàn xe hơi cũ chỉ đọc được nó. **Bản Android hiện chỉ ra WAV** —
-  hai thư viện nén không biên dịch chéo được sang Android, phần dùng MediaCodec của hệ điều hành
-  đang được làm.
+  thấp; MP3 giữ lại vì đầu đĩa và dàn xe hơi cũ chỉ đọc được nó. Trên **Android** việc nén do `MediaCodec`
+  của hệ điều hành làm, không thêm gì vào APK: Opus cần Android 10 trở lên, còn chọn MP3 thì file ra
+  là `.m4a` (AAC) vì Android không có bộ mã hoá MP3.
 ² Mô hình và bộ giọng của VieNeu-TTS chỉ dùng cho mục đích phi thương mại và cần ghi công tác giả
   (Phạm Nguyễn Ngọc Bảo — pnnbao-ump). Mỗi đoạn âm thanh sinh ra đều được đóng dấu chìm.
 

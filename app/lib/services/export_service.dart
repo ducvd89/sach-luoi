@@ -282,19 +282,20 @@ class ExportService {
       // thời lượng và việc tua chính xác. Mất 5-9 giây cho một file 30 phút.
       var thanhPham = target;
       if (dinhDang != null && !dinhDang.isWav) {
-        final nen = File(p.join(job.outputDir, '$tenGoc.${dinhDang.extension}'));
         try {
-          await encodeAudioFile(
+          // Đuôi file do bộ mã hoá quyết định: Android không có MP3, và máy dưới
+          // Android 10 cũng không có Opus, cả hai trường hợp đều ra .m4a.
+          final duongDan = await encodeAudioFile(
             wavPath: target.path,
-            outPath: nen.path,
+            outBase: p.join(job.outputDir, tenGoc),
             format: dinhDang.extension == 'opus' ? EncodeFormat.opus : EncodeFormat.mp3,
             bitrate: dinhDang.bitrate,
           );
           await target.delete();
-          thanhPham = nen;
+          thanhPham = File(duongDan);
         } catch (err) {
           // Nén lỗi thì giữ WAV lại — thà file nặng còn hơn mất cả phần vừa đọc.
-          job.error = 'Không nén được ${nen.path}: $err (giữ nguyên WAV)';
+          job.error = 'Không nén được $tenGoc: $err (giữ nguyên WAV)';
         }
       }
 
