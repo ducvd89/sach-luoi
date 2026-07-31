@@ -4,6 +4,7 @@ library;
 import 'package:flutter/material.dart';
 
 import 'app_scope.dart';
+import 'nut_sac.dart';
 import 'export_page.dart';
 import 'library_page.dart';
 import 'mini_player.dart';
@@ -30,20 +31,29 @@ class HomeShellState extends State<HomeShell> {
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     final hasBook = state.currentBook != null;
-    final wide = MediaQuery.sizeOf(context).width >= 900;
+    // Máy gập mở ra là đủ rộng để ăn bố cục như bản máy tính.
+    final wide = manHinhRong(context);
 
     final pages = [
       const LibraryPage(),
       hasBook ? const PlayerPage() : const _NoBook(message: 'Chọn một cuốn sách trong thư viện để bắt đầu nghe'),
-      hasBook ? const ExportPage() : const _NoBook(message: 'Chọn một cuốn sách trước khi xuất file MP3'),
+      // Không đòi phải mở sách trước: màn hình xuất tự cho chọn sách.
+      const ExportPage(),
       const SettingsPage(),
     ];
 
-    final destinations = <({IconData icon, IconData selected, String label})>[
-      (icon: Icons.library_books_outlined, selected: Icons.library_books, label: 'Thư viện'),
-      (icon: Icons.headphones_outlined, selected: Icons.headphones, label: 'Nghe'),
-      (icon: Icons.save_alt_outlined, selected: Icons.save_alt, label: 'Xuất file'),
-      (icon: Icons.settings_outlined, selected: Icons.settings, label: 'Cài đặt'),
+    // Mỗi mục một cặp màu riêng, như bộ nút mẫu — nhìn màu là biết đang ở đâu,
+    // khỏi phải đọc chữ. Mục đang chọn đeo vòng tròn chuyển sắc, đúng dấu hiệu
+    // dùng ở đầu mọi nút trong ứng dụng.
+    final destinations = <({IconData icon, IconData selected, String label, List<Color> sac})>[
+      (icon: Icons.library_books_outlined, selected: Icons.library_books_rounded,
+       label: 'Thư viện', sac: SacNut.phu),
+      (icon: Icons.headphones_outlined, selected: Icons.headphones_rounded,
+       label: 'Nghe', sac: SacNut.chinh),
+      (icon: Icons.save_alt_outlined, selected: Icons.save_alt_rounded,
+       label: 'Xuất file', sac: SacNut.them),
+      (icon: Icons.settings_outlined, selected: Icons.settings_rounded,
+       label: 'Cài đặt', sac: SacNut.nguyHiem),
     ];
 
     return Scaffold(
@@ -58,15 +68,23 @@ class HomeShellState extends State<HomeShell> {
               selectedIndex: _index,
               onDestinationSelected: goTo,
               labelType: NavigationRailLabelType.all,
-              leading: const Padding(
-                padding: EdgeInsets.only(top: 14, bottom: 6),
-                child: Text('📖', style: TextStyle(fontSize: 26)),
-              ),
+              backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+              // Vòng tròn chuyển sắc đã là dấu hiệu "đang chọn" rồi; để thêm
+              // mảng nền của Material nữa thì thành hai lớp chỉ dấu chồng nhau.
+              indicatorColor: Colors.transparent,
+              // Nhưng hình dạng thì vẫn phải đổi: mảng sáng lúc rê chuột hay
+              // bấm giữ vẫn vẽ theo indicatorShape, mặc định là viên thuốc bầu
+              // dục — lệch hẳn với vòng tròn của mục đang chọn.
+              indicatorShape: const CircleBorder(),
               destinations: [
                 for (final d in destinations)
                   NavigationRailDestination(
-                    icon: Icon(d.icon),
-                    selectedIcon: Icon(d.selected),
+                    // Hai trạng thái phải chiếm đúng một khung: mục đang chọn
+                    // đeo vòng tròn 40px, mục thường chỉ có biểu tượng 24px —
+                    // để nguyên thì chọn sang mục khác là cả cột xô lên xuống.
+                    icon: SizedBox.square(dimension: 40, child: Center(child: Icon(d.icon))),
+                    selectedIcon: HinhTronSac(hinh: d.selected, sac: d.sac),
+                    padding: const EdgeInsets.symmetric(vertical: 7),
                     label: Text(d.label),
                   ),
               ],
@@ -90,9 +108,17 @@ class HomeShellState extends State<HomeShell> {
           : NavigationBar(
               selectedIndex: _index,
               onDestinationSelected: goTo,
+              backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+              indicatorColor: Colors.transparent,
+              indicatorShape: const CircleBorder(),
               destinations: [
                 for (final d in destinations)
-                  NavigationDestination(icon: Icon(d.icon), selectedIcon: Icon(d.selected), label: d.label),
+                  NavigationDestination(
+                    // Cùng lý do như thanh dọc: hai trạng thái một khung.
+                    icon: SizedBox.square(dimension: 36, child: Center(child: Icon(d.icon))),
+                    selectedIcon: HinhTronSac(hinh: d.selected, sac: d.sac, canh: 36),
+                    label: d.label,
+                  ),
               ],
             ),
     );
@@ -234,9 +260,12 @@ class _NoBook extends StatelessWidget {
           const SizedBox(height: 12),
           Text(message, style: TextStyle(color: Theme.of(context).hintColor)),
           const SizedBox(height: 16),
-          FilledButton.tonal(
-            onPressed: () => HomeShellState.of(context)?.goTo(0),
-            child: const Text('Về thư viện'),
+          NutSac(
+            nhan: 'VỀ THƯ VIỆN',
+            hinh: Icons.library_books_rounded,
+            sac: SacNut.phu,
+            vienRong: true,
+            onNhan: () => HomeShellState.of(context)?.goTo(0),
           ),
         ],
       ),

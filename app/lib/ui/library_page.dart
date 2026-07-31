@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../models/book.dart';
 import '../models/work_progress.dart';
 import 'app_scope.dart';
+import 'nut_sac.dart';
 import 'home_shell.dart';
 import 'theme.dart';
 
@@ -75,10 +76,11 @@ class _LibraryPageState extends State<LibraryPage> {
           children: [
             Text('Thư viện', style: Theme.of(context).textTheme.headlineSmall),
             const Spacer(),
-            FilledButton.icon(
-              onPressed: _importing ? null : _pickFiles,
-              icon: const Icon(Icons.add),
-              label: const Text('Thêm sách'),
+            NutSac(
+              nhan: 'THÊM SÁCH',
+              hinh: Icons.add_rounded,
+              dangChay: _importing,
+              onNhan: _pickFiles,
             ),
           ],
         ),
@@ -255,18 +257,21 @@ class _BookCardState extends State<_BookCard> {
             const SizedBox(height: 9),
             Row(
               children: [
-                FilledButton(
-                  style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9)),
-                  onPressed: _opening ? null : () => _open(1),
-                  child: _opening
-                      ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2))
-                      : Text(percent > 0 && percent < 1 ? 'Nghe tiếp' : 'Nghe'),
+                NutSac(
+                  nho: true,
+                  nhan: percent > 0 && percent < 1 ? 'Nghe tiếp' : 'Nghe',
+                  hinh: Icons.play_arrow_rounded,
+                  dangChay: _opening,
+                  onNhan: () => _open(1),
                 ),
                 const SizedBox(width: 8),
-                OutlinedButton(
-                  style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9)),
-                  onPressed: _opening ? null : () => _open(2),
-                  child: const Text('Xuất MP3'),
+                NutSac(
+                  nho: true,
+                  vienRong: true,
+                  sac: SacNut.phu,
+                  nhan: 'Xuất file',
+                  hinh: Icons.arrow_downward_rounded,
+                  onNhan: _opening ? null : () => _open(2),
                 ),
                 const Spacer(),
                 IconButton(

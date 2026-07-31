@@ -4,6 +4,7 @@ library;
 import 'package:flutter/material.dart';
 
 import 'app_scope.dart';
+import 'nut_sac.dart';
 import 'home_shell.dart';
 import 'theme.dart';
 
@@ -64,9 +65,15 @@ class MiniPlayer extends StatelessWidget {
                               padding: EdgeInsets.all(12),
                               child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
                             )
-                          : IconButton(
-                              onPressed: player.togglePlay,
-                              icon: Icon(player.isPlaying ? Icons.pause_circle : Icons.play_circle, size: 30),
+                          : Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 6),
+                              child: NutTron(
+                                canh: 36,
+                                hinh: player.isPlaying
+                                    ? Icons.pause_rounded
+                                    : Icons.play_arrow_rounded,
+                                onNhan: player.togglePlay,
+                              ),
                             ),
                       IconButton(
                         onPressed: player.next,

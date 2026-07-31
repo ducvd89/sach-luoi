@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 
 import '../models/book.dart';
 import 'app_scope.dart';
+import 'nut_sac.dart';
 import 'fast_scrollbar.dart';
 import 'reading_pane.dart';
 import 'theme.dart';
@@ -34,7 +35,7 @@ class _PlayerPageState extends State<PlayerPage> {
       animation: player,
       builder: (context, _) {
         final chapter = player.currentChapter;
-        final wide = MediaQuery.sizeOf(context).width >= 1000;
+        final wide = manHinhHaiCot(context);
 
         final reading = ReadingPane(
           // Đổi chương thì dựng lại khung để nó nhảy đúng đoạn đầu chương mới.
@@ -324,10 +325,10 @@ class _PlayerBar extends StatelessWidget {
                 height: 56,
                 child: player.isLoading
                     ? const Padding(padding: EdgeInsets.all(13), child: CircularProgressIndicator(strokeWidth: 3))
-                    : FilledButton(
-                        style: FilledButton.styleFrom(shape: const CircleBorder(), padding: EdgeInsets.zero),
-                        onPressed: player.togglePlay,
-                        child: Icon(player.isPlaying ? Icons.pause : Icons.play_arrow, size: 27),
+                    : NutTron(
+                        hinh: player.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                        chuThich: player.isPlaying ? 'Tạm dừng (Space)' : 'Phát (Space)',
+                        onNhan: player.togglePlay,
                       ),
               ),
               IconButton(

@@ -17,6 +17,8 @@ import '../models/export_job.dart';
 import '../services/storage.dart';
 import '../services/thu_muc_xuat.dart';
 import 'app_scope.dart';
+import 'home_shell.dart';
+import 'nut_sac.dart';
 import 'theme.dart';
 
 class ExportPage extends StatefulWidget {
@@ -32,11 +34,30 @@ class _ExportPageState extends State<ExportPage> {
   String? _outputDir;
   bool _starting = false;
 
+  /// Sách đang chọn để xuất, nếu khác cuốn đang nghe.
+  ///
+  /// Giữ riêng ở đây chứ không đụng tới cuốn đang nghe của cả ứng dụng: chọn
+  /// sách để xuất mà làm gián đoạn cái đang nghe thì phiền. Job cất bookId nên
+  /// việc xuất chạy độc lập, không cần cuốn này phải là cuốn "hiện tại".
+  ///
+  /// Giữ id chứ không giữ đối tượng Book — danh sách sách được nạp lại sau mỗi
+  /// lần thêm/dọn sách, ôm đối tượng cũ là trỏ vào bản đã hết hạn.
+  String? _bookId;
+
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
-    final book = state.currentBook;
-    if (book == null) return const SizedBox.shrink();
+    final books = state.books;
+    if (books.isEmpty) {
+      return _TrongRong(
+        message: 'Thư viện chưa có sách nào để xuất',
+        nhan: 'VỀ THƯ VIỆN',
+      );
+    }
+    final book = books.firstWhere(
+      (b) => b.id == _bookId,
+      orElse: () => state.currentBook ?? books.first,
+    );
 
     final chapters = book.chapters;
     final from = chapters.firstWhere((c) => c.index == _fromChapter, orElse: () => chapters.first);
@@ -75,9 +96,20 @@ class _ExportPageState extends State<ExportPage> {
       padding: const EdgeInsets.fromLTRB(22, 20, 22, 26),
       children: [
         Text('Xuất ra file âm thanh', style: Theme.of(context).textTheme.headlineSmall),
-        const SizedBox(height: 4),
+        const SizedBox(height: 10),
+        _ChonSach(
+          books: books,
+          dangChon: book,
+          onChon: (id) => setState(() {
+            _bookId = id;
+            // Chỉ số chương là của riêng từng cuốn, giữ lại là chọn nhầm khoảng.
+            _fromChapter = null;
+            _toChapter = null;
+          }),
+        ),
+        const SizedBox(height: 6),
         Text(
-          '${book.title} · ${chapters.length} chương · ~${formatTime(book.estimatedDuration.inSeconds.toDouble())}',
+          '${chapters.length} chương · ~${formatTime(book.estimatedDuration.inSeconds.toDouble())}',
           style: TextStyle(color: Theme.of(context).hintColor, fontSize: 13),
         ),
         const SizedBox(height: 18),
@@ -210,18 +242,13 @@ class _ExportPageState extends State<ExportPage> {
                 const SizedBox(height: 14),
                 Row(
                   children: [
-                    FilledButton.icon(
-                      onPressed: _starting || !state.engineStatus.ready
-                          ? null
-                          : () => _start(book, from, effectiveTo),
-                      icon: _starting
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.play_arrow),
-                      label: Text(_starting ? 'Đang chuẩn bị…' : 'Bắt đầu xuất'),
+                    NutSac(
+                      nhan: _starting ? 'ĐANG CHUẨN BỊ…' : 'BẮT ĐẦU XUẤT',
+                      hinh: Icons.play_arrow_rounded,
+                      dangChay: _starting,
+                      onNhan: state.engineStatus.ready
+                          ? () => _start(book, from, effectiveTo)
+                          : null,
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -545,34 +572,41 @@ class _JobCard extends StatelessWidget {
               spacing: 8,
               children: [
                 if (job.isActive)
-                  OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9)),
-                    onPressed: stopping ? null : () => state.pauseExport(job),
-                    icon: const Icon(Icons.pause, size: 18),
-                    label: Text(stopping ? 'Đang dừng…' : 'Tạm dừng'),
+                  NutSac(
+                    nho: true,
+                    vienRong: true,
+                    sac: SacNut.phu,
+                    nhan: stopping ? 'Đang dừng…' : 'Tạm dừng',
+                    hinh: Icons.pause_rounded,
+                    onNhan: stopping ? null : () => state.pauseExport(job),
                   ),
                 if (job.canResume)
-                  FilledButton.icon(
-                    style: FilledButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9)),
-                    onPressed: preparing ? null : () => state.resumeExport(job),
-                    icon: const Icon(Icons.play_arrow, size: 18),
-                    label: Text(preparing ? 'Đang chuẩn bị…' : 'Chạy tiếp'),
+                  NutSac(
+                    nho: true,
+                    nhan: preparing ? 'Đang chuẩn bị…' : 'Chạy tiếp',
+                    hinh: Icons.play_arrow_rounded,
+                    dangChay: preparing,
+                    onNhan: () => state.resumeExport(job),
                   ),
                 if (job.parts.isNotEmpty)
-                  OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9)),
-                    onPressed: () => _openFolder(job.outputDir),
-                    icon: const Icon(Icons.folder_open, size: 18),
-                    label: const Text('Mở thư mục'),
+                  NutSac(
+                    nho: true,
+                    vienRong: true,
+                    sac: SacNut.phu,
+                    nhan: 'Mở thư mục',
+                    hinh: Icons.folder_open_rounded,
+                    onNhan: () => _openFolder(job.outputDir),
                   ),
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9)),
-                  onPressed: () async {
+                NutSac(
+                  nho: true,
+                  vienRong: true,
+                  sac: SacNut.nguyHiem,
+                  nhan: 'Xoá',
+                  hinh: Icons.delete_outline_rounded,
+                  onNhan: () async {
                     await state.exports.deleteJob(job);
                     await state.reloadJobs();
                   },
-                  icon: const Icon(Icons.delete_outline, size: 18),
-                  label: const Text('Xoá'),
                 ),
               ],
             ),
@@ -788,6 +822,89 @@ class _BangChonChuongState extends State<_BangChonChuong> {
                 ),
         ),
       ],
+    );
+  }
+}
+
+
+/// Ô chọn sách để xuất, ngay trong màn hình xuất file.
+///
+/// Trước đây phải sang thư viện mở sách rồi mới quay lại đây được. Sách nào cũng
+/// xuất được từ chỗ này, và không làm gián đoạn cuốn đang nghe.
+class _ChonSach extends StatelessWidget {
+  const _ChonSach({required this.books, required this.dangChon, required this.onChon});
+
+  final List<Book> books;
+  final Book dangChon;
+  final ValueChanged<String> onChon;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.menu_book_outlined, size: 19, color: Theme.of(context).hintColor),
+          const SizedBox(width: 10),
+          Expanded(
+            child: DropdownButton<String>(
+              value: dangChon.id,
+              isExpanded: true,
+              underline: const SizedBox.shrink(),
+              borderRadius: BorderRadius.circular(12),
+              items: [
+                for (final b in books)
+                  DropdownMenuItem(
+                    value: b.id,
+                    child: Text(
+                      b.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 14.5),
+                    ),
+                  ),
+              ],
+              onChanged: (value) {
+                if (value != null && value != dangChon.id) onChon(value);
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Màn hình trống khi chưa có gì để xuất.
+class _TrongRong extends StatelessWidget {
+  const _TrongRong({required this.message, required this.nhan});
+  final String message;
+  final String nhan;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.menu_book_outlined, size: 44, color: Theme.of(context).disabledColor),
+          const SizedBox(height: 12),
+          Text(message, style: TextStyle(color: Theme.of(context).hintColor)),
+          const SizedBox(height: 16),
+          NutSac(
+            nhan: nhan,
+            hinh: Icons.library_books_rounded,
+            sac: SacNut.phu,
+            vienRong: true,
+            onNhan: () => HomeShellState.of(context)?.goTo(0),
+          ),
+        ],
+      ),
     );
   }
 }

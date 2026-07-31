@@ -13,6 +13,8 @@ import '../services/storage.dart';
 import '../services/tts/model_store.dart';
 import '../services/tts/voice_pack.dart';
 import 'app_scope.dart';
+import 'nut_sac.dart';
+import 'theme.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -255,19 +257,27 @@ class _SettingsPageState extends State<SettingsPage> {
                 const SizedBox(height: 14),
                 Row(
                   children: [
-                    OutlinedButton(
-                      onPressed: () async {
+                    NutSac(
+                      nho: true,
+                      vienRong: true,
+                      sac: SacNut.nguyHiem,
+                      nhan: 'Xoá bộ nhớ đệm',
+                      hinh: Icons.delete_sweep_outlined,
+                      onNhan: () async {
                         await AppScope.read(context).clearCache();
                         await _loadCache();
                       },
-                      child: const Text('Xoá bộ nhớ đệm'),
                     ),
                     const SizedBox(width: 10),
-                    OutlinedButton(
-                      onPressed: () {
+                    NutSac(
+                      nho: true,
+                      vienRong: true,
+                      sac: SacNut.phu,
+                      nhan: 'Mở thư mục dữ liệu',
+                      hinh: Icons.folder_open_rounded,
+                      onNhan: () {
                         if (Platform.isWindows) Process.run('explorer', [state.dataDirectory]);
                       },
-                      child: const Text('Mở thư mục dữ liệu'),
                     ),
                   ],
                 ),
@@ -352,10 +362,10 @@ class _ModelSectionState extends State<_ModelSection> {
           style: TextStyle(fontSize: 12.5, color: hint),
         ),
         const SizedBox(height: 10),
-        FilledButton.icon(
-          onPressed: installed == null ? null : () => AppScope.read(context).downloadModel(),
-          icon: const Icon(Icons.download, size: 18),
-          label: Text('Tải mô hình (${totalMegabytes.round()} MB)'),
+        NutSac(
+          nhan: 'TẢI MÔ HÌNH (${totalMegabytes.round()} MB)',
+          hinh: Icons.arrow_downward_rounded,
+          onNhan: installed == null ? null : () => AppScope.read(context).downloadModel(),
         ),
       ],
     );
@@ -463,9 +473,12 @@ class _VoicePackSectionState extends State<_VoicePackSection> {
               if (installed)
                 TextButton(onPressed: busy ? null : () => _delete(pack), child: const Text('Xoá'))
               else
-                FilledButton.tonal(
-                  onPressed: _downloading != null ? null : () => _download(pack),
-                  child: Text(busy ? 'Đang tải…' : 'Tải về'),
+                NutSac(
+                  nho: true,
+                  nhan: busy ? 'Đang tải…' : 'Tải về',
+                  hinh: Icons.arrow_downward_rounded,
+                  dangChay: busy,
+                  onNhan: _downloading != null ? null : () => _download(pack),
                 ),
             ],
           ),
@@ -497,10 +510,12 @@ class _AddVoiceButton extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        OutlinedButton.icon(
-          onPressed: () => _pick(context),
-          icon: const Icon(Icons.person_add_alt, size: 18),
-          label: const Text('Thêm giọng từ file ghi âm'),
+        NutSac(
+          nhan: 'THÊM GIỌNG TỪ FILE GHI ÂM',
+          hinh: Icons.person_add_alt_1_rounded,
+          sac: SacNut.them,
+          vienRong: true,
+          onNhan: () => _pick(context),
         ),
         const SizedBox(height: 4),
         Text('File .wav một người nói rõ, không nhạc nền. Bản ghi dài cũng được — '
