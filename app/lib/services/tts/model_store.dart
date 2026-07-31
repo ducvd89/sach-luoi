@@ -64,11 +64,18 @@ const enrollFiles = <ModelFile>[
 double get totalMegabytes => modelFiles.fold(0.0, (sum, f) => sum + f.megabytes);
 double get enrollMegabytes => enrollFiles.fold(0.0, (sum, f) => sum + f.megabytes);
 
-/// Từ điển âm vị và hồ sơ giọng đi kèm ứng dụng, chép ra đĩa lần chạy đầu.
-const _bundledAssets = {
-  'assets/sea_g2p.bin': 'sea_g2p.bin',
-  'assets/giong.json': 'giong.json',
-};
+/// Từ điển âm vị đi kèm ứng dụng, chép ra đĩa vì thư viện Rust cần đường dẫn thật.
+///
+/// Hồ sơ giọng KHÔNG nằm ở đây: nó phải hợp nhất chứ không chép đè, xem
+/// [ModelStore._hopNhatGiong].
+const _bundledAssets = {'assets/sea_g2p.bin': 'sea_g2p.bin'};
+
+/// Dấu mà thư viện Rust ghi cho giọng người dùng tự thêm trong ứng dụng.
+///
+/// Phải khớp với `save_voice` và `remove_voice_from_file` trong
+/// native/vieneu/src/ffi.rs — bên đó chỉ cho xoá giọng mang dấu này, nên đây
+/// cũng chỉ được coi là "tự thêm" đúng những giọng ấy.
+const nhanTuThem = 'nguoi-dung';
 
 /// Thông tin hiển thị của một giọng.
 class VoiceMeta {
@@ -81,13 +88,13 @@ class VoiceMeta {
 /// Thư viện ghi 'male'/'female'; giao diện thì nói tiếng Việt.
 const _genders = {'male': 'Nam', 'female': 'Nữ'};
 
-/// Giọng này do người dùng tự thêm chứ không dựng sẵn trong mô hình.
+/// Giọng này do người dùng tự thêm trên chính máy này.
 ///
-/// Dấu hiệu phải khớp với `remove_voice_from_file` trong native/vieneu/src/ffi.rs
-/// — bên đó từ chối xoá giọng không mang dấu, nên giao diện hiện nút xoá cho
-/// giọng nào thì bên dưới phải xoá được đúng giọng đó.
-bool _tuThem(String source) =>
-    source == 'nguoi-dung' || source.toLowerCase().endsWith('.wav');
+/// Chỉ đúng dấu [nhanTuThem], không nhận đuôi .wav: giọng trong bản cài cũng
+/// mang tên file mẫu (Latradio.wav, Kim Cúc.wav) nhưng chúng đi kèm ứng dụng —
+/// thư viện Rust từ chối xoá, mà có xoá được thì lần mở sau [_hopNhatGiong]
+/// cũng đưa chúng trở lại. Hiện nút xoá cho chúng chỉ là hứa hão.
+bool _tuThem(String source) => source == nhanTuThem;
 
 class ModelStore {
   ModelStore({Directory? root}) : _root = root;
@@ -137,7 +144,7 @@ class ModelStore {
     );
   }
 
-  /// Chép từ điển và hồ sơ giọng từ trong ứng dụng ra đĩa (chỉ lần đầu).
+  /// Chép từ điển và hồ sơ giọng từ trong ứng dụng ra đĩa.
   ///
   /// Thư viện Rust ánh xạ bộ nhớ file từ điển nên cần một đường dẫn thật, không
   /// đọc thẳng từ gói ứng dụng được.
@@ -145,10 +152,63 @@ class ModelStore {
     await root.create(recursive: true);
     for (final entry in _bundledAssets.entries) {
       final target = File(p.join(root.path, entry.value));
-      if (await target.exists() && await target.length() > 0) continue;
       final data = await rootBundle.load(entry.key);
+      // So kích thước chứ không chỉ hỏi "đã có chưa": bản cập nhật có thể mang
+      // từ điển mới, mà file cũ nằm sẵn trên đĩa thì bản mới không bao giờ tới
+      // được người dùng.
+      if (await target.exists() && await target.length() == data.lengthInBytes) {
+        continue;
+      }
       await target.writeAsBytes(data.buffer.asUint8List(), flush: true);
     }
+    await _hopNhatGiong();
+  }
+
+  /// Hoà hồ sơ giọng đi kèm bản cài với những giọng người dùng tự thêm.
+  ///
+  /// Bản trước chỉ chép giong.json khi trên đĩa chưa có file. Cài đè bản mới thì
+  /// file cũ vẫn nằm đó, nên giọng mới thêm vào bản cài KHÔNG BAO GIỜ hiện ra —
+  /// phải xoá sạch dữ liệu rồi tải lại mô hình mới thấy.
+  ///
+  /// Nhưng cũng không chép đè được: chính file này là chỗ thư viện Rust ghi
+  /// giọng người dùng nhân bản từ mẫu ghi âm, đè lên là mất hết. Nên hợp nhất —
+  /// giọng đi kèm lấy theo bản cài mới, giọng tự thêm giữ nguyên. Trùng tên thì
+  /// giọng tự thêm thắng, vì đó là công người dùng bỏ ra.
+  Future<void> _hopNhatGiong() async {
+    Map<String, dynamic> doc(String text) {
+      final v = jsonDecode(text);
+      return v is Map<String, dynamic> ? v : <String, dynamic>{};
+    }
+
+    final goc = doc(await rootBundle.loadString('assets/giong.json'));
+    final gocPresets = (goc['presets'] as Map<String, dynamic>?) ?? {};
+
+    final tuThem = <String, dynamic>{};
+    Map<String, dynamic> tren = {};
+    if (await voicesFile.exists() && await voicesFile.length() > 0) {
+      try {
+        tren = (doc(await voicesFile.readAsString())['presets'] as Map<String, dynamic>?) ?? {};
+        tren.forEach((ten, v) {
+          if (v is Map && v['source'] == nhanTuThem) tuThem[ten] = v;
+        });
+      } catch (_) {
+        // File hỏng thì dựng lại từ bản đi kèm, còn hơn để ứng dụng không có giọng nào.
+      }
+    }
+
+    final ketQua = {...gocPresets, ...tuThem};
+    // Sắp tên trước khi so: thư viện Rust ghi lại file bằng bộ ánh xạ có sắp
+    // xếp, thứ tự khoá khác bản này nên so thẳng chuỗi là lần nào cũng thấy khác.
+    String chuanHoa(Map<String, dynamic> m) {
+      final ten = m.keys.toList()..sort();
+      return jsonEncode({for (final t in ten) t: m[t]});
+    }
+
+    if (chuanHoa(ketQua) == chuanHoa(tren)) return;
+    await voicesFile.writeAsString(
+      jsonEncode({...goc, 'presets': ketQua}),
+      flush: true,
+    );
   }
 
   /// Đã có đủ hai mô hình phụ để nhân bản giọng chưa.
@@ -236,9 +296,11 @@ class ModelStore {
     if (await codecDir.exists()) await codecDir.delete(recursive: true);
   }
 
-  /// Thông tin hiển thị của từng giọng, lấy từ file hồ sơ.
+  /// Thông tin hiển thị của từng giọng, đọc từ file hồ sơ.
+  ///
+  /// Chỉ đọc, không dựng file: engine luôn gọi [paths] trước khi hỏi tới đây,
+  /// mà chính [paths] mới là chỗ chép file đi kèm ra và hợp nhất hồ sơ giọng.
   Future<Map<String, VoiceMeta>> voiceMeta() async {
-    await _extractBundled();
     try {
       final json = jsonDecode(await voicesFile.readAsString()) as Map<String, dynamic>;
       final presets = json['presets'] as Map<String, dynamic>? ?? {};

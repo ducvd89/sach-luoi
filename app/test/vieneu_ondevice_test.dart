@@ -5,8 +5,10 @@
 /// trên Android chỉ là khác kiến trúc máy.
 library;
 
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sach_noi/core/wav.dart';
@@ -263,10 +265,44 @@ void _testModelStore() {
 
       final meta = await store.voiceMeta();
       expect(meta['Dựng sẵn']!.builtIn, isTrue);
-      expect(meta['Tự thêm']!.builtIn, isFalse, reason: 'thêm trong ứng dụng');
-      expect(meta['Từ máy tính']!.builtIn, isFalse, reason: 'nap_giong.py ghi tên file mẫu');
-      expect(meta['Chữ hoa']!.builtIn, isFalse, reason: 'đuôi file không phân biệt hoa thường');
+      expect(meta['Tự thêm']!.builtIn, isFalse, reason: 'thêm trong ứng dụng thì xoá được');
+      // Giọng đi kèm bản cài cũng mang tên file mẫu, nhưng xoá không được: thư
+      // viện Rust từ chối, mà lần mở sau phần hợp nhất cũng đưa chúng trở lại.
+      expect(meta['Từ máy tính']!.builtIn, isTrue, reason: 'đi kèm bản cài');
+      expect(meta['Chữ hoa']!.builtIn, isTrue, reason: 'đi kèm bản cài');
     });
+
+    // testWidgets chứ không phải test: cần binding của Flutter mới đọc được asset
+    // đi kèm. Và phải bọc trong runAsync vì thân bài chạy I/O thật, còn vùng thời
+    // gian giả của testWidgets thì không bao giờ hoàn tất những Future ấy.
+    testWidgets('cài đè bản mới: giọng mới hiện ra, giọng tự thêm còn nguyên',
+        (tester) async => tester.runAsync(() async {
+      // Lỗi cũ: giong.json chỉ được chép ra khi trên đĩa chưa có. Cài đè bản mới
+      // thì file cũ vẫn nằm đó nên giọng mới thêm vào bản cài không bao giờ hiện,
+      // phải xoá sạch dữ liệu mới thấy. Mà chép đè cũng không được vì giọng người
+      // dùng tự nhân bản nằm chung file này.
+      root.createSync(recursive: true);
+      store.voicesFile.writeAsStringSync(jsonEncode({
+        'presets': {
+          'Giọng bản cũ': {'source': 'cu.wav', 'gender': '', 'description': ''},
+          'Của tôi': {'source': nhanTuThem, 'gender': '', 'description': 'tự thêm'},
+        }
+      }));
+
+      await store.paths();
+
+      final sau = (jsonDecode(store.voicesFile.readAsStringSync())
+          as Map<String, dynamic>)['presets'] as Map<String, dynamic>;
+      final trongBanCai = (jsonDecode(await rootBundle.loadString('assets/giong.json'))
+          as Map<String, dynamic>)['presets'] as Map<String, dynamic>;
+
+      for (final ten in trongBanCai.keys) {
+        expect(sau.containsKey(ten), isTrue, reason: 'giọng "$ten" của bản cài phải có');
+      }
+      expect(sau['Của tôi'], isNotNull, reason: 'giọng tự thêm không được mất');
+      expect(sau.containsKey('Giọng bản cũ'), isFalse,
+          reason: 'giọng đi kèm bản cũ thì theo bản cài mới');
+        }));
 
     test('thiếu từ điển âm vị thì báo chưa tải', () async {
       writeAll();
