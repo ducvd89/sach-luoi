@@ -30,6 +30,34 @@ import 'tts/tts_manager.dart';
 /// Mỗi đoạn chờ sẵn chỉ tốn vài trăm KB trong bộ nhớ đệm nên để rộng tay.
 const _lookahead = 10;
 
+/// Tên file cho một phần đã xuất, chưa kèm đuôi.
+///
+/// Dạng `<tên truyện> - <chương> - <số thứ tự file>`, ví dụ:
+///
+///     Phàm Nhân Tu Tiên - 007 - 002
+///     Phàm Nhân Tu Tiên - 007-009 - 003     (file gộp nhiều chương)
+///
+/// Số chương đệm 0 cho đủ số chữ số của chương lớn nhất trong truyện, để tên
+/// file sắp theo bảng chữ cái là ra đúng thứ tự nghe — truyện 638 chương thì
+/// chương 7 phải là "007", không thì máy xếp nó sau chương 60.
+///
+/// [chuongDau] và [chuongCuoi] đếm từ 1, đúng con số người dùng thấy trong ứng
+/// dụng. Trùng nhau thì chỉ ghi một số.
+String tenFileXuat({
+  required String bookTitle,
+  required int chuongDau,
+  required int chuongCuoi,
+  required int soChuongLonNhat,
+  required int soThuTuFile,
+}) {
+  final ten = sanitizeFileName(bookTitle);
+  final rong = soChuongLonNhat.toString().length;
+  String so(int n) => n.toString().padLeft(rong, '0');
+  final chuong = chuongDau == chuongCuoi ? so(chuongDau) : '${so(chuongDau)}-${so(chuongCuoi)}';
+  return '${ten.isEmpty ? 'sach-noi' : ten} - $chuong - '
+      '${soThuTuFile.toString().padLeft(3, '0')}';
+}
+
 class ExportService {
   ExportService(this._tts);
 
@@ -213,6 +241,22 @@ class ExportService {
     final dinhDang = isWav ? ExportFormat.fromId(job.formatId) : null;
     var wavRate = 22050;
 
+    // Chương lớn nhất của cả truyện, không phải của khoảng đang xuất: xuất lại
+    // vài chương lẻ thì bề rộng số vẫn phải giống lần xuất trước, không thì tên
+    // file của cùng một truyện lệch nhau.
+    //
+    // Lấy chỉ số lớn nhất chứ không lấy số lượng: chương không có gì để đọc bị
+    // bỏ khỏi danh sách nên hai con số này không phải lúc nào cũng bằng nhau.
+    final soChuongLonNhat = chapters.isEmpty
+        ? 1
+        : chapters.map((c) => c.index + 1).reduce((a, b) => a > b ? a : b);
+
+    /// Số chương chứa đoạn [chunkIndex], đếm từ 1 như người dùng thấy.
+    int chuongCua(int chunkIndex) {
+      final at = chunkIndex.clamp(0, chunks.length - 1);
+      return chunks.isEmpty ? 1 : chunks[at].chapter + 1;
+    }
+
     String chapterTitleOf(int chunkIndex) {
       if (chunkIndex < 0 || chunkIndex >= chunks.length) return '';
       final chapterIndex = chunks[chunkIndex].chapter;
@@ -258,9 +302,13 @@ class ExportService {
           ? (current.chapterTitle.isEmpty ? 'Phần ${current.index + 1}' : current.chapterTitle)
           : '${job.bookTitle} — Phần ${current.index + 1}';
 
-      final base = sanitizeFileName(job.bookTitle);
-      final tenGoc = '${(current.index + 1).toString().padLeft(3, '0')} - '
-          '${base.isEmpty ? 'sach-noi' : base}';
+      final tenGoc = tenFileXuat(
+        bookTitle: job.bookTitle,
+        chuongDau: chuongCua(current.chunkFrom),
+        chuongCuoi: chuongCua(chunkTo),
+        soChuongLonNhat: soChuongLonNhat,
+        soThuTuFile: current.index + 1,
+      );
       // Luôn ghi WAV trước rồi mới nén, nên bước này lúc nào cũng là .wav khi
       // engine trả về mẫu âm thô.
       final fileName = '$tenGoc.${isWav ? 'wav' : 'mp3'}';

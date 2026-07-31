@@ -14,8 +14,10 @@ import 'package:sach_noi/core/vi_number.dart';
 import 'package:sach_noi/core/wav.dart';
 import 'package:sach_noi/models/book.dart';
 import 'package:sach_noi/models/settings.dart';
+import 'package:sach_noi/services/export_service.dart';
 
 void main() {
+  _testTenFileXuat();
   group('Đọc số tiếng Việt', () {
     test('các trường hợp cơ bản', () {
       expect(readInteger('0'), 'không');
@@ -230,6 +232,55 @@ void main() {
       // không thì hết đoạn nghe giống hết câu.
       expect(doan.inMilliseconds, greaterThan(700));
       expect(pauseAfterChunk(heading: false, pauseMs: 0), Duration.zero);
+    });
+  });
+}
+
+void _testTenFileXuat() {
+  group('Đặt tên file xuất ra', () {
+    String ten({
+      int dau = 7,
+      int cuoi = 7,
+      int lonNhat = 638,
+      int file = 2,
+      String truyen = 'Phàm Nhân Tu Tiên',
+    }) =>
+        tenFileXuat(
+          bookTitle: truyen,
+          chuongDau: dau,
+          chuongCuoi: cuoi,
+          soChuongLonNhat: lonNhat,
+          soThuTuFile: file,
+        );
+
+    test('đệm 0 cho đủ số chữ số của chương lớn nhất', () {
+      expect(ten(dau: 7, cuoi: 7, lonNhat: 638), 'Phàm Nhân Tu Tiên - 007 - 002');
+      expect(ten(dau: 7, cuoi: 7, lonNhat: 9), 'Phàm Nhân Tu Tiên - 7 - 002');
+      expect(ten(dau: 7, cuoi: 7, lonNhat: 1200), 'Phàm Nhân Tu Tiên - 0007 - 002');
+    });
+
+    test('file gộp nhiều chương thì ghi khoảng, cùng quy tắc đệm', () {
+      expect(ten(dau: 7, cuoi: 9, lonNhat: 638), 'Phàm Nhân Tu Tiên - 007-009 - 002');
+      expect(ten(dau: 1, cuoi: 120, lonNhat: 1200), 'Phàm Nhân Tu Tiên - 0001-0120 - 002');
+    });
+
+    test('một chương một file thì chỉ ghi một số', () {
+      expect(ten(dau: 42, cuoi: 42, lonNhat: 638).contains('-042'), isFalse);
+    });
+
+    test('sắp theo tên là ra đúng thứ tự nghe', () {
+      final danh = [
+        ten(dau: 100, cuoi: 100, lonNhat: 638, file: 3),
+        ten(dau: 7, cuoi: 7, lonNhat: 638, file: 1),
+        ten(dau: 60, cuoi: 60, lonNhat: 638, file: 2),
+      ]..sort();
+      expect(danh.first.contains(' - 007 - '), isTrue);
+      expect(danh.last.contains(' - 100 - '), isTrue);
+    });
+
+    test('tên truyện có ký tự cấm thì lọc đi, rỗng thì có tên thay thế', () {
+      expect(ten(truyen: 'A/B:C?'), isNot(contains('/')));
+      expect(ten(truyen: '???').startsWith('sach-noi'), isTrue);
     });
   });
 }
