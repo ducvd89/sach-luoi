@@ -244,6 +244,30 @@ void _testModelStore() {
       expect(await store.isInstalled(), isFalse);
     });
 
+    test('giọng tự thêm thì xoá được, giọng dựng sẵn thì không', () async {
+      // Lỗi cũ: giao diện chỉ coi là "tự thêm" khi source có đuôi .wav, mà thư
+      // viện Rust lại ghi "nguoi-dung" khi thêm giọng trong ứng dụng — nên giọng
+      // thêm từ điện thoại không bao giờ hiện nút xoá, dù bên dưới xoá được.
+      // Hai chỗ này phải khớp nhau: model_store.dart và ffi.rs.
+      root.createSync(recursive: true);
+      // Có sẵn hai file đi kèm ứng dụng thì voiceMeta khỏi phải chép chúng ra
+      // từ gói asset — việc đó cần binding của Flutter, không có trong test này.
+      store.dictFile.writeAsBytesSync(List.filled(8, 1));
+      store.voicesFile.writeAsStringSync('''
+{"presets":{
+  "Dựng sẵn":  {"source":"dựng sẵn trong mô hình","gender":"male","description":""},
+  "Tự thêm":   {"source":"nguoi-dung","gender":"","description":"Giọng bạn tự thêm"},
+  "Từ máy tính":{"source":"Latradio.wav","gender":"","description":""},
+  "Chữ hoa":   {"source":"Ghi-Am.WAV","gender":"","description":""}
+}}''');
+
+      final meta = await store.voiceMeta();
+      expect(meta['Dựng sẵn']!.builtIn, isTrue);
+      expect(meta['Tự thêm']!.builtIn, isFalse, reason: 'thêm trong ứng dụng');
+      expect(meta['Từ máy tính']!.builtIn, isFalse, reason: 'nap_giong.py ghi tên file mẫu');
+      expect(meta['Chữ hoa']!.builtIn, isFalse, reason: 'đuôi file không phân biệt hoa thường');
+    });
+
     test('thiếu từ điển âm vị thì báo chưa tải', () async {
       writeAll();
       store.dictFile.deleteSync();

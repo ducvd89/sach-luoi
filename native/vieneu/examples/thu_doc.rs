@@ -35,7 +35,9 @@ fn main() -> Result<(), String> {
     let voice = voices.get(&args[5]).ok_or(format!("không có giọng '{}'", args[5]))?;
 
     let phonemes = g2p.phonemize(&text, false)?;
-    println!("Âm vị: {}", &phonemes[..phonemes.len().min(90)]);
+    // Cắt theo ký tự chứ không theo byte: âm vị IPA là chữ nhiều byte, cắt giữa
+    // chừng là panic.
+    println!("Âm vị: {}", phonemes.chars().take(90).collect::<String>());
 
     let started = Instant::now();
     let result = synthesize(&mut model, &phonemes, voice, &Sampling::default(), 12345)?;

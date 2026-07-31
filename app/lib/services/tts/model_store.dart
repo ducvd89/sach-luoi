@@ -81,6 +81,14 @@ class VoiceMeta {
 /// Thư viện ghi 'male'/'female'; giao diện thì nói tiếng Việt.
 const _genders = {'male': 'Nam', 'female': 'Nữ'};
 
+/// Giọng này do người dùng tự thêm chứ không dựng sẵn trong mô hình.
+///
+/// Dấu hiệu phải khớp với `remove_voice_from_file` trong native/vieneu/src/ffi.rs
+/// — bên đó từ chối xoá giọng không mang dấu, nên giao diện hiện nút xoá cho
+/// giọng nào thì bên dưới phải xoá được đúng giọng đó.
+bool _tuThem(String source) =>
+    source == 'nguoi-dung' || source.toLowerCase().endsWith('.wav');
+
 class ModelStore {
   ModelStore({Directory? root}) : _root = root;
 
@@ -241,8 +249,12 @@ class ModelStore {
           VoiceMeta(
             gender: _genders[data['gender']] ?? '',
             description: data['description'] as String? ?? '',
-            // Giọng nhân bản mang theo tên file mẫu; giọng dựng sẵn thì không.
-            builtIn: (data['source'] as String? ?? '').endsWith('.wav') == false,
+            // Giọng tự thêm mới xoá được. Hai nguồn ghi dấu khác nhau: thêm
+            // trong ứng dụng thì thư viện Rust ghi "nguoi-dung" (và chính nó
+            // cũng chỉ cho xoá đúng những giọng mang dấu ấy), còn nap_giong.py
+            // bên máy tính ghi tên file mẫu. Bản trước chỉ xét đuôi .wav nên
+            // giọng thêm trong ứng dụng không bao giờ hiện nút xoá.
+            builtIn: !_tuThem(data['source'] as String? ?? ''),
           ),
         );
       });

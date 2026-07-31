@@ -97,6 +97,102 @@ pub fn read_wav(path: &Path) -> Result<(Vec<f32>, u32), String> {
     Err("WAV không có phần dữ liệu âm thanh".into())
 }
 
+/// Chọn đoạn "sạch" nhất trong bản ghi để làm mẫu.
+///
+/// Trước đây chỗ này chỉ cắt lấy [MAX_REF_SECONDS] giây ĐẦU. Bản gốc bên Python
+/// cũng làm y vậy, nhưng nó không bao giờ nhận bản ghi thô: `them_giong.py` đã
+/// lọc trước rồi mới đưa vào. Người dùng bấm "Thêm giọng" thì chọn thẳng file
+/// ghi âm, mà mấy giây đầu của bản ghi thật thường là im lặng, tiếng hắng giọng
+/// hay nhạc hiệu — mẫu hỏng thì đặc trưng giọng và mã tham chiếu đều hỏng theo,
+/// và đó là lúc giọng nhân bản ra đọc sai.
+///
+/// Nên làm đúng những gì `them_giong.py` làm: tìm cửa sổ có tỉ lệ tiếng nói cao
+/// nhất, nhích hai đầu về chỗ im lặng để không cắt ngang từ, bỏ im lặng thừa,
+/// rồi cân bằng âm lượng.
+fn chon_doan_sach(wav: &[f32], rate: u32) -> Vec<f32> {
+    let khung = (rate as f32 * 0.02) as usize; // 20 ms
+    if khung == 0 || wav.len() < khung * 2 {
+        return wav.to_vec();
+    }
+    let so_khung = wav.len() / khung;
+    let rms: Vec<f32> = (0..so_khung)
+        .map(|i| {
+            let o = &wav[i * khung..(i + 1) * khung];
+            (o.iter().map(|v| v * v).sum::<f32>() / khung as f32 + 1e-12).sqrt()
+        })
+        .collect();
+
+    // Ngưỡng "có tiếng nói": 6% của khung to nhất, nhưng không bao giờ dưới
+    // -42 dB — bản ghi toàn im lặng thì đừng nhận nhầm nhiễu nền thành giọng.
+    let dinh = rms.iter().copied().fold(0.0f32, f32::max);
+    let nguong = (dinh * 0.06).max(10f32.powf(-42.0 / 20.0));
+    let co_tieng: Vec<bool> = rms.iter().map(|v| *v > nguong).collect();
+
+    // Cửa sổ nào nhiều tiếng nói nhất thì lấy, trượt bằng tổng cộng dồn.
+    let rong = ((MAX_REF_SECONDS / 0.02) as usize).min(so_khung);
+    let mut cong_don = Vec::with_capacity(so_khung + 1);
+    cong_don.push(0u32);
+    for c in &co_tieng {
+        cong_don.push(cong_don.last().unwrap() + u32::from(*c));
+    }
+    let mut dau = 0usize;
+    let mut tot_nhat = 0u32;
+    for s in 0..=(so_khung - rong) {
+        let diem = cong_don[s + rong] - cong_don[s];
+        if diem > tot_nhat {
+            tot_nhat = diem;
+            dau = s;
+        }
+    }
+
+    // Nhích hai đầu về chỗ im lặng gần nhất, tối đa 25 khung (0,5 giây).
+    let mut a = dau;
+    let mut b = (dau + rong).min(so_khung);
+    while a > 0 && co_tieng[a] && a + 25 > dau {
+        a -= 1;
+    }
+    while b < so_khung && co_tieng[b - 1] && b < dau + rong + 25 {
+        b += 1;
+    }
+
+    let doan = &wav[a * khung..(b * khung).min(wav.len())];
+    let mut ra = bo_im_lang(doan, khung);
+
+    // Cân bằng âm lượng: mẫu quá nhỏ tiếng thì fbank ra khác hẳn.
+    let manh = ra.iter().fold(0.0f32, |m, v| m.max(v.abs()));
+    if manh > 1e-6 {
+        let he_so = 0.92 / manh;
+        for v in ra.iter_mut() {
+            *v *= he_so;
+        }
+    }
+    ra
+}
+
+/// Cắt im lặng hai đầu, chừa lại 80 ms cho tự nhiên.
+fn bo_im_lang(sig: &[f32], khung: usize) -> Vec<f32> {
+    let so_khung = sig.len() / khung;
+    if so_khung == 0 {
+        return sig.to_vec();
+    }
+    let rms: Vec<f32> = (0..so_khung)
+        .map(|i| {
+            let o = &sig[i * khung..(i + 1) * khung];
+            (o.iter().map(|v| v * v).sum::<f32>() / khung as f32 + 1e-12).sqrt()
+        })
+        .collect();
+    let dinh = rms.iter().copied().fold(0.0f32, f32::max);
+    let nguong = (dinh * 0.06).max(10f32.powf(-42.0 / 20.0));
+    let to: Vec<usize> = (0..so_khung).filter(|i| rms[*i] > nguong).collect();
+    if to.is_empty() {
+        return sig.to_vec();
+    }
+    let chua = 4usize; // 4 khung = 80 ms
+    let a = to[0].saturating_sub(chua) * khung;
+    let b = ((to[to.len() - 1] + chua).min(so_khung) * khung).min(sig.len());
+    sig[a..b].to_vec()
+}
+
 fn open(path: &Path) -> Result<Session, String> {
     let build = || -> Result<Session, Box<dyn std::error::Error>> {
         Ok(Session::builder()?
@@ -115,15 +211,12 @@ pub fn enroll(
     speaker_encoder: &Path,
     codec_encoder: &Path,
 ) -> Result<Enrolled, String> {
-    let (mut wav, rate) = read_wav(wav_path)?;
+    let (wav, rate) = read_wav(wav_path)?;
     if wav.is_empty() {
         return Err("file ghi âm rỗng".into());
     }
 
-    let limit = (MAX_REF_SECONDS * rate as f32) as usize;
-    if wav.len() > limit {
-        wav.truncate(limit);
-    }
+    let wav = chon_doan_sach(&wav, rate);
 
     // ── Đặc trưng giọng: 16 kHz -> fbank -> speaker_encoder ────────────────
     let at_16k = resample_to_16k(&wav, rate);

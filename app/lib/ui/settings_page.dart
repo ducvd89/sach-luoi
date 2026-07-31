@@ -503,7 +503,8 @@ class _AddVoiceButton extends StatelessWidget {
           label: const Text('Thêm giọng từ file ghi âm'),
         ),
         const SizedBox(height: 4),
-        Text('File .wav dài 3–15 giây, một người nói rõ, không nhạc nền.',
+        Text('File .wav một người nói rõ, không nhạc nền. Bản ghi dài cũng được — '
+            'ứng dụng tự chọn đoạn 8 giây sạch tiếng nhất trong đó.',
             style: TextStyle(fontSize: 12.5, color: hint)),
       ],
     );
