@@ -68,7 +68,18 @@ class HomeShellState extends State<HomeShell> {
           // trên. Nhờ vậy mép các thẻ trôi qua sau tấm kính lúc cuộn — không thì
           // sau kính chỉ là nền phẳng, nhìn hệt một mảng xám.
           Padding(
-            padding: EdgeInsets.only(left: wide ? 92 : 0),
+            // Chừa chỗ cho hai thanh điều hướng nổi. Bên trái là tấm kính dọc.
+            // Bên dưới: extendBody cho nội dung chạy xuyên qua sau thanh ngang,
+            // nhưng phần điều khiển ở đáy trang thì phải né ra, không thì bị
+            // thanh ấy đè lên — đúng lỗi đã gặp trên điện thoại.
+            //
+            // 80 là chiều cao NavigationBar của Material, 10 là lề tôi bọc thêm,
+            // còn viewPadding là vạch cử chỉ của máy (NavigationBar tự cộng
+            // phần này vào chiều cao của nó).
+            padding: EdgeInsets.only(
+              left: wide ? 92 : 0,
+              bottom: wide ? 0 : 90 + MediaQuery.viewPaddingOf(context).bottom,
+            ),
             child: Column(
               children: [
                 const _EngineBanner(),
