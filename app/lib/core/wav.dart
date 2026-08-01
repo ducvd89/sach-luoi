@@ -82,6 +82,36 @@ Uint8List wavPcm(Uint8List bytes) {
 
 double wavDuration(Uint8List bytes) => readWavInfo(bytes)?.seconds ?? 0;
 
+/// Ghép [silenceMs] mili giây lặng vào TRƯỚC phần dữ liệu của một file WAV.
+///
+/// Dùng để bịt khoảng dừng thật giữa hai lần mở file phát: nướng khoảng nghỉ
+/// giữa hai đoạn vào ngay đầu file đoạn sau rồi phát nối liền, thay vì để trình
+/// phát đứng im chờ một khoảng Timer rồi mới mở file mới. Đứng im là lúc thiết
+/// bị âm thanh có cơ hội ngủ — xem player_controller.dart, _giuThietBiAmThanh.
+///
+/// Không phải WAV hợp lệ, hoặc [silenceMs] không dương, thì trả nguyên [bytes]
+/// — bên gọi so sánh bằng identical() để biết có thật sự ghép được hay không.
+Uint8List wavWithLeadingSilence(Uint8List bytes, int silenceMs) {
+  final info = readWavInfo(bytes);
+  if (info == null || silenceMs <= 0) return bytes;
+
+  final bytesPerFrame = info.channels * (info.bitsPerSample ~/ 8);
+  if (bytesPerFrame <= 0) return bytes;
+  final silenceLen = (info.sampleRate * silenceMs ~/ 1000) * bytesPerFrame;
+  final pcm = wavPcm(bytes);
+
+  // Uint8List mới sinh ra đã toàn số 0 — đúng nghĩa là im lặng ở dạng PCM
+  // nguyên, khỏi phải tự ghi từng byte.
+  final out = Uint8List(_headerSize + silenceLen + pcm.length);
+  out.setRange(
+    0,
+    _headerSize,
+    wavHeader(silenceLen + pcm.length, info.sampleRate, channels: info.channels),
+  );
+  out.setRange(_headerSize + silenceLen, out.length, pcm);
+  return out;
+}
+
 /// Dựng phần đầu WAV 16-bit cho [pcmLength] byte dữ liệu.
 Uint8List wavHeader(int pcmLength, int sampleRate, {int channels = 1}) {
   final header = Uint8List(_headerSize);

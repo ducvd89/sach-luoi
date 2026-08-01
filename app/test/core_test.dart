@@ -194,6 +194,35 @@ void main() {
       expect(wavDuration(Uint8List(0)), 0);
     });
 
+    test('ghép khoảng lặng vào đầu: dài ra đúng, phần lặng thật sự im, đuôi giữ nguyên', () {
+      final samples = Float32List(22050); // 1 giây, đủ to để phân biệt với lặng
+      for (var i = 0; i < samples.length; i++) {
+        samples[i] = i.isEven ? 0.5 : -0.5;
+      }
+      final goc = buildWav(samples, 22050);
+
+      final ghep = wavWithLeadingSilence(goc, 200); // 200 ms lặng
+      final info = readWavInfo(ghep);
+      expect(info, isNotNull);
+      expect(wavDuration(ghep), closeTo(1.2, 0.001), reason: '1s gốc + 0,2s lặng');
+
+      final pcm = wavPcm(ghep);
+      // 200 ms đầu ở 22050 Hz, 16-bit mono = 8820 byte, phải toàn số 0.
+      final dauLang = pcm.sublist(0, 8820);
+      expect(dauLang.every((b) => b == 0), isTrue, reason: 'phần ghép vào phải là im lặng thật');
+      // Phần còn lại phải đúng dữ liệu gốc, không bị xê dịch hay cắt mất.
+      expect(pcm.sublist(8820), wavPcm(goc));
+    });
+
+    test('ghép khoảng lặng: không dương hoặc không phải WAV thì trả nguyên input', () {
+      final goc = buildWav(Float32List(100), 22050);
+      final khongLang = wavWithLeadingSilence(goc, 0);
+      expect(identical(khongLang, goc), isTrue);
+
+      final khongPhaiWav = Uint8List.fromList([1, 2, 3, 4]);
+      expect(identical(wavWithLeadingSilence(khongPhaiWav, 200), khongPhaiWav), isTrue);
+    });
+
     test('cân bằng âm lượng chỉ hạ đỉnh xuống, không đẩy lên', () {
       final loud = Float32List.fromList([1.0, -1.0, 0.5]);
       expect(normalizePeak(loud).reduce((a, b) => a.abs() > b.abs() ? a : b).abs(), closeTo(0.84, 0.001));

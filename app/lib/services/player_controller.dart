@@ -36,9 +36,7 @@ class PlayerController extends ChangeNotifier {
 
   int index = 0;
 
-  /// Đang trong khoảng nghỉ giữa hai đoạn thì vẫn tính là đang phát: nút bấm và
-  /// thanh trạng thái không được nhấp nháy chỉ vì nửa giây im lặng.
-  bool get isPlaying => _player.state.playing || _pauseTimer != null;
+  bool get isPlaying => _player.state.playing;
   bool isLoading = false;
   String? error;
 
@@ -50,10 +48,18 @@ class PlayerController extends ChangeNotifier {
 
   Timer? _saveTimer;
   Timer? _sleepTimer;
-
-  /// Đang đếm khoảng nghỉ trước khi sang đoạn kế tiếp.
-  Timer? _pauseTimer;
   DateTime? sleepAt;
+
+  /// Khoảng lặng (ms) đã ghép vào đầu file đang mở — 0 nếu mở thẳng bản gốc.
+  ///
+  /// Trừ ra khỏi [position]/[chunkDuration] khi báo cho giao diện, để đồng hồ
+  /// và thanh tiến trình cả sách vẫn tính đúng thời lượng LỜI ĐỌC, không lẫn
+  /// phần lặng nướng thêm vào chỉ để giữ luồng âm thanh không đứt quãng.
+  int _openSilenceMs = 0;
+
+  /// File tạm của lượt ghép lặng gần nhất, dọn khi có file mới thay vào —
+  /// xem [_duongDanPhat].
+  File? _fileGhepTruoc;
   int _loadToken = 0;
   AppSettings _settings = AppSettings();
 
@@ -63,13 +69,15 @@ class PlayerController extends ChangeNotifier {
     _giuThietBiAmThanh();
     _subscriptions.addAll([
       _player.stream.position.listen((value) {
-        position = value;
+        final thuc = value - Duration(milliseconds: _openSilenceMs);
+        position = thuc.isNegative ? Duration.zero : thuc;
         notifyListeners();
       }),
       _player.stream.duration.listen((value) {
         if (value > Duration.zero) {
-          chunkDuration = value;
-          _durations[index] = value.inMilliseconds / 1000;
+          final thuc = value - Duration(milliseconds: _openSilenceMs);
+          chunkDuration = thuc.isNegative ? Duration.zero : thuc;
+          _durations[index] = chunkDuration.inMilliseconds / 1000;
           notifyListeners();
         }
       }),
@@ -148,12 +156,20 @@ class PlayerController extends ChangeNotifier {
 
   // -- điều khiển ------------------------------------------------------------
 
-  Future<void> playChunk(int target, {bool autoplay = true, double offsetSeconds = 0}) async {
+  /// [leadingSilenceMs] là khoảng nghỉ nướng vào đầu file trước khi mở, dùng
+  /// đúng một lần cho lượt tự động sang đoạn kế — xem [_onChunkFinished]. Mọi
+  /// lượt gọi khác (bấm nút, tua, tiếp tục nghe) đều là 0: nhảy tới đâu thì
+  /// nghe ngay ở đó, không có khoảng nghỉ nào cả.
+  Future<void> playChunk(
+    int target, {
+    bool autoplay = true,
+    double offsetSeconds = 0,
+    int leadingSilenceMs = 0,
+  }) async {
     final b = book;
     if (b == null || target < 0 || target >= chunks.length) return;
 
     final token = ++_loadToken;
-    _cancelPause();
     index = target;
     isLoading = true;
     error = null;
@@ -175,8 +191,13 @@ class PlayerController extends ChangeNotifier {
       _duoi = audio.duoi;
       _doanCoDuoi = audio.duoi.isEmpty ? -2 : target;
       _durations[target] = audio.seconds;
-      await _player.open(Media(audio.file.path), play: autoplay);
+
+      final (duongDan, lang) = await _duongDanPhat(audio.file, leadingSilenceMs);
+      if (token != _loadToken) return; // nhảy đoạn khác ngay trong lúc ghép file
+      _openSilenceMs = lang;
+      await _player.open(Media(duongDan), play: autoplay);
       await _player.setRate(_settings.speed);
+      _dongBoGiuNhip(autoplay);
       if (offsetSeconds > 0.5) {
         // Trừ hao nửa giây để vị trí lưu lần trước không rơi đúng cuối đoạn
         // rồi nhảy ngay sang đoạn sau.
@@ -238,14 +259,30 @@ class PlayerController extends ChangeNotifier {
       }
       await _giuNhip.setVolume(0);
       await _giuNhip.setPlaylistMode(PlaylistMode.loop);
-      await _giuNhip.open(Media(file.path));
+      // play: false — chỉ nạp sẵn, chưa phát. Người dùng tự bấm dừng thì nên
+      // dừng thật, không có lý do gì giữ giả một luồng chạy trong lúc đó; luồng
+      // này chỉ bật đúng lúc có tiếng thật đang phát, xem _dongBoGiuNhip.
+      await _giuNhip.open(Media(file.path), play: false);
     } catch (_) {
       // Mở không được thì thôi, chỉ mất phần chống nuốt chữ.
     }
   }
 
   /// Luồng im lặng chạy vòng lặp để thiết bị âm thanh không ngủ giữa hai đoạn.
+  ///
+  /// Chỉ chạy trong lúc THẬT SỰ đang phát — xem [_dongBoGiuNhip]. Bấm dừng thì
+  /// dừng thật, không giả vờ giữ thiết bị thức trong lúc người nghe không nghe
+  /// gì cả.
   final Player _giuNhip = Player();
+
+  /// Bật/tắt luồng giữ nhịp theo đúng ý định phát/dừng của người dùng.
+  void _dongBoGiuNhip(bool dangPhat) {
+    if (dangPhat) {
+      unawaited(_giuNhip.play());
+    } else {
+      unawaited(_giuNhip.pause());
+    }
+  }
 
   /// Mã đuôi của đoạn vừa đọc và chỉ số của nó, để nối ngữ cảnh cho đoạn kế.
   List<int> _duoi = const [];
@@ -322,18 +359,15 @@ class PlayerController extends ChangeNotifier {
 
   Future<void> togglePlay() async {
     if (book == null) return;
-    if (_pauseTimer != null) {
-      // Bấm dừng đúng lúc đang nghỉ giữa hai đoạn.
-      _cancelPause();
-      notifyListeners();
-      await saveProgress();
-    } else if (_player.state.playing) {
+    if (_player.state.playing) {
       await _player.pause();
+      _dongBoGiuNhip(false);
       await saveProgress();
     } else if (_player.state.duration == Duration.zero) {
       await playChunk(index, offsetSeconds: book!.progress.offsetSeconds);
     } else {
       await _player.play();
+      _dongBoGiuNhip(true);
     }
   }
 
@@ -368,35 +402,90 @@ class PlayerController extends ChangeNotifier {
     await playChunk(target, autoplay: isPlaying, offsetSeconds: max(0, targetSeconds - accumulated));
   }
 
+  /// Hết một đoạn thì mở đoạn kế NGAY — không còn đứng im chờ một khoảng
+  /// Timer rồi mới mở file mới.
+  ///
+  /// Bản trước dừng hẳn giữa hai đoạn trong lúc chờ (đúng khoảng nghỉ người
+  /// nghe muốn có). Khoảng đứng im đó là lúc thiết bị âm thanh của máy có cơ
+  /// hội ngủ, và phần đầu đoạn kế mở ra sau đó hay bị hụt tiếng — xác nhận bằng
+  /// cách bật phần mềm ghi âm màn hình lên thì hết hụt, vì nó vô tình giữ thiết
+  /// bị luôn thức.
+  ///
+  /// Giờ khoảng nghỉ được nướng thành mẫu âm lặng ngay ở ĐẦU file đoạn kế
+  /// ([playChunk] gọi [_duongDanPhat]), rồi phát nối liền tức thì. Luồng âm
+  /// thanh gửi cho thiết bị không có lúc nào ngừng hẳn nên không có gì để ngủ.
+  /// Cùng lúc vẫn giữ luồng lặng chạy nền ([_giuThietBiAmThanh]) phòng khi
+  /// người nghe tự bấm dừng lâu — trường hợp đó không đoán trước được nên
+  /// không nướng lặng vào file được.
   void _onChunkFinished() {
     if (index + 1 >= chunks.length) {
       unawaited(saveProgress(finished: true));
       return;
     }
-
-    final pause = pauseAfterChunk(
+    final pauseMs = pauseAfterChunk(
       heading: currentChunk?.heading ?? false,
       pauseMs: _settings.chunkPauseMs,
-    );
-    if (pause <= Duration.zero) {
-      unawaited(playChunk(index + 1));
-      return;
-    }
-
-    // Nghỉ một nhịp rồi mới đọc tiếp. Người dùng bấm dừng hoặc nhảy đoạn giữa
-    // chừng thì bỏ hẹn: [_loadToken] đã đổi nên lượt hẹn cũ tự vô hiệu.
-    final token = _loadToken;
-    _pauseTimer?.cancel();
-    _pauseTimer = Timer(pause, () {
-      _pauseTimer = null;
-      if (token == _loadToken) unawaited(playChunk(index + 1));
-    });
-    notifyListeners();
+    ).inMilliseconds;
+    unawaited(_sangDoanKe(pauseMs));
   }
 
-  void _cancelPause() {
-    _pauseTimer?.cancel();
-    _pauseTimer = null;
+  /// Đợi bộ đệm phần cứng xả hết tiếng đoạn vừa xong rồi mới mở đoạn kế.
+  ///
+  /// Không đợi thì [_player.open] xảy ra ngay lúc bộ đệm mpv (mặc định đệm
+  /// trước 200 ms — audio-buffer) còn đang xả xuống loa; mở file mới xen vào
+  /// đúng lúc đó cắt mất một âm ở cuối đoạn vừa đọc. Đo được đúng triệu chứng
+  /// này sau khi bỏ khoảng chờ Timer cũ.
+  ///
+  /// 200 ms (đúng bằng audio-buffer) vẫn còn hụt nhẹ trên máy thật — bộ đệm
+  /// thật của thiết bị (driver + hệ điều hành, không chỉ phần mpv tự khai) rõ
+  /// ràng dày hơn con số mpv báo. Nâng lên 400 ms.
+  ///
+  /// Ngắn hơn nhiều so với khoảng nghỉ người dùng đặt, và [_giuNhip] vẫn đang
+  /// chạy suốt lúc này (đang phát thật mà) nên thiết bị không có gì phải ngủ
+  /// trong nhịp chờ ngắn này. Phần còn lại của khoảng nghỉ vẫn nướng vào đầu
+  /// file đoạn kế như cũ.
+  static const _nhipXaDem = 400;
+
+  Future<void> _sangDoanKe(int pauseMs) async {
+    final token = _loadToken;
+    await Future<void>.delayed(const Duration(milliseconds: _nhipXaDem));
+    if (token != _loadToken) return; // đã nhảy đi chỗ khác trong lúc đợi
+    final lang = max(0, pauseMs - _nhipXaDem);
+    await playChunk(index + 1, leadingSilenceMs: lang);
+  }
+
+  /// Đường dẫn thật sự đưa cho trình phát.
+  ///
+  /// [leadingSilenceMs] > 0 thì ghép khoảng lặng vào đầu [file] rồi ghi ra một
+  /// file tạm và trả đường dẫn của nó; không ghép được (không dương, không
+  /// phải WAV hợp lệ, hay lỗi đọc/ghi) thì trả thẳng đường dẫn gốc. Trả kèm số
+  /// mili giây lặng THẬT SỰ đã ghép, để [playChunk] biết trừ bù cho đồng hồ.
+  Future<(String, int)> _duongDanPhat(File file, int leadingSilenceMs) async {
+    if (leadingSilenceMs <= 0) return (file.path, 0);
+    try {
+      final goc = await file.readAsBytes();
+      final ghep = wavWithLeadingSilence(goc, leadingSilenceMs);
+      if (identical(ghep, goc)) return (file.path, 0); // không phải WAV, hoặc lặng = 0
+
+      // Tên file mới mỗi lượt, không ghi đè: file cũ có thể vẫn đang được trình
+      // phát đọc dở (trên Windows, ghi đè file đang mở là lỗi). Đến lượt sau,
+      // đoạn vừa phát chắc chắn đã đọc xong (completed đã bắn) nên xoá được.
+      final tmp = File(p.join(
+        Storage.instance.cacheDir.path,
+        'phat',
+        'ghep_${DateTime.now().microsecondsSinceEpoch}.wav',
+      ));
+      await tmp.parent.create(recursive: true);
+      await tmp.writeAsBytes(ghep, flush: true);
+
+      final cu = _fileGhepTruoc;
+      _fileGhepTruoc = tmp;
+      if (cu != null) unawaited(cu.delete().catchError((_) => cu));
+
+      return (tmp.path, leadingSilenceMs);
+    } catch (_) {
+      return (file.path, 0); // ghép hỏng thì phát thẳng bản gốc, mất mỗi khoảng lặng
+    }
   }
 
   // -- hẹn giờ tắt -----------------------------------------------------------
@@ -409,6 +498,7 @@ class PlayerController extends ChangeNotifier {
       sleepAt = DateTime.now().add(duration);
       _sleepTimer = Timer(duration, () {
         _player.pause();
+        _dongBoGiuNhip(false);
         sleepAt = null;
         notifyListeners();
       });
@@ -438,11 +528,12 @@ class PlayerController extends ChangeNotifier {
   Future<void> stop() async {
     _saveTimer?.cancel();
     _saveTimer = null;
-    _cancelPause();
     if (book != null) await saveProgress();
     await _player.stop();
+    _dongBoGiuNhip(false);
     position = Duration.zero;
     chunkDuration = Duration.zero;
+    _openSilenceMs = 0;
   }
 
   @override
@@ -450,7 +541,8 @@ class PlayerController extends ChangeNotifier {
     unawaited(_giuNhip.dispose());
     _saveTimer?.cancel();
     _sleepTimer?.cancel();
-    _pauseTimer?.cancel();
+    final ghep = _fileGhepTruoc;
+    if (ghep != null) unawaited(ghep.delete().catchError((_) => ghep));
     for (final subscription in _subscriptions) {
       unawaited(subscription.cancel());
     }
