@@ -6,14 +6,18 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart';
+import 'package:path/path.dart' as p;
 
+import '../core/wav.dart';
 import '../models/book.dart';
 import '../models/settings.dart';
 import 'library_service.dart';
+import 'storage.dart';
 import 'tts/tts_manager.dart';
 
 /// Tốc độ đọc được áp bằng cách chỉnh tốc độ phát chứ không tổng hợp lại —
@@ -56,6 +60,7 @@ class PlayerController extends ChangeNotifier {
   final List<StreamSubscription<dynamic>> _subscriptions = [];
 
   void attachStreams() {
+    _giuThietBiAmThanh();
     _subscriptions.addAll([
       _player.stream.position.listen((value) {
         position = value;
@@ -191,25 +196,127 @@ class PlayerController extends ChangeNotifier {
     }
   }
 
+  /// Giữ thiết bị âm thanh luôn mở giữa các đoạn.
+  ///
+  /// Triệu chứng: chữ đầu đoạn kế thỉnh thoảng mất hẳn. Không phải mô hình sinh
+  /// thiếu — file ghi ra đo được vẫn đủ tiếng, im lặng đầu đoạn chỉ 0,04-0,08
+  /// giây. Manh mối quyết định: bật OBS lên ghi âm thì hết mất chữ, vì OBS mở
+  /// một luồng thu và giữ thiết bị sống.
+  ///
+  /// Tức là giữa hai đoạn có khoảng nghỉ, hệ điều hành cho thiết bị nghỉ theo,
+  /// rồi phần đầu luồng mới bị nuốt trong lúc nó thức dậy.
+  ///
+  /// `audio-stream-silence` bảo mpv phát im lặng ngầm lúc rảnh để thiết bị
+  /// không kịp ngủ. Đúng thứ mpv làm ra cho mấy bộ giải mã HDMI hay cắt mất
+  /// phần đầu. Không chèn im lặng vào chính file — làm thế là đoạn nào cũng bị
+  /// trễ thêm, nghe trực tiếp thành ra ì ạch.
+  Future<void> _giuThietBiAmThanh() async {
+    // Cách một: bảo chính mpv phát im lặng ngầm lúc rảnh. Rẻ nhất, nhưng đã thử
+    // và KHÔNG ăn thua — hoặc thuộc tính không được áp, hoặc luồng ấy vẫn tắt
+    // theo file. Vẫn đặt vì không mất gì.
+    final nen = _player.platform;
+    if (nen is NativePlayer) {
+      try {
+        await nen.setProperty('audio-stream-silence', 'yes');
+      } catch (_) {
+        // Không đặt được thì thôi, còn cách hai ở dưới.
+      }
+    }
+
+    // Cách hai: tự mở một luồng im lặng chạy vòng lặp riêng, âm lượng 0.
+    //
+    // Đây đúng là thứ OBS vô tình làm hộ: nó mở một luồng trên thiết bị âm
+    // thanh và giữ sống, nên bật OBS lên là hết nuốt chữ. Luồng này độc lập với
+    // trình phát chính nên không phụ thuộc mpv có tôn trọng tuỳ chọn nào không,
+    // và không bao giờ dừng nên thiết bị không kịp ngủ giữa hai đoạn.
+    try {
+      final file = File(p.join(Storage.instance.cacheDir.path, 'giu-nhip.wav'));
+      if (!await file.exists()) {
+        await file.parent.create(recursive: true);
+        // Một giây im lặng 48 kHz — đủ ngắn để lặp liên tục mà không tốn gì.
+        await file.writeAsBytes(buildWav(Float32List(48000), 48000), flush: true);
+      }
+      await _giuNhip.setVolume(0);
+      await _giuNhip.setPlaylistMode(PlaylistMode.loop);
+      await _giuNhip.open(Media(file.path));
+    } catch (_) {
+      // Mở không được thì thôi, chỉ mất phần chống nuốt chữ.
+    }
+  }
+
+  /// Luồng im lặng chạy vòng lặp để thiết bị âm thanh không ngủ giữa hai đoạn.
+  final Player _giuNhip = Player();
+
   /// Mã đuôi của đoạn vừa đọc và chỉ số của nó, để nối ngữ cảnh cho đoạn kế.
   List<int> _duoi = const [];
   int _doanCoDuoi = -2;
 
+  /// Đọc trước bao nhiêu đoạn khi có nối ngữ cảnh.
+  ///
+  /// Chỉ MỘT. Chuỗi phải đi lần lượt nên ba đoạn mất khoảng 4,2 giây — dài xấp
+  /// xỉ chính đoạn đang phát, tức là mô hình vẫn đang chạy hết công suất đúng
+  /// lúc trình phát mở đoạn kế, và đầu đoạn bị hụt tiếng. Một đoạn mất khoảng
+  /// 1,4 giây rồi máy rảnh, thừa sức sẵn sàng trước khi cần tới.
+  static const _sauDocTruoc = 1;
+
+  /// Đọc trước mấy đoạn tới cho khỏi khựng ở chỗ chuyển đoạn.
   void _prefetchAround(int from) {
-    // Tuần tự thì không tổng hợp trước: đoạn sau phải chờ đuôi của đoạn này,
-    // đọc trước mà thiếu ngữ cảnh thì vừa phí vừa lấp cache bằng bản không nối.
-    if (_settings.nguCanhNghe == NguCanh.tuanTu) return;
-    final texts = <String>[];
-    for (var i = from + 1; i <= min(from + 3, chunks.length - 1); i++) {
-      texts.add(chunks[i].speech);
+    if (_settings.nguCanhNghe == NguCanh.khong) {
+      // Không nối ngữ cảnh thì các đoạn độc lập, bắn hết một lượt cho nhanh.
+      final texts = <String>[];
+      for (var i = from + 1; i <= min(from + 3, chunks.length - 1); i++) {
+        texts.add(chunks[i].speech);
+      }
+      if (texts.isNotEmpty) {
+        _tts.prefetch(
+          engineId: _settings.engineId,
+          voiceId: _settings.voiceNghe,
+          speed: _synthesisSpeed,
+          texts: texts,
+        );
+      }
+      return;
     }
-    if (texts.isNotEmpty) {
-      _tts.prefetch(
-        engineId: _settings.engineId,
-        voiceId: _settings.voiceNghe,
-        speed: _synthesisSpeed,
-        texts: texts,
-      );
+    unawaited(_docTruocTheoChuoi(from, _loadToken));
+  }
+
+  /// Đọc trước theo chuỗi khi có nối ngữ cảnh.
+  ///
+  /// Bản trước tắt hẳn việc đọc trước ở chế độ nối ngữ cảnh, nên mỗi lần sang
+  /// đoạn mới là phải ngồi chờ mô hình — nghe giật cục ở đúng chỗ nối.
+  ///
+  /// Nhưng cái chặn không phải là NGHE XONG đoạn trước: chỉ cần đoạn trước tổng
+  /// hợp xong là đã có đuôi để bắt đầu đoạn sau. Mà lúc ấy đoạn trước còn đang
+  /// phát, tức là có sẵn vài giây rảnh. Mô hình chạy nhanh hơn nhịp nghe (đo
+  /// được 2,87 lần thời gian thực) nên đọc trước ba đoạn là thừa sức bù.
+  ///
+  /// Phải đi lần lượt chứ không bắn song song được: đoạn sau cần đuôi của đoạn
+  /// liền trước, chưa có thì chưa bắt đầu được.
+  Future<void> _docTruocTheoChuoi(int from, int token) async {
+    // Nhường một nhịp cho trình phát mở file và chạy êm đã rồi mới nạp CPU.
+    // Mô hình ăn cả bốn luồng, khởi động nó đúng lúc đang mở file mới thì đầu
+    // đoạn bị hụt tiếng.
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    if (token != _loadToken) return;
+
+    var ngu = _duoi;
+    for (var i = from + 1; i <= min(from + _sauDocTruoc, chunks.length - 1); i++) {
+      // Người dùng nhảy sang chỗ khác thì bỏ dở, đừng đốt CPU cho đoạn không ai
+      // còn nghe nữa.
+      if (token != _loadToken || ngu.isEmpty) return;
+      try {
+        final audio = await _tts.audioFor(
+          engineId: _settings.engineId,
+          voiceId: _settings.voiceNghe,
+          speed: _synthesisSpeed,
+          text: chunks[i].speech,
+          nguCanh: ngu,
+        );
+        ngu = audio.duoi;
+      } catch (_) {
+        // Đọc trước hỏng thì thôi, lúc thật sự cần sẽ đọc lại và báo lỗi tử tế.
+        return;
+      }
     }
   }
 
@@ -340,6 +447,7 @@ class PlayerController extends ChangeNotifier {
 
   @override
   void dispose() {
+    unawaited(_giuNhip.dispose());
     _saveTimer?.cancel();
     _sleepTimer?.cancel();
     _pauseTimer?.cancel();

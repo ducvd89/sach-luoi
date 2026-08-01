@@ -245,12 +245,13 @@ class OnDeviceVieNeuEngine implements TtsEngine {
     _busy[native] = (_busy[native] ?? 0) + 1;
     final Float32List raw;
     final Int32List duoi;
+    final coNgu = nguCanh != null && nguCanh.isNotEmpty;
     try {
       final ra = await native.synthesize(
         text,
         voice,
         seed: seed,
-        nguCanh: nguCanh == null || nguCanh.isEmpty ? null : Int32List.fromList(nguCanh),
+        nguCanh: coNgu ? Int32List.fromList(nguCanh) : null,
       );
       raw = ra.samples;
       duoi = ra.duoi;

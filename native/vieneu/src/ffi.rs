@@ -30,6 +30,18 @@ pub struct Engine {
 /// quen thuộc.
 const KHUNG_DUOI: usize = 100;
 
+/// Bao nhiêu khung lặng nối vào cuối đuôi (12,5 khung = 1 giây).
+///
+/// Không có nó thì mã tham chiếu dừng ngay giữa lúc đang có tiếng, mô hình hiểu
+/// là đang NÓI TIẾP chứ không phải BẮT ĐẦU NÓI — mà người nói tiếp thì vào câu
+/// nhẹ hơn, nên chữ đầu đoạn sau ra lí nhí. Thêm một quãng lặng vào là mô hình
+/// thấy câu trước đã dứt hẳn.
+///
+/// Lấy lặng từ chỗ im nhất của chính đoạn vừa đọc, không dựng lặng nhân tạo:
+/// nó mang đúng nền phòng và đúng giọng, mà cũng khỏi cần bộ mã hoá âm (bộ ấy
+/// tải riêng, đường chạy bình thường không có).
+const KHUNG_LANG: usize = 5;
+
 fn to_str<'a>(ptr: *const c_char) -> Option<&'a str> {
     if ptr.is_null() {
         return None;
@@ -235,7 +247,34 @@ pub extern "C" fn vieneu_synthesize(
     // Cất đuôi lại cho đoạn kế; bên gọi lấy qua vieneu_duoi.
     let n_vq = engine.model.cfg.n_vq;
     let lay = KHUNG_DUOI.min(result.frames);
-    engine.duoi = result.codes[(result.frames - lay) * n_vq..].to_vec();
+    let mut duoi: Vec<i32> = result.codes[(result.frames - lay) * n_vq..].to_vec();
+
+    // Nối thêm quãng lặng — xem KHUNG_LANG.
+    let mau_moi_khung = if result.frames > 0 { result.samples.len() / result.frames } else { 0 };
+    if result.frames > KHUNG_LANG && mau_moi_khung > 0 {
+        let nang_luong: Vec<f32> = (0..result.frames)
+            .map(|f| {
+                let a = f * mau_moi_khung;
+                let b = ((f + 1) * mau_moi_khung).min(result.samples.len());
+                result.samples[a..b].iter().map(|v| v * v).sum::<f32>()
+            })
+            .collect();
+
+        // Cửa sổ KHUNG_LANG khung liền nhau có tổng năng lượng nhỏ nhất, trượt
+        // bằng tổng cộng dồn.
+        let mut tong: f32 = nang_luong[..KHUNG_LANG].iter().sum();
+        let mut it_nhat = tong;
+        let mut dau = 0usize;
+        for i in 1..=(result.frames - KHUNG_LANG) {
+            tong += nang_luong[i + KHUNG_LANG - 1] - nang_luong[i - 1];
+            if tong < it_nhat {
+                it_nhat = tong;
+                dau = i;
+            }
+        }
+        duoi.extend_from_slice(&result.codes[dau * n_vq..(dau + KHUNG_LANG) * n_vq]);
+    }
+    engine.duoi = duoi;
 
     let mut samples = result.samples;
     samples.shrink_to_fit();
