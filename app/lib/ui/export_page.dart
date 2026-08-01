@@ -17,6 +17,8 @@ import '../models/export_job.dart';
 import '../services/storage.dart';
 import '../services/thu_muc_xuat.dart';
 import 'app_scope.dart';
+import 'chon_giong.dart';
+import 'kinh.dart';
 import 'home_shell.dart';
 import 'nut_sac.dart';
 import 'theme.dart';
@@ -214,6 +216,25 @@ class _ExportPageState extends State<ExportPage> {
                     subtitle: Text('Tránh cắt ngang giữa chương khi đã gần đủ độ dài',
                         style: TextStyle(fontSize: 12.5, color: Theme.of(context).hintColor)),
                   ),
+                const SizedBox(height: 4),
+                BangChonGiong(
+                  voices: state.voices,
+                  voiceId: settings.voiceXuat,
+                  nguCanh: settings.nguCanhXuat,
+                  // Khoá khi có job đang chạy: đổi giữa chừng thì nửa file một
+                  // giọng. Tạm dừng, đổi, chạy tiếp là phần còn lại theo mức mới.
+                  khoa: state.runningJob != null
+                      ? 'Tạm dừng việc xuất file rồi mới đổi được'
+                      : null,
+                  onVoice: (v) {
+                    settings.voiceXuat = v;
+                    AppScope.read(context).saveSettings();
+                  },
+                  onNguCanh: (v) {
+                    settings.nguCanhXuat = v;
+                    AppScope.read(context).saveSettings();
+                  },
+                ),
                 const SizedBox(height: 10),
                 _FolderRow(
                   book: book,
@@ -232,7 +253,7 @@ class _ExportPageState extends State<ExportPage> {
                     'Sẽ xuất ${selected.length} chương — tổng khoảng ${formatTime(seconds)}, '
                     'chia thành $partCount file ${dinhDang.extension.toUpperCase()}, '
                     '~${megabytes < 10 ? megabytes.toStringAsFixed(1) : megabytes.round()} MB.\n'
-                    'Giọng: ${state.voices.where((v) => v.id == settings.voiceId).map((v) => v.name).firstOrNull ?? settings.voiceId}'
+                    'Giọng: ${state.voices.where((v) => v.id == settings.voiceXuat).map((v) => v.name).firstOrNull ?? settings.voiceXuat}'
                     ' · tốc độ ${settings.speed}× (được ghi thẳng vào file)'
                     '${isWav ? '\nWAV không nén nên nặng nhất — chọn Opus thì nhỏ hơn khoảng 30 lần mà nghe gần như không khác. Đổi ở mục '
                         'Định dạng file phía trên.' : ''}',
@@ -549,13 +570,14 @@ class _JobCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 11),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(99),
-              child: LinearProgressIndicator(
-                value: preparing && job.doneChunks == 0 ? null : job.progress,
-                minHeight: 5,
-              ),
-            ),
+            // Đang chuẩn bị thì chưa biết bao nhiêu phần trăm, để nguyên thanh
+            // chạy vô định của Material; có số rồi thì đổi sang thanh kính.
+            preparing && job.doneChunks == 0
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(99),
+                    child: const LinearProgressIndicator(minHeight: 6),
+                  )
+                : ThanhKinh(phan: job.progress, sac: SacNut.chinh, cao: 8),
             const SizedBox(height: 6),
             Text(
               '${job.doneChunks}/${job.totalChunks} đoạn (${(job.progress * 100).round()}%) · '

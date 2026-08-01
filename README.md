@@ -10,7 +10,7 @@ Mô hình giọng nói chạy trong chính tiến trình của ứng dụng qua 
 
 ## Cài đặt
 
-**Windows** — chạy bộ cài `SachLuoi-Setup-1.2.0.exe` (~33 MB). Không cần quyền quản trị: nó cài vào
+**Windows** — chạy bộ cài `SachLuoi-Setup-1.2.1.exe` (~33 MB). Không cần quyền quản trị: nó cài vào
 `%LOCALAPPDATA%\Programs\SachLuoi`, tạo lối tắt Start Menu và trình gỡ cài. Lúc gỡ có **hỏi riêng**
 trước khi xoá thư viện sách — mặc định giữ lại.
 

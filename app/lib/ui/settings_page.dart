@@ -100,15 +100,13 @@ class _SettingsPageState extends State<SettingsPage> {
                     style: TextStyle(fontSize: 13, color: hint),
                   )
                 else ...[
-                  Text('Chọn giọng', style: TextStyle(fontSize: 12.5, color: hint)),
+                  // Chọn giọng nằm ở trang Nghe và trang Xuất file, mỗi trang một
+                  // giọng riêng. Ở đây chỉ còn việc quản lý: xem có những giọng
+                  // nào và xoá giọng tự thêm.
+                  Text('Giọng đã có trên máy', style: TextStyle(fontSize: 12.5, color: hint)),
                   const SizedBox(height: 6),
                   for (final voice in state.voices)
-                    RadioListTile<String>(
-                      value: voice.id,
-                      groupValue: settings.voiceId,
-                      onChanged: (value) {
-                        if (value != null) AppScope.read(context).setVoice(value);
-                      },
+                    ListTile(
                       contentPadding: EdgeInsets.zero,
                       dense: true,
                       title: Text(
@@ -119,7 +117,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           ? null
                           : Text(voice.description, style: TextStyle(fontSize: 12.5, color: hint)),
                       // Giọng dựng sẵn không xoá được; chỉ giọng tự thêm mới có nút.
-                      secondary: voice.builtIn
+                      trailing: voice.builtIn
                           ? null
                           : IconButton(
                               tooltip: 'Xoá giọng này',
@@ -168,6 +166,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     style: TextStyle(fontSize: 12.5, color: hint),
                   ),
                 ),
+                const Divider(height: 26),
                 SwitchListTile(
                   value: settings.removeBoilerplate,
                   contentPadding: EdgeInsets.zero,

@@ -182,10 +182,17 @@ class AppState extends ChangeNotifier {
     if (status.ready) {
       try {
         voices = await engine.voices();
-        if (voices.isNotEmpty && !voices.any((v) => v.id == settings.voiceId)) {
-          settings.voiceId = voices.first.id;
-          await saveSettings();
+        // Hai trang chọn giọng riêng nên phải kiểm cả hai.
+        var doi = false;
+        if (voices.isNotEmpty && !voices.any((v) => v.id == settings.voiceNghe)) {
+          settings.voiceNghe = voices.first.id;
+          doi = true;
         }
+        if (voices.isNotEmpty && !voices.any((v) => v.id == settings.voiceXuat)) {
+          settings.voiceXuat = voices.first.id;
+          doi = true;
+        }
+        if (doi) await saveSettings();
       } catch (err) {
         engineStatus = EngineStatus(ready: false, message: 'Không lấy được danh sách giọng: $err');
       }
@@ -300,8 +307,8 @@ class AppState extends ChangeNotifier {
     await saveSettings();
   }
 
-  Future<void> setVoice(String voiceId) async {
-    settings.voiceId = voiceId;
+  Future<void> setVoiceNghe(String voiceId) async {
+    settings.voiceNghe = voiceId;
     await saveSettings();
   }
 
@@ -344,7 +351,9 @@ class AppState extends ChangeNotifier {
       );
     }
 
-    final voiceName = voices.where((v) => v.id == settings.voiceId).map((v) => v.name).firstOrNull ?? settings.voiceId;
+    final voiceName =
+        voices.where((v) => v.id == settings.voiceXuat).map((v) => v.name).firstOrNull ??
+            settings.voiceXuat;
     final job = await exports.createJob(
       book: book,
       settings: settings,
@@ -360,6 +369,8 @@ class AppState extends ChangeNotifier {
 
   Future<void> resumeExport(ExportJob job) async {
     if (!preparingJobs.add(job.id)) return;
+    // Tạm dừng, đổi cách nối ngữ cảnh, rồi chạy tiếp — phần còn lại theo mức mới.
+    job.nguCanh = settings.nguCanhXuat;
     notifyListeners();
     try {
       final book = await library.getBook(job.bookId);

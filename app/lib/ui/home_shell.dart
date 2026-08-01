@@ -4,6 +4,7 @@ library;
 import 'package:flutter/material.dart';
 
 import 'app_scope.dart';
+import 'kinh.dart';
 import 'nut_sac.dart';
 import 'export_page.dart';
 import 'library_page.dart';
@@ -61,14 +62,35 @@ class HomeShellState extends State<HomeShell> {
       // Cạnh dưới để thanh điều hướng tự lo, nên không cắt ở đây.
       body: SafeArea(
         bottom: false,
-        child: Row(
+        child: Stack(
         children: [
+          // Nội dung trải hết bề ngang rồi chừa lề cho thanh điều hướng nổi lên
+          // trên. Nhờ vậy mép các thẻ trôi qua sau tấm kính lúc cuộn — không thì
+          // sau kính chỉ là nền phẳng, nhìn hệt một mảng xám.
+          Padding(
+            padding: EdgeInsets.only(left: wide ? 92 : 0),
+            child: Column(
+              children: [
+                const _EngineBanner(),
+                _BusyBar(tabIndex: _index),
+                Expanded(child: pages[_index]),
+                if (state.currentBook != null && _index != 1) const MiniPlayer(),
+              ],
+            ),
+          ),
           if (wide)
-            NavigationRail(
+            Positioned(
+              left: 8,
+              top: 8,
+              bottom: 8,
+              width: 76,
+              child: Kinh(
+                bo: 26,
+                child: NavigationRail(
               selectedIndex: _index,
               onDestinationSelected: goTo,
               labelType: NavigationRailLabelType.all,
-              backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+              backgroundColor: Colors.transparent,
               // Vòng tròn chuyển sắc đã là dấu hiệu "đang chọn" rồi; để thêm
               // mảng nền của Material nữa thì thành hai lớp chỉ dấu chồng nhau.
               indicatorColor: Colors.transparent,
@@ -88,27 +110,24 @@ class HomeShellState extends State<HomeShell> {
                     label: Text(d.label),
                   ),
               ],
+                ),
+              ),
             ),
-          if (wide) const VerticalDivider(width: 1),
-          Expanded(
-            child: Column(
-              children: [
-                const _EngineBanner(),
-                _BusyBar(tabIndex: _index),
-                Expanded(child: pages[_index]),
-                if (state.currentBook != null && _index != 1) const MiniPlayer(),
-              ],
-            ),
-          ),
         ],
         ),
       ),
+      // Thanh dưới đáy cũng là kính nổi: nội dung cuộn qua phía sau nó.
+      extendBody: true,
       bottomNavigationBar: wide
           ? null
-          : NavigationBar(
+          : Padding(
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+              child: Kinh(
+                bo: 28,
+                child: NavigationBar(
               selectedIndex: _index,
               onDestinationSelected: goTo,
-              backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+              backgroundColor: Colors.transparent,
               indicatorColor: Colors.transparent,
               indicatorShape: const CircleBorder(),
               destinations: [
@@ -120,6 +139,8 @@ class HomeShellState extends State<HomeShell> {
                     label: d.label,
                   ),
               ],
+                ),
+              ),
             ),
     );
   }

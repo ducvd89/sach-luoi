@@ -9,6 +9,8 @@ import 'package:flutter/services.dart';
 
 import '../models/book.dart';
 import 'app_scope.dart';
+import 'chon_giong.dart';
+import 'kinh.dart';
 import 'nut_sac.dart';
 import 'fast_scrollbar.dart';
 import 'reading_pane.dart';
@@ -67,6 +69,7 @@ class _PlayerPageState extends State<PlayerPage> {
                     : reading,
               ),
               const Divider(height: 1),
+              const _ChonGiongNghe(),
               _PlayerBar(
                 dragFraction: _dragFraction,
                 onDragStart: (v) => setState(() => _dragFraction = v),
@@ -268,17 +271,28 @@ class _PlayerBar extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 14),
       child: Column(
         children: [
-          SliderTheme(
-            data: SliderTheme.of(context).copyWith(
-              trackHeight: 4,
-              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
-              overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-            ),
-            child: Slider(
-              value: fraction,
-              onChanged: onDragStart,
-              onChangeEnd: onDragEnd,
-            ),
+          // Rãnh tua bằng kính, phần đã nghe là dải chuyển sắc. Slider của
+          // Material vẫn nằm trên để nhận thao tác kéo, chỉ bị làm cho vô hình.
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              ThanhKinh(phan: fraction, sac: SacNut.chinh, cao: 8),
+              SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  trackHeight: 8,
+                  activeTrackColor: Colors.transparent,
+                  inactiveTrackColor: Colors.transparent,
+                  thumbColor: Colors.white,
+                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+                ),
+                child: Slider(
+                  value: fraction,
+                  onChanged: onDragStart,
+                  onChangeEnd: onDragEnd,
+                ),
+              ),
+            ],
           ),
           Row(
             children: [
@@ -315,10 +329,10 @@ class _PlayerBar extends StatelessWidget {
                 onPressed: player.previous,
                 icon: const Icon(Icons.skip_previous),
               ),
-              IconButton(
-                tooltip: 'Lùi 15 giây (←)',
-                onPressed: () => player.seekRelative(const Duration(seconds: -15)),
-                icon: const Icon(Icons.replay_10),
+              _NutKinh(
+                chuThich: 'Lùi 15 giây (←)',
+                hinh: Icons.replay_10_rounded,
+                onNhan: () => player.seekRelative(const Duration(seconds: -15)),
               ),
               SizedBox(
                 width: 56,
@@ -331,10 +345,10 @@ class _PlayerBar extends StatelessWidget {
                         onNhan: player.togglePlay,
                       ),
               ),
-              IconButton(
-                tooltip: 'Tiến 15 giây (→)',
-                onPressed: () => player.seekRelative(const Duration(seconds: 15)),
-                icon: const Icon(Icons.forward_10),
+              _NutKinh(
+                chuThich: 'Tiến 15 giây (→)',
+                hinh: Icons.forward_10_rounded,
+                onNhan: () => player.seekRelative(const Duration(seconds: 15)),
               ),
               IconButton(
                 tooltip: 'Đoạn sau (↓)',
@@ -464,6 +478,76 @@ class _ChapterBar extends StatelessWidget {
             book: book,
             currentChapter: chapter,
             onPicked: () => Navigator.of(sheetContext).pop(),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+
+/// Chọn giọng và cách nối ngữ cảnh cho việc nghe.
+///
+/// Đặt ngay trên thanh phát chứ không giấu trong Cài đặt: đây là hai thứ người
+/// nghe hay đổi nhất, mà đổi xong là nghe thấy khác ngay.
+class _ChonGiongNghe extends StatelessWidget {
+  const _ChonGiongNghe();
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final settings = state.settings;
+    // Trạng thái phát nằm ở PlayerController chứ không phải AppState, phải nghe
+    // riêng — không thì bấm phát xong khoá vẫn chưa hiện.
+    return ListenableBuilder(
+      listenable: state.player,
+      builder: (context, _) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 2, 16, 0),
+        child: BangChonGiong(
+          voices: state.voices,
+          voiceId: settings.voiceNghe,
+          nguCanh: settings.nguCanhNghe,
+          khoa: state.player.isPlaying ? 'Tạm dừng nghe rồi mới đổi được' : null,
+          onVoice: (v) => AppScope.read(context).setVoiceNghe(v),
+          onNguCanh: (v) {
+            settings.nguCanhNghe = v;
+            AppScope.read(context).saveSettings();
+          },
+        ),
+      ),
+    );
+  }
+}
+
+
+/// Nút tròn bằng kính cho hàng điều khiển.
+///
+/// Nút phát ở giữa vẫn là vòng chuyển sắc đặc — một màn hình chỉ nên có một thứ
+/// nổi bật nhất, mấy nút phụ quanh nó lùi về làm kính.
+class _NutKinh extends StatelessWidget {
+  const _NutKinh({required this.hinh, required this.chuThich, required this.onNhan});
+
+  final IconData hinh;
+  final String chuThich;
+  final VoidCallback onNhan;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: chuThich,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 3),
+        child: Material(
+          color: Colors.transparent,
+          shape: const CircleBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onNhan,
+            child: KinhTron(
+              canh: 42,
+              child: Icon(hinh, size: 21, color: Theme.of(context).colorScheme.onSurface),
+            ),
           ),
         ),
       ),

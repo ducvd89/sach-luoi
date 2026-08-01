@@ -10,6 +10,8 @@ library;
 
 import 'package:flutter/material.dart';
 
+import 'kinh.dart';
+
 class FastScrollBar extends StatefulWidget {
   const FastScrollBar({
     super.key,
@@ -79,12 +81,13 @@ class _FastScrollBarState extends State<FastScrollBar> {
                   left: _dragging ? 4 : 12,
                   right: 6,
                   height: _thumbHeight,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 120),
-                    decoration: BoxDecoration(
-                      color: _dragging ? scheme.primary : scheme.primary.withValues(alpha: 0.45),
-                      borderRadius: BorderRadius.circular(99),
-                    ),
+                  // Con trượt bằng kính: lúc rảnh thì trong, nhìn thấy chữ
+                  // chạy phía sau; lúc kéo thì đặc lại cho dễ bám mắt.
+                  child: Kinh(
+                    bo: 99,
+                    mo: 12,
+                    dam: _dragging ? 0.30 : 0.14,
+                    child: Center(
                     child: _dragging
                         ? Center(
                             child: Text(
@@ -92,11 +95,12 @@ class _FastScrollBarState extends State<FastScrollBar> {
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w700,
-                                color: scheme.onPrimary,
+                                color: Colors.white,
                               ),
                             ),
                           )
-                        : null,
+                        : const SizedBox.shrink(),
+                    ),
                   ),
                 ),
                 // Nhãn nằm bên trái thanh, tràn ra ngoài khung thanh cuộn để đủ
