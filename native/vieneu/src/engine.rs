@@ -75,19 +75,55 @@ fn to_array4(shape: &[usize], data: Vec<f32>) -> Result<Array4<f32>, String> {
 pub struct Synthesis {
     pub samples: Vec<f32>,
     pub frames: usize,
+    /// Mã đã sinh, (số khung × n_vq) đã làm phẳng.
+    ///
+    /// Trả ra ngoài để đoạn sau nối được phần đuôi của đoạn này vào khối mã
+    /// tham chiếu — xem [Voice::ref_codes]. Không có nó thì mỗi đoạn phải tự
+    /// đoán lại ngữ điệu từ đầu, nghe rõ chỗ nối.
+    pub codes: Vec<i32>,
 }
 
 /// Đọc một đoạn âm vị bằng giọng đã cho.
+///
+/// [ngu_canh] là mã của phần đuôi đoạn đọc ngay trước, đã làm phẳng theo khung.
+/// Rỗng thì đoạn này đứng một mình như trước.
+///
+/// Khi có ngữ cảnh, nó THAY cho mã tham chiếu của mẫu giọng chứ không nối thêm
+/// vào sau. Đo trên 12 đoạn liên tiếp, giọng Latradio:
+///
+///                        giống đoạn trước   lệch chuẩn cao độ
+///   mỗi đoạn đứng riêng            0,794              9,2 Hz
+///   nối thêm 100 khung             0,797
+///   THAY bằng 100 khung            0,828              4,8 Hz
+///
+/// Nối thêm gần như vô ích: 8 giây mẫu gốc át mất phần ngữ cảnh. Thay hẳn thì
+/// độ cao giọng hết nhảy giữa các đoạn — đó là thứ tai nghe ra rõ nhất. Và giọng
+/// KHÔNG trôi khỏi mẫu: sau 12 đoạn, độ giống mẫu gốc còn nhích lên (0,770 ->
+/// 0,781) vì mỗi đoạn bám vào đoạn liền trước thay vì tự đoán lại từ đầu.
 pub fn synthesize(
     model: &mut Model,
     phonemes: &str,
     voice: &Voice,
     params: &Sampling,
     seed: u64,
+    ngu_canh: &[i64],
 ) -> Result<Synthesis, String> {
     let cfg_hidden = model.cfg.hidden;
     let n_vq = model.cfg.n_vq;
     let layers = model.cfg.layers;
+
+    let thay_the;
+    let voice = if ngu_canh.len() < n_vq {
+        voice
+    } else {
+        thay_the = Voice {
+            speaker_emb: voice.speaker_emb.clone(),
+            ref_frames: ngu_canh.len() / n_vq,
+            ref_codes: ngu_canh.to_vec(),
+            style: voice.style.clone(),
+        };
+        &thay_the
+    };
 
     let style_id = model.style_id(&voice.style);
     let anchor = model.speaker_anchor(&voice.speaker_emb)?;
@@ -178,11 +214,11 @@ pub fn synthesize(
 
     let frame_count = frames.len() / n_vq;
     if frame_count == 0 {
-        return Ok(Synthesis { samples: Vec::new(), frames: 0 });
+        return Ok(Synthesis { samples: Vec::new(), frames: 0, codes: Vec::new() });
     }
 
     let samples = decode_codes(model, &frames, frame_count)?;
-    Ok(Synthesis { samples, frames: frame_count })
+    Ok(Synthesis { samples, frames: frame_count, codes: frames })
 }
 
 /// Sinh 16 mã của một khung, và cho biết mô hình đã đọc hết chưa.

@@ -159,6 +159,7 @@ class OnDeviceTtsEngine implements TtsEngine {
     required String text,
     required String voiceId,
     double speed = 1.0,
+    List<int>? nguCanh, // engine này không nối ngữ cảnh
   }) async {
     await _ensure(voiceId);
     final send = _send;

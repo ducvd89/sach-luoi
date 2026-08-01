@@ -130,7 +130,8 @@ class PlayerController extends ChangeNotifier {
   }
 
   void updateSettings(AppSettings settings) {
-    final voiceChanged = settings.voiceId != _settings.voiceId || settings.engineId != _settings.engineId;
+    final voiceChanged =
+        settings.voiceNghe != _settings.voiceNghe || settings.engineId != _settings.engineId;
     _settings = settings;
     _player.setRate(settings.speed);
     if (voiceChanged) {
@@ -154,14 +155,20 @@ class PlayerController extends ChangeNotifier {
     notifyListeners();
 
     try {
+      // Ngữ cảnh chỉ dùng khi đọc tiếp đúng đoạn liền sau đoạn vừa nghe. Nhảy
+      // lung tung thì bỏ, vì lúc ấy chẳng có gì để nối vào.
+      final noiTiep = _settings.nguCanhNghe != NguCanh.khong && target == _doanCoDuoi + 1;
       final audio = await _tts.audioFor(
         engineId: _settings.engineId,
-        voiceId: _settings.voiceId,
+        voiceId: _settings.voiceNghe,
         speed: _synthesisSpeed,
         text: chunks[target].speech,
+        nguCanh: noiTiep ? _duoi : null,
       );
       if (token != _loadToken) return; // người dùng đã nhảy sang đoạn khác
 
+      _duoi = audio.duoi;
+      _doanCoDuoi = audio.duoi.isEmpty ? -2 : target;
       _durations[target] = audio.seconds;
       await _player.open(Media(audio.file.path), play: autoplay);
       await _player.setRate(_settings.speed);
@@ -184,7 +191,14 @@ class PlayerController extends ChangeNotifier {
     }
   }
 
+  /// Mã đuôi của đoạn vừa đọc và chỉ số của nó, để nối ngữ cảnh cho đoạn kế.
+  List<int> _duoi = const [];
+  int _doanCoDuoi = -2;
+
   void _prefetchAround(int from) {
+    // Tuần tự thì không tổng hợp trước: đoạn sau phải chờ đuôi của đoạn này,
+    // đọc trước mà thiếu ngữ cảnh thì vừa phí vừa lấp cache bằng bản không nối.
+    if (_settings.nguCanhNghe == NguCanh.tuanTu) return;
     final texts = <String>[];
     for (var i = from + 1; i <= min(from + 3, chunks.length - 1); i++) {
       texts.add(chunks[i].speech);
@@ -192,7 +206,7 @@ class PlayerController extends ChangeNotifier {
     if (texts.isNotEmpty) {
       _tts.prefetch(
         engineId: _settings.engineId,
-        voiceId: _settings.voiceId,
+        voiceId: _settings.voiceNghe,
         speed: _synthesisSpeed,
         texts: texts,
       );

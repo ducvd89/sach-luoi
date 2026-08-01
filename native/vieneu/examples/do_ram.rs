@@ -48,7 +48,7 @@ fn main() -> Result<(), String> {
         let van: String = (0..so_cau).map(|k| cau[k % cau.len()]).collect::<Vec<_>>().join(" ");
         sampling.max_new_frames = 300 + so_cau * 120;
         let ph = g2p.phonemize(&van, false)?;
-        let m = synthesize(&mut model, &ph, voice, &sampling, 99)?;
+        let m = synthesize(&mut model, &ph, voice, &sampling, 99, &[])?;
         println!("bước {} ({:>2} câu): {} MB   âm thanh {:.1}s", buoc, so_cau, ram_mb(),
             m.samples.len() as f32 / SAMPLE_RATE as f32);
     }

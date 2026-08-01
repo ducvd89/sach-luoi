@@ -119,6 +119,7 @@ class ExportJob {
     required this.toChunk,
     required this.outputDir,
     this.treeUri = '',
+    this.nguCanh = NguCanh.loLon,
     this.status = JobStatus.queued,
     int? cursor,
     this.doneChunks = 0,
@@ -161,6 +162,13 @@ class ExportJob {
   /// vẫn cất file đúng chỗ nó đã hứa.
   final String treeUri;
 
+  /// Cách nối ngữ cảnh giữa các đoạn.
+  ///
+  /// Không đổi được khi job đang chạy — giao diện khoá lựa chọn lại. Muốn đổi
+  /// thì tạm dừng, đổi, rồi chạy tiếp: lúc ấy job lấy theo mức mới. Phần đã xuất
+  /// giữ nguyên, chỉ phần còn lại đọc theo cách mới.
+  NguCanh nguCanh;
+
   JobStatus status;
 
   /// Đoạn tiếp theo cần xử lý.
@@ -196,6 +204,7 @@ class ExportJob {
         'toChunk': toChunk,
         'outputDir': outputDir,
         'treeUri': treeUri,
+        'nguCanh': nguCanh.id,
         'status': status.id,
         'cursor': cursor,
         'doneChunks': doneChunks,
@@ -226,6 +235,7 @@ class ExportJob {
         toChunk: json['toChunk'] as int,
         outputDir: json['outputDir'] as String? ?? '',
         treeUri: json['treeUri'] as String? ?? '',
+        nguCanh: NguCanh.fromId(json['nguCanh'] as String?),
         status: JobStatus.fromId(json['status'] as String?),
         cursor: json['cursor'] as int?,
         doneChunks: json['doneChunks'] as int? ?? 0,

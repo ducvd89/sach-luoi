@@ -30,6 +30,13 @@ import 'tts/tts_manager.dart';
 /// Mỗi đoạn chờ sẵn chỉ tốn vài trăm KB trong bộ nhớ đệm nên để rộng tay.
 const _lookahead = 10;
 
+/// Bao nhiêu đoạn liền nhau nối chung một chuỗi ngữ cảnh ở chế độ "theo lô".
+///
+/// Trong một lô, đoạn sau chờ đuôi của đoạn trước. Hết lô thì cắt chuỗi, nên
+/// đầu mỗi lô vẫn tổng hợp trước được song song với lô đang chạy. Chỗ chuyển
+/// giọng chỉ còn ở ranh giới lô — cứ 24 đoạn một lần thay vì mọi đoạn.
+const _kichThuocLo = 24;
+
 /// Tên file cho một phần đã xuất, chưa kèm đuôi.
 ///
 /// Dạng `<tên truyện> - <chương> - <số thứ tự file>`, ví dụ:
@@ -126,7 +133,7 @@ class ExportService {
       author: book.author,
       createdAt: DateTime.now(),
       engineId: settings.engineId,
-      voiceId: settings.voiceId,
+      voiceId: settings.voiceXuat,
       voiceName: voiceName,
       speed: settings.speed,
       pauseMs: settings.chunkPauseMs,
@@ -139,6 +146,7 @@ class ExportService {
       toChunk: toChunk,
       outputDir: outputDir,
       treeUri: treeUri,
+      nguCanh: settings.nguCanhXuat,
     );
 
     await _workDir(id).create(recursive: true);
@@ -391,10 +399,23 @@ class ExportService {
       ));
     }
 
+    final nguCanh = job.nguCanh;
+
+    /// Đoạn này có mở đầu một lô mới không — đầu lô thì không nối ngữ cảnh.
+    bool dauLo(int index) => switch (nguCanh) {
+          NguCanh.khong => true,
+          NguCanh.tuanTu => index == job.fromChunk,
+          NguCanh.loLon => (index - job.fromChunk) % _kichThuocLo == 0,
+        };
+
     // Tổng hợp trước vài đoạn cho khỏi phải chờ.
+    //
+    // Chỉ đọc trước những đoạn KHÔNG cần ngữ cảnh: đoạn cần ngữ cảnh mà đọc
+    // trước thì vừa ra bản không nối, vừa lấp cache bằng đúng bản ấy.
     void prefetchFrom(int index) {
       final texts = <String>[];
       for (var i = index + 1; i <= min(index + _lookahead, job.toChunk); i++) {
+        if (!dauLo(i)) continue;
         texts.add(chunks[i].speech);
       }
       if (texts.isNotEmpty) {
@@ -406,6 +427,9 @@ class ExportService {
         );
       }
     }
+
+    // Mã đuôi của đoạn vừa đọc, để nối cho đoạn kế trong cùng một lô.
+    List<int> duoi = const [];
 
     while (job.cursor <= job.toChunk) {
       if (control.cancel) {
@@ -431,7 +455,9 @@ class ExportService {
         voiceId: job.voiceId,
         speed: job.speed,
         text: chunk.speech,
+        nguCanh: dauLo(index) ? null : duoi,
       );
+      duoi = audio.duoi;
 
       // Quyết định đóng phần hiện tại *sau khi* biết đoạn này dài bao nhiêu, và
       // chọn bên nào gần mốc hơn — thiếu một chút hay thừa một chút — để độ dài

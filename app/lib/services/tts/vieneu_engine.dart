@@ -232,6 +232,7 @@ class OnDeviceVieNeuEngine implements TtsEngine {
     required String text,
     required String voiceId,
     double speed = 1.0,
+    List<int>? nguCanh,
   }) async {
     final primary = await _ensure();
     final native = _leastBusy(primary);
@@ -243,8 +244,16 @@ class OnDeviceVieNeuEngine implements TtsEngine {
     final seed = _seedOf('$voice|$text');
     _busy[native] = (_busy[native] ?? 0) + 1;
     final Float32List raw;
+    final Int32List duoi;
     try {
-      raw = await native.synthesize(text, voice, seed: seed);
+      final ra = await native.synthesize(
+        text,
+        voice,
+        seed: seed,
+        nguCanh: nguCanh == null || nguCanh.isEmpty ? null : Int32List.fromList(nguCanh),
+      );
+      raw = ra.samples;
+      duoi = ra.duoi;
     } finally {
       final con = (_busy[native] ?? 1) - 1;
       if (con <= 0) {
@@ -262,7 +271,7 @@ class OnDeviceVieNeuEngine implements TtsEngine {
 
     final wav = buildWav(samples, native.sampleRate);
     final seconds = samples.length / native.sampleRate;
-    return TtsResult(wav, seconds);
+    return TtsResult(wav, seconds, duoi: duoi);
   }
 
   /// Đổi tốc độ bằng cách lấy mẫu lại — cao độ đổi theo, chỉ dùng lúc xuất file.

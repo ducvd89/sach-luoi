@@ -83,10 +83,37 @@ enum ExportFormat {
       ExportFormat.values.firstWhere((f) => f.id == id, orElse: () => ExportFormat.opus32);
 }
 
+/// Dùng phần đuôi đoạn trước làm ngữ cảnh cho đoạn sau hay không.
+///
+/// Mô hình đọc từng đoạn rời nhau, mỗi đoạn tự đoán lại ngữ điệu từ mẫu giọng —
+/// nên độ cao giọng nhảy ở chỗ chuyển đoạn. Đưa 8 giây cuối của đoạn trước vào
+/// thay cho mã tham chiếu của mẫu thì hết nhảy. Đo trên 12 đoạn liên tiếp:
+/// lệch chuẩn cao độ 9,2 Hz xuống 4,8 Hz, độ giống đoạn liền trước 0,794 lên
+/// 0,828, mà giọng không trôi khỏi mẫu gốc.
+///
+/// Cái giá: đoạn sau phải chờ đoạn trước xong nên không chạy song song được
+/// nữa. Vì thế mới có ba mức, và nghe với xuất file đặt riêng — lúc nghe thì
+/// vốn đã tuần tự sẵn, còn lúc xuất thì chạy song song đang cho 8,94× thời gian
+/// thực.
+enum NguCanh {
+  khong('khong', 'Không dùng', 'Nhanh nhất. Giọng có thể hơi khác nhau giữa các đoạn.'),
+  loLon('lo', 'Theo đoạn', 'Nối trong từng lô đoạn liền nhau. Gần như giữ nguyên tốc độ, chỉ còn ít chỗ chuyển giọng.'),
+  tuanTu('tuan-tu', 'Tuần hoàn', 'Mượt nhất. Xuất file chậm hơn khoảng ba lần vì không chạy song song được.');
+
+  const NguCanh(this.id, this.label, this.description);
+  final String id;
+  final String label;
+  final String description;
+
+  static NguCanh fromId(String? id) =>
+      NguCanh.values.firstWhere((v) => v.id == id, orElse: () => NguCanh.loLon);
+}
+
 class AppSettings {
   AppSettings({
     this.engineId = 'vieneu',
-    this.voiceId = '',
+    this.voiceNghe = '',
+    this.voiceXuat = '',
     this.speed = 1.0,
     this.chunkPauseMs = defaultChunkPauseMs,
     this.cacheLimitMb = defaultCacheLimitMb,
@@ -97,6 +124,8 @@ class AppSettings {
     this.partMinutes = 30,
     this.alignChapter = true,
     this.exportTreeUri = '',
+    this.nguCanhNghe = NguCanh.tuanTu,
+    this.nguCanhXuat = NguCanh.loLon,
     this.serviceUrl = defaultServiceHost,
     this.autoStartService = true,
     this.darkMode,
@@ -105,8 +134,14 @@ class AppSettings {
   /// 'vieneu', 'piper' (mô hình trên máy) hoặc 'edge' (giọng qua mạng).
   String engineId;
 
-  /// Rỗng nghĩa là chưa chọn — ứng dụng lấy giọng đầu tiên của engine.
-  String voiceId;
+  /// Giọng dùng khi nghe. Rỗng nghĩa là chưa chọn — ứng dụng lấy giọng đầu tiên.
+  ///
+  /// Tách khỏi giọng xuất file: nghe thử bằng giọng này rồi xuất bằng giọng khác
+  /// là chuyện thường, mà mỗi trang cũng khoá riêng khi đang chạy.
+  String voiceNghe;
+
+  /// Giọng dùng khi xuất file, độc lập với [voiceNghe].
+  String voiceXuat;
 
   /// Hệ số tốc độ đọc, 1.0 là chuẩn.
   double speed;
@@ -136,6 +171,14 @@ class AppSettings {
   int partMinutes;
   bool alignChapter;
 
+  /// Nối ngữ cảnh khi nghe. Mặc định tuần tự: lúc nghe vốn đã đọc lần lượt nên
+  /// không mất gì, mà được chỗ chuyển đoạn mượt nhất.
+  NguCanh nguCanhNghe;
+
+  /// Nối ngữ cảnh khi xuất file. Mặc định theo lô: giữ được tốc độ chạy song
+  /// song mà vẫn bỏ được phần lớn chỗ chuyển giọng.
+  NguCanh nguCanhXuat;
+
   /// Android: thư mục người dùng đã chọn để cất file xuất ra, dạng "tree URI"
   /// của Storage Access Framework. Rỗng nghĩa là dùng mặc định — MediaStore đưa
   /// file vào Music/Sách lười. Không phải đường dẫn thật, đừng ghép vào File().
@@ -151,7 +194,8 @@ class AppSettings {
 
   Map<String, dynamic> toJson() => {
         'engineId': engineId,
-        'voiceId': voiceId,
+        'voiceNghe': voiceNghe,
+        'voiceXuat': voiceXuat,
         'speed': speed,
         'chunkPauseMs': chunkPauseMs,
         'cacheLimitMb': cacheLimitMb,
@@ -162,6 +206,8 @@ class AppSettings {
         'partMinutes': partMinutes,
         'alignChapter': alignChapter,
         'exportTreeUri': exportTreeUri,
+        'nguCanhNghe': nguCanhNghe.id,
+        'nguCanhXuat': nguCanhXuat.id,
         'serviceUrl': serviceUrl,
         'autoStartService': autoStartService,
         'darkMode': darkMode,
@@ -173,7 +219,13 @@ class AppSettings {
     return AppSettings(
         engineId: engineId,
         // Giọng của engine cũ không còn tồn tại; để trống cho ứng dụng tự chọn.
-        voiceId: engineId == savedEngine ? (json['voiceId'] as String? ?? '') : '',
+        // 'voiceId' là tên cũ hồi hai trang còn dùng chung một giọng.
+        voiceNghe: engineId == savedEngine
+            ? (json['voiceNghe'] as String? ?? json['voiceId'] as String? ?? '')
+            : '',
+        voiceXuat: engineId == savedEngine
+            ? (json['voiceXuat'] as String? ?? json['voiceId'] as String? ?? '')
+            : '',
         speed: (json['speed'] as num?)?.toDouble() ?? 1.0,
         chunkPauseMs: _napKhoangNghi(json['chunkPauseMs']),
         cacheLimitMb: (json['cacheLimitMb'] as num?)?.toInt() ?? defaultCacheLimitMb,
@@ -184,6 +236,8 @@ class AppSettings {
         partMinutes: (json['partMinutes'] as num?)?.toInt() ?? 30,
         alignChapter: json['alignChapter'] as bool? ?? true,
         exportTreeUri: json['exportTreeUri'] as String? ?? '',
+        nguCanhNghe: NguCanh.fromId(json['nguCanhNghe'] as String? ?? 'tuan-tu'),
+        nguCanhXuat: NguCanh.fromId(json['nguCanhXuat'] as String?),
         serviceUrl: json['serviceUrl'] as String? ?? defaultServiceHost,
         autoStartService: json['autoStartService'] as bool? ?? true,
         darkMode: json['darkMode'] as bool?,

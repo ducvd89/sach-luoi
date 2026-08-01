@@ -22,10 +22,13 @@ import 'ondevice_engine.dart';
 import 'vieneu_engine.dart';
 
 class CachedAudio {
-  const CachedAudio(this.file, this.seconds, this.fromCache);
+  const CachedAudio(this.file, this.seconds, this.fromCache, {this.duoi = const []});
   final File file;
   final double seconds;
   final bool fromCache;
+
+  /// Mã đuôi của đoạn này, để làm ngữ cảnh cho đoạn kế. Rỗng nếu không có.
+  final List<int> duoi;
 }
 
 class TtsManager {
@@ -61,19 +64,33 @@ class TtsManager {
 
   /// Khoá cache gồm mọi thứ ảnh hưởng tới âm thanh sinh ra — đổi bất kỳ thứ nào
   /// thì phải tổng hợp lại chứ không được lấy nhầm bản cũ.
-  File _cacheFile(String engineId, String voiceId, double speed, String text) {
+  /// Thư mục và tên file cho một đoạn.
+  ///
+  /// Tên chia làm hai phần: phần đầu băm từ (engine, giọng, tốc độ, văn bản),
+  /// phần đuôi băm từ ngữ cảnh — mọi bản của cùng một đoạn nằm cạnh nhau.
+  ///
+  /// Nhảy vào giữa sách thì đoạn ấy đọc mới, không ngữ cảnh, và chỉ nhận đúng
+  /// bản không-ngữ-cảnh trong cache. Không đi mò bản đã nối với đoạn khác: nghe
+  /// nó rồi lấy đuôi của nó làm mốc thì cả chuỗi sau đó bám theo một ngữ cảnh
+  /// chẳng liên quan gì tới chỗ đang nghe.
+  (Directory, String) _viTri(String engineId, String voiceId, double speed, String text) {
     final key = sha1
         .convert(utf8.encode('$engineId|$voiceId|${speed.toStringAsFixed(2)}|$text'))
         .toString();
-    final dir = p.join(
+    final dir = Directory(p.join(
       Storage.instance.cacheDir.path,
       // Mã giọng có thể chứa dấu cách, dấu tiếng Việt hoặc ':' ("Phạm Tuyên",
       // "mau:cua-toi") — đưa hết về dạng đặt được tên thư mục. Khoá cache thật
       // nằm ở chuỗi băm phía dưới nên rút gọn ở đây không gây trùng lẫn.
       '${engineId}_${voiceId.replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '-')}_${(speed * 100).round()}',
       key.substring(0, 2),
-    );
-    return File(p.join(dir, '${key.substring(2)}.${engine(engineId).audioFormat}'));
+    ));
+    return (dir, key.substring(2));
+  }
+
+  File _cacheFile(String engineId, String voiceId, double speed, String text, String dauNguCanh) {
+    final (dir, goc) = _viTri(engineId, voiceId, speed, text);
+    return File(p.join(dir.path, '$goc$dauNguCanh.${engine(engineId).audioFormat}'));
   }
 
   /// Thời lượng của một file đã nằm trong bộ nhớ đệm.
@@ -86,8 +103,11 @@ class TtsManager {
     required String voiceId,
     required double speed,
     required String text,
+    List<int>? nguCanh,
   }) async {
-    final file = _cacheFile(engineId, voiceId, speed, text);
+    final co = nguCanh != null && nguCanh.isNotEmpty;
+    final dau = co ? sha1.convert(_bytesOf(nguCanh)).toString().substring(0, 12) : '';
+    final file = _cacheFile(engineId, voiceId, speed, text, dau);
 
     if (await file.exists()) {
       final bytes = await file.readAsBytes();
@@ -95,7 +115,7 @@ class TtsManager {
         // Chạm vào file để nó không bị coi là cũ: đoạn đang nghe lại phải sống
         // lâu hơn đoạn của cuốn sách bỏ dở từ tháng trước.
         unawaited(file.setLastModified(DateTime.now()).catchError((Object _) {}));
-        return CachedAudio(file, _durationOf(engineId, bytes), true);
+        return CachedAudio(file, _durationOf(engineId, bytes), true, duoi: await _docDuoi(file));
       }
     }
 
@@ -106,7 +126,7 @@ class TtsManager {
     // Chú ý thân hàm phải là câu lệnh, không phải biểu thức: Map.remove trả về
     // chính future đang lưu, mà whenComplete lại chờ giá trị trả về nếu đó là
     // Future — thành ra future tự chờ chính nó và treo mãi mãi.
-    final future = _synthesizeToFile(engineId, voiceId, speed, text, file).whenComplete(() {
+    final future = _synthesizeToFile(engineId, voiceId, speed, text, file, nguCanh).whenComplete(() {
       _inflight.remove(key);
     });
     _inflight[key] = future;
@@ -119,11 +139,13 @@ class TtsManager {
     double speed,
     String text,
     File file,
+    List<int>? nguCanh,
   ) async {
     final result = await engine(engineId).synthesize(
       text: text,
       voiceId: voiceId,
       speed: speed,
+      nguCanh: nguCanh,
     );
     await file.parent.create(recursive: true);
     final tmp = File('${file.path}.tmp');
@@ -141,7 +163,33 @@ class TtsManager {
         _trimming = null;
       });
     }
-    return CachedAudio(file, result.seconds, false);
+    if (result.duoi.isNotEmpty) await _ghiDuoi(file, result.duoi);
+    return CachedAudio(file, result.seconds, false, duoi: result.duoi);
+  }
+
+  /// Mã đuôi cất cạnh file âm thanh, để lần nghe sau lấy lại được từ cache mà
+  /// vẫn nối được ngữ cảnh cho đoạn kế. Khoảng 6 KB mỗi đoạn.
+  File _fileDuoi(File audio) => File('${audio.path}.duoi');
+
+  Uint8List _bytesOf(List<int> ma) => Int32List.fromList(ma).buffer.asUint8List();
+
+  Future<void> _ghiDuoi(File audio, List<int> duoi) async {
+    try {
+      await _fileDuoi(audio).writeAsBytes(_bytesOf(duoi), flush: true);
+    } catch (_) {
+      // Mất đuôi thì đoạn sau đọc không ngữ cảnh, không đáng để hỏng cả lượt đọc.
+    }
+  }
+
+  Future<List<int>> _docDuoi(File audio) async {
+    try {
+      final f = _fileDuoi(audio);
+      if (!await f.exists()) return const [];
+      final b = await f.readAsBytes();
+      return Int32List.view(b.buffer, b.offsetInBytes, b.lengthInBytes ~/ 4);
+    } catch (_) {
+      return const [];
+    }
   }
 
   /// Tổng hợp trước vài đoạn để lúc phát không bị khựng giữa chừng.

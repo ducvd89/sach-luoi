@@ -36,9 +36,14 @@ class TtsVoice {
 
 /// Kết quả tổng hợp một đoạn.
 class TtsResult {
-  const TtsResult(this.audio, this.seconds);
+  const TtsResult(this.audio, this.seconds, {this.duoi = const []});
   final Uint8List audio;
   final double seconds;
+
+  /// Mã đuôi của đoạn vừa đọc, để truyền làm ngữ cảnh cho đoạn kế.
+  ///
+  /// Rỗng với engine không hỗ trợ nối ngữ cảnh — chỉ VieNeu có.
+  final List<int> duoi;
 }
 
 class TtsException implements Exception {
@@ -96,10 +101,13 @@ abstract class TtsEngine {
   /// Tổng hợp một đoạn văn bản thành MP3.
   ///
   /// [speed] là hệ số tốc độ (1.0 là chuẩn).
+  /// [nguCanh] là mã đuôi của đoạn đọc ngay trước. Có nó thì giọng không nhảy ở
+  /// chỗ chuyển đoạn; engine nào không hỗ trợ thì bỏ qua.
   Future<TtsResult> synthesize({
     required String text,
     required String voiceId,
     double speed = 1.0,
+    List<int>? nguCanh,
   });
 
   /// Báo cho engine biết sắp có nhiều đoạn cần tổng hợp liên tiếp (xuất file).

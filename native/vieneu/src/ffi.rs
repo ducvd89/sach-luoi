@@ -17,7 +17,18 @@ pub struct Engine {
     g2p: sea_g2p_rs::ffi::SeaG2p,
     voices: HashMap<String, Voice>,
     last_error: Option<CString>,
+    /// Mã đuôi của đoạn vừa đọc, để bên gọi truyền sang làm ngữ cảnh cho đoạn
+    /// kế. Giữ trong engine thay vì trả kèm mảng mẫu âm cho khỏi phải cấp phát
+    /// và giải phóng hai lần mỗi đoạn.
+    duoi: Vec<i32>,
 }
+
+/// Bao nhiêu khung cuối giữ lại làm ngữ cảnh (12,5 khung = 1 giây).
+///
+/// 100 khung tức 8 giây, bằng đúng độ dài mã tham chiếu của một mẫu giọng —
+/// ngữ cảnh thay chỗ nó nên giữ cùng cỡ thì mô hình nhận được lượng thông tin
+/// quen thuộc.
+const KHUNG_DUOI: usize = 100;
 
 fn to_str<'a>(ptr: *const c_char) -> Option<&'a str> {
     if ptr.is_null() {
@@ -119,7 +130,7 @@ pub extern "C" fn vieneu_open(
         Err(e) => return fail(e),
     };
 
-    Box::into_raw(Box::new(Engine { model, g2p, voices, last_error: None }))
+    Box::into_raw(Box::new(Engine { model, g2p, voices, last_error: None, duoi: Vec::new() }))
 }
 
 #[unsafe(no_mangle)]
@@ -164,12 +175,19 @@ pub extern "C" fn vieneu_voice_name(handle: *const Engine, index: c_int) -> *mut
 ///
 /// [seed] cố định để cùng một đoạn luôn cho cùng kết quả — bộ nhớ đệm của ứng
 /// dụng dựa vào điều đó.
+///
+/// [ngu_canh_ptr] là mã đuôi của đoạn đọc ngay trước (lấy bằng [vieneu_duoi]),
+/// null nếu đoạn này đứng một mình. Có ngữ cảnh thì giọng không nhảy ở chỗ
+/// chuyển đoạn — nhưng cũng có nghĩa cùng một đoạn văn cho ra âm thanh khác
+/// nhau tuỳ đoạn đứng trước, nên khoá bộ nhớ đệm phải tính cả nó vào.
 #[unsafe(no_mangle)]
 pub extern "C" fn vieneu_synthesize(
     handle: *mut Engine,
     text: *const c_char,
     voice: *const c_char,
     seed: u64,
+    ngu_canh_ptr: *const c_int,
+    ngu_canh_len: c_int,
     out_len: *mut c_int,
 ) -> *mut c_float {
     if handle.is_null() {
@@ -199,11 +217,25 @@ pub extern "C" fn vieneu_synthesize(
         return fail("không tạo được âm vị nào từ văn bản".into());
     }
 
+    let ngu_canh: Vec<i64> = if ngu_canh_ptr.is_null() || ngu_canh_len <= 0 {
+        Vec::new()
+    } else {
+        unsafe { std::slice::from_raw_parts(ngu_canh_ptr, ngu_canh_len as usize) }
+            .iter()
+            .map(|v| *v as i64)
+            .collect()
+    };
+
     let voice = &engine.voices[voice_name];
-    let result = match synthesize(&mut engine.model, &phonemes, voice, &Sampling::default(), seed) {
+    let result = match synthesize(&mut engine.model, &phonemes, voice, &Sampling::default(), seed, &ngu_canh) {
         Ok(r) => r,
         Err(e) => return fail(e),
     };
+
+    // Cất đuôi lại cho đoạn kế; bên gọi lấy qua vieneu_duoi.
+    let n_vq = engine.model.cfg.n_vq;
+    let lay = KHUNG_DUOI.min(result.frames);
+    engine.duoi = result.codes[(result.frames - lay) * n_vq..].to_vec();
 
     let mut samples = result.samples;
     samples.shrink_to_fit();
@@ -213,6 +245,22 @@ pub extern "C" fn vieneu_synthesize(
     let ptr = samples.as_mut_ptr();
     std::mem::forget(samples);
     ptr
+}
+
+/// Mã đuôi của đoạn vừa đọc, để truyền làm ngữ cảnh cho đoạn kế.
+///
+/// Con trỏ trỏ vào bộ đệm trong engine — chỉ dùng được tới lần gọi
+/// [vieneu_synthesize] tiếp theo, và KHÔNG được giải phóng.
+#[unsafe(no_mangle)]
+pub extern "C" fn vieneu_duoi(handle: *const Engine, out_len: *mut c_int) -> *const c_int {
+    if handle.is_null() {
+        return ptr::null();
+    }
+    let engine = unsafe { &*handle };
+    if !out_len.is_null() {
+        unsafe { *out_len = engine.duoi.len() as c_int };
+    }
+    engine.duoi.as_ptr()
 }
 
 /// Trả lại mảng mẫu âm do [vieneu_synthesize] cấp phát.

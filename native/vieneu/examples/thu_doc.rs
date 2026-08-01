@@ -40,7 +40,7 @@ fn main() -> Result<(), String> {
     println!("Âm vị: {}", phonemes.chars().take(90).collect::<String>());
 
     let started = Instant::now();
-    let result = synthesize(&mut model, &phonemes, voice, &Sampling::default(), 12345)?;
+    let result = synthesize(&mut model, &phonemes, voice, &Sampling::default(), 12345, &[])?;
     let elapsed = started.elapsed().as_secs_f32();
     let seconds = result.samples.len() as f32 / SAMPLE_RATE as f32;
     println!(

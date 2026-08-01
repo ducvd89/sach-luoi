@@ -21,9 +21,12 @@ typedef _OpenDart = Pointer<Void> Function(
     Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, Pointer<Utf8>, int, Pointer<Pointer<Utf8>>);
 
 typedef _SynthNative = Pointer<Float> Function(
-    Pointer<Void>, Pointer<Utf8>, Pointer<Utf8>, Uint64, Pointer<Int32>);
+    Pointer<Void>, Pointer<Utf8>, Pointer<Utf8>, Uint64, Pointer<Int32>, Int32, Pointer<Int32>);
 typedef _SynthDart = Pointer<Float> Function(
-    Pointer<Void>, Pointer<Utf8>, Pointer<Utf8>, int, Pointer<Int32>);
+    Pointer<Void>, Pointer<Utf8>, Pointer<Utf8>, int, Pointer<Int32>, int, Pointer<Int32>);
+
+typedef _DuoiNative = Pointer<Int32> Function(Pointer<Void>, Pointer<Int32>);
+typedef _DuoiDart = Pointer<Int32> Function(Pointer<Void>, Pointer<Int32>);
 
 typedef _SamplesFreeNative = Void Function(Pointer<Float>, Int32);
 typedef _SamplesFreeDart = void Function(Pointer<Float>, int);
@@ -92,6 +95,7 @@ class _Native {
 
   late final _SynthDart _synthesize =
       _lib.lookupFunction<_SynthNative, _SynthDart>('vieneu_synthesize');
+  late final _DuoiDart _layDuoi = _lib.lookupFunction<_DuoiNative, _DuoiDart>('vieneu_duoi');
   late final _SamplesFreeDart _freeSamples =
       _lib.lookupFunction<_SamplesFreeNative, _SamplesFreeDart>('vieneu_samples_free');
   late final _HandleToStringDart _lastError =
@@ -153,12 +157,21 @@ class _Native {
     return out;
   }
 
-  Float32List synthesize(String text, String voice, int seed) {
+  /// Đọc một đoạn. [nguCanh] là mã đuôi của đoạn trước, rỗng thì đoạn đứng một
+  /// mình. Trả kèm mã đuôi của chính đoạn này để truyền tiếp cho đoạn sau.
+  ({Float32List samples, Int32List duoi}) synthesize(
+      String text, String voice, int seed, Int32List nguCanh) {
     final textPtr = text.toNativeUtf8();
     final voicePtr = voice.toNativeUtf8();
     final lenPtr = calloc<Int32>();
+    final duoiLenPtr = calloc<Int32>();
+    final ncPtr = nguCanh.isEmpty ? nullptr : calloc<Int32>(nguCanh.length);
     try {
-      final data = _synthesize(_handle, textPtr, voicePtr, seed, lenPtr);
+      if (nguCanh.isNotEmpty) {
+        ncPtr.asTypedList(nguCanh.length).setAll(0, nguCanh);
+      }
+      final data = _synthesize(
+          _handle, textPtr, voicePtr, seed, ncPtr.cast(), nguCanh.length, lenPtr);
       if (data == nullptr) {
         final err = _lastError(_handle);
         final message = err == nullptr ? 'không rõ nguyên nhân' : err.toDartString();
@@ -169,11 +182,20 @@ class _Native {
       // Sao chép sang bộ nhớ của Dart rồi trả lại vùng nhớ của Rust ngay.
       final out = Float32List.fromList(data.asTypedList(length));
       _freeSamples(data, length);
-      return out;
+
+      // Đuôi trỏ vào bộ đệm bên trong engine, chỉ sống tới lần đọc kế — phải
+      // sao ra ngay, và không được giải phóng.
+      final duoiPtr = _layDuoi(_handle, duoiLenPtr);
+      final duoi = duoiPtr == nullptr || duoiLenPtr.value <= 0
+          ? Int32List(0)
+          : Int32List.fromList(duoiPtr.asTypedList(duoiLenPtr.value));
+      return (samples: out, duoi: duoi);
     } finally {
       calloc.free(textPtr);
       calloc.free(voicePtr);
       calloc.free(lenPtr);
+      calloc.free(duoiLenPtr);
+      if (ncPtr != nullptr) calloc.free(ncPtr);
     }
   }
 
@@ -220,11 +242,12 @@ class _Native {
 // -- giao thức với isolate nền -----------------------------------------------
 
 class _Request {
-  const _Request(this.id, this.text, this.voice, this.seed);
+  const _Request(this.id, this.text, this.voice, this.seed, this.nguCanh);
   final int id;
   final String text;
   final String voice;
   final int seed;
+  final Int32List nguCanh;
 }
 
 /// Thêm hoặc xoá giọng — làm luôn trong isolate đang giữ mô hình để danh sách
@@ -262,9 +285,10 @@ class _Failure {
 }
 
 class _Audio {
-  const _Audio(this.id, this.samples);
+  const _Audio(this.id, this.samples, this.duoi);
   final int id;
   final Float32List samples;
+  final Int32List duoi;
 }
 
 void _worker((SendPort, VieNeuPaths) args) {
@@ -301,7 +325,8 @@ void _worker((SendPort, VieNeuPaths) args) {
       return;
     }
     try {
-      reply.send(_Audio(message.id, native.synthesize(message.text, message.voice, message.seed)));
+      final ra = native.synthesize(message.text, message.voice, message.seed, message.nguCanh);
+      reply.send(_Audio(message.id, ra.samples, ra.duoi));
     } catch (err) {
       reply.send(_Failure(message.id, '$err'));
     }
@@ -316,7 +341,7 @@ class VieNeuNative {
   List<String> voices;
   final int sampleRate;
 
-  final _pending = <int, Completer<Float32List>>{};
+  final _pending = <int, Completer<({Float32List samples, Int32List duoi})>>{};
   final _edits = <int, Completer<void>>{};
   var _nextId = 0;
   var _closed = false;
@@ -332,7 +357,8 @@ class VieNeuNative {
         engine = VieNeuNative._(message.port, message.voices, message.sampleRate);
         ready.complete(engine);
       } else if (message is _Audio) {
-        engine._pending.remove(message.id)?.complete(message.samples);
+        engine._pending.remove(message.id)
+            ?.complete((samples: message.samples, duoi: message.duoi));
       } else if (message is _VoicesChanged) {
         engine.voices = message.voices;
         final waiting = engine._edits.remove(message.id);
@@ -354,13 +380,21 @@ class VieNeuNative {
     return ready.future;
   }
 
-  /// Đọc một đoạn, trả về mẫu âm 48 kHz.
-  Future<Float32List> synthesize(String text, String voice, {int seed = 0}) {
+  /// Đọc một đoạn, trả về mẫu âm 48 kHz kèm mã đuôi để nối ngữ cảnh.
+  ///
+  /// [nguCanh] là mã đuôi của đoạn đọc ngay trước; rỗng thì đoạn này đứng một
+  /// mình như trước.
+  Future<({Float32List samples, Int32List duoi})> synthesize(
+    String text,
+    String voice, {
+    int seed = 0,
+    Int32List? nguCanh,
+  }) {
     if (_closed) throw const VieNeuException('Engine đã đóng');
     final id = _nextId++;
-    final completer = Completer<Float32List>();
+    final completer = Completer<({Float32List samples, Int32List duoi})>();
     _pending[id] = completer;
-    _send.send(_Request(id, text, voice, seed));
+    _send.send(_Request(id, text, voice, seed, nguCanh ?? Int32List(0)));
     return completer.future;
   }
 

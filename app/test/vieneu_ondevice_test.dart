@@ -64,11 +64,11 @@ void main() {
     expect(engine.voices, contains('Việt Sử'));
 
     final at = DateTime.now();
-    final samples = await engine.synthesize(
+    final samples = (await engine.synthesize(
       'Xin chào, đây là bản đọc thử của ứng dụng sách nói.',
       engine.voices.first,
       seed: 12345,
-    );
+    )).samples;
     final elapsed = DateTime.now().difference(at).inMilliseconds / 1000;
     final seconds = samples.length / engine.sampleRate;
     // ignore: avoid_print
@@ -110,8 +110,8 @@ void main() {
     addTearDown(engine.close);
 
     const text = 'Họ sống chen chúc với chuột, gián, rết, bọ.';
-    final first = await engine.synthesize(text, engine.voices.first, seed: 999);
-    final second = await engine.synthesize(text, engine.voices.first, seed: 999);
+    final first = (await engine.synthesize(text, engine.voices.first, seed: 999)).samples;
+    final second = (await engine.synthesize(text, engine.voices.first, seed: 999)).samples;
 
     // Bộ nhớ đệm của ứng dụng dựa vào điều này: cùng đoạn, cùng giọng, cùng hạt
     // giống thì phải ra đúng cùng một âm thanh.
@@ -119,6 +119,39 @@ void main() {
     for (var i = 0; i < first.length; i += 977) {
       expect(second[i], first[i], reason: 'lệch tại mẫu $i');
     }
+  }, timeout: const Timeout(Duration(minutes: 5)));
+
+  test('đuôi đoạn trước đi tới được mô hình và đổi âm thanh đoạn sau', () async {
+    final paths = _paths();
+    if (paths == null || (Platform.environment['ORT_DYLIB_PATH'] ?? '').isEmpty) {
+      markTestSkipped('Chưa có mô hình — bỏ qua');
+      return;
+    }
+    final engine = await VieNeuNative.start(paths);
+    addTearDown(engine.close);
+    final giong = engine.voices.first;
+
+    const truoc = 'Buổi sáng hôm ấy trời trong xanh và gió nhẹ thổi qua khu vườn.';
+    const sau = 'Người thợ già dậy từ rất sớm, pha một ấm trà nóng rồi ngồi lặng lẽ.';
+
+    final a = await engine.synthesize(truoc, giong, seed: 21);
+    expect(a.duoi, isNotEmpty, reason: 'phải lấy được mã đuôi để nối ngữ cảnh');
+    // 100 khung x 16 tầng lượng tử là trần; đoạn ngắn hơn thì ít khung hơn.
+    expect(a.duoi.length % 16, 0);
+    expect(a.duoi.length, lessThanOrEqualTo(100 * 16));
+
+    final khong = await engine.synthesize(sau, giong, seed: 22);
+    final co = await engine.synthesize(sau, giong, seed: 22, nguCanh: a.duoi);
+
+    // Cùng chữ, cùng hạt giống — khác nhau thì chỉ có thể do ngữ cảnh đã tới
+    // được mô hình. Không so "hay hơn" ở đây, việc đó đo bằng tai và bằng
+    // script riêng; test này chỉ giữ cho đường truyền khỏi đứt.
+    final n = khong.samples.length < co.samples.length ? khong.samples.length : co.samples.length;
+    var lech = 0;
+    for (var i = 0; i < n; i += 97) {
+      if ((khong.samples[i] - co.samples[i]).abs() > 1e-4) lech++;
+    }
+    expect(lech, greaterThan(0), reason: 'có ngữ cảnh mà âm thanh y hệt — ngữ cảnh bị bỏ qua');
   }, timeout: const Timeout(Duration(minutes: 5)));
 
   test('mô hình chưa tải thì báo rõ chứ không sập', () async {
@@ -160,7 +193,7 @@ void main() {
     final t1 = Stopwatch()..start();
     var mauLanLuot = 0;
     for (final d in doan) {
-      mauLanLuot += (await mot.synthesize(d, giong, seed: 1)).length;
+      mauLanLuot += (await mot.synthesize(d, giong, seed: 1)).samples.length;
     }
     t1.stop();
 
@@ -188,7 +221,7 @@ void main() {
         [for (var i = 0; i < doan.length; i++) nhieu[i].synthesize(doan[i], giong, seed: 1)]);
     t2.stop();
 
-    final mauSongSong = ket.fold<int>(0, (t, m) => t + m.length);
+    final mauSongSong = ket.fold<int>(0, (t, m) => t + m.samples.length);
     expect(mauSongSong, mauLanLuot, reason: 'phải ra cùng lượng âm thanh');
 
     final nhanhHon = t1.elapsedMicroseconds / t2.elapsedMicroseconds;
@@ -370,7 +403,7 @@ void _testEnroll() {
     expect(engine.voices.length, before + 1);
 
     // Giọng vừa thêm phải đọc được ngay, không cần nạp lại mô hình.
-    final samples = await engine.synthesize('Xin chào.', 'Giọng thử', seed: 7);
+    final samples = (await engine.synthesize('Xin chào.', 'Giọng thử', seed: 7)).samples;
     expect(samples.length, greaterThan(engine.sampleRate ~/ 2));
 
     // Giọng dựng sẵn thì không cho xoá.

@@ -49,11 +49,11 @@ fn main() -> Result<(), String> {
             let luong = LUONG[(i + vong) % LUONG.len()];
             let mut model = Model::load(Path::new(&args[1]), Path::new(&args[2]), luong)?;
             // Lượt đầu của một phiên mới luôn chậm hơn, không tính vào số đo.
-            let _ = synthesize(&mut model, &phonemes, voice, &sampling, 1234)?;
+            let _ = synthesize(&mut model, &phonemes, voice, &sampling, 1234, &[])?;
 
             for _ in 0..2 {
                 let t = Instant::now();
-                let mau = synthesize(&mut model, &phonemes, voice, &sampling, 1234)?;
+                let mau = synthesize(&mut model, &phonemes, voice, &sampling, 1234, &[])?;
                 let giay = t.elapsed().as_secs_f32();
                 let he_so = (mau.samples.len() as f32 / SAMPLE_RATE as f32) / giay;
                 moi_lan.entry(luong).or_default().push(he_so);
