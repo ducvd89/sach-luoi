@@ -91,37 +91,67 @@ void main() {
       expect(result.chunks[1].display, isNot(contains('Mở đầu')));
     });
 
-    test('đoạn không vượt quá số từ tối đa', () {
+    test('đoạn không vượt quá kích thước tối đa', () {
       final long = 'Đây là một câu văn khá dài để kiểm tra việc cắt đoạn. ' * 40;
       final result = buildChunks([RawChapter('Chương 1', long)]);
       for (final chunk in result.chunks) {
-        final words = chunk.display.trim().split(RegExp(r'\s+')).length;
-        expect(words, lessThanOrEqualTo(chunkTargetWords + 60));
+        expect(chunk.display.length, lessThanOrEqualTo(chunkMaxChars + 120));
       }
     });
 
-    test('giữ nguyên ranh giới đoạn văn gốc, không gộp hai đoạn văn khác nhau', () {
-      // Trước đây một đoạn văn ngắn ("Cô ấy im lặng.") có thể bị gộp chung với
-      // đoạn văn kế tiếp thành một chunk — xoá mất chỗ ngắt tác giả đặt ra.
-      // Giờ mỗi đoạn văn gốc luôn là (các) chunk riêng của chính nó.
+    test('nhiều đoạn văn ngắn liên tiếp được gộp lại thay vì vỡ vụn từng câu', () {
+      // Nhiều truyện convert từ web bọc MỖI CÂU thoại vào một đoạn/thẻ <p>
+      // riêng (xem epub_parser.dart) — ba đoạn "câu" ngắn dưới đây tổng cộng
+      // chưa tới ngưỡng 60% mục tiêu nên phải gộp thành một chunk, không được
+      // để mỗi cái đứng riêng một mình.
       final result = buildChunks([
-        RawChapter('', 'Cô ấy im lặng.\n\nHắn cũng không nói gì thêm.'),
+        RawChapter('', 'Ừ.\n\nKhông sao đâu.\n\nCô ấy đi rồi.'),
+      ]);
+      expect(result.chunks.length, 1);
+      expect(result.chunks.single.speech, 'Ừ. Không sao đâu. Cô ấy đi rồi.');
+    });
+
+    test('đoạn văn đã đủ dài thì chốt riêng, không kéo đoạn kế ngắn vào', () {
+      // Đoạn văn A vượt 60% mục tiêu nhưng vẫn dưới targetChars (không cần tự
+      // chia nhỏ) phải chốt thành chunk của riêng nó ngay khi vừa xong — không
+      // đợi gộp thêm đoạn B ngắn phía sau.
+      const sentence = 'Đây là một câu để kiểm tra độ dài của đoạn văn thứ nhất.';
+      var paragraphA = sentence;
+      while (paragraphA.length + 1 + sentence.length <= chunkTargetChars) {
+        paragraphA = '$paragraphA $sentence';
+      }
+      expect(paragraphA.length, greaterThanOrEqualTo((chunkTargetChars * 0.6).ceil()));
+      expect(paragraphA.length, lessThanOrEqualTo(chunkTargetChars));
+      final result = buildChunks([
+        RawChapter('', '$paragraphA\n\nNgắn thôi.'),
       ]);
       expect(result.chunks.length, 2);
-      expect(result.chunks[0].speech, 'Cô ấy im lặng.');
-      expect(result.chunks[1].speech, 'Hắn cũng không nói gì thêm.');
+      expect(result.chunks[0].display, paragraphA);
+      expect(result.chunks[1].display, 'Ngắn thôi.');
     });
 
     test('mẩu cuối của một đoạn văn bị chia nhỏ mà quá ngắn thì gộp vào mẩu liền trước', () {
-      // Một đoạn văn DUY NHẤT (không có dòng trống) dài đúng 205 từ: 20 câu 10
-      // từ (200 từ) rồi một câu 5 từ. Câu 21 làm buffer tràn quá 200 từ nên bị
-      // tách thành mẩu riêng — nhưng 5 từ dưới ngưỡng 50 nên phải gộp lại vào
-      // mẩu trước, ra đúng MỘT chunk 205 từ chứ không phải hai chunk 200 + 5.
-      final tenWordSentence = 'Đây là một câu ngắn để đếm từ cho dễ.';
-      final paragraph = '${List.filled(20, tenWordSentence).join(' ')} Chỉ một câu ngắn thôi.';
+      // Một câu DÀI (không dấu câu giữa chừng, nên splitSentences coi là một
+      // câu duy nhất) áp sát targetChars, rồi một câu ĐUÔI rất ngắn. Câu đầu
+      // một mình chưa tràn nên chưa chốt, nhưng cộng thêm câu đuôi thì tràn —
+      // bị tách thành mẩu riêng. Câu đuôi dưới ngưỡng gộp nên phải nhập lại
+      // vào mẩu trước, ra đúng MỘT chunk chứ không phải hai (to + tí hon).
+      const word = 'con mèo ngồi trên nóc tủ nhìn ra ngoài cửa sổ ';
+      var big = '';
+      while (big.length < chunkTargetChars) {
+        big += word;
+      }
+      final bigSentence = '${big.trim()}.';
+      const tail = 'Ngắn thôi.';
+      // Câu đầu một mình đã đủ (hoặc hơn) targetChars, nhưng vì buffer BẮT ĐẦU
+      // rỗng nên nó luôn được nhận không điều kiện — chỉ câu ĐUÔI đến sau mới
+      // kích hoạt việc kiểm tra tràn.
+      expect(bigSentence.length, lessThanOrEqualTo(chunkMaxChars));
+
+      final paragraph = '$bigSentence $tail';
       final result = buildChunks([RawChapter('', paragraph)]);
       expect(result.chunks.length, 1);
-      expect(result.chunks.single.display.trim().split(RegExp(r'\s+')).length, 205);
+      expect(result.chunks.single.display, paragraph);
     });
   });
 

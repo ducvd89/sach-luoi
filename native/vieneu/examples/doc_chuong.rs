@@ -58,6 +58,11 @@ fn main() -> Result<(), String> {
         sampling.temperature, sampling.top_k, sampling.top_p, sampling.repetition_penalty
     );
 
+    // VIENEU_NO_CONTEXT=1: mỗi đoạn đứng một mình (dùng mẫu tham chiếu gốc),
+    // không nối đuôi đoạn trước — để so sánh có/không ngữ cảnh trên cùng văn
+    // bản, cùng tham số lấy mẫu.
+    let khong_ngu_canh = std::env::var("VIENEU_NO_CONTEXT").map(|v| v == "1").unwrap_or(false);
+
     let n_vq = model.cfg.n_vq;
     let mut ngu_canh: Vec<i64> = Vec::new();
     let mut toan_bo_mau: Vec<f32> = Vec::new();
@@ -73,7 +78,8 @@ fn main() -> Result<(), String> {
         let seed = seed_of(&format!("{}|{}", args[5], chunk));
 
         let started = Instant::now();
-        let result = synthesize(&mut model, &phonemes, voice, &sampling, seed, &ngu_canh)?;
+        let ctx_dung: &[i64] = if khong_ngu_canh { &[] } else { &ngu_canh };
+        let result = synthesize(&mut model, &phonemes, voice, &sampling, seed, ctx_dung)?;
         let seconds = result.samples.len() as f32 / SAMPLE_RATE as f32;
         println!(
             "  đoạn {}/{}: {:.2}s âm thanh trong {:.2}s",

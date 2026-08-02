@@ -2,26 +2,50 @@
 ///
 /// Mỗi đoạn là đơn vị của mọi thứ trong ứng dụng: đơn vị phát, đơn vị cache,
 /// đơn vị lưu tiến trình và đơn vị ghép file khi xuất. Đoạn luôn kết thúc ở
-/// ranh giới câu, và KHÔNG BAO GIỜ gộp hai đoạn văn gốc của sách làm một —
-/// ranh giới đoạn văn tác giả đặt ra sao thì giữ y vậy, chunk chỉ chia nhỏ
-/// thêm bên trong một đoạn văn nếu nó dài quá mức.
+/// ranh giới câu.
+///
+/// Đoạn văn gốc (ngăn bởi dòng trống) là mốc ưu tiên để chốt một chunk — hết
+/// một đoạn văn mà đã đủ dài thì chốt luôn ở đó thay vì kéo sang đoạn kế, để
+/// chỗ ngắt tác giả đặt ra không bị xoá mất. Nhưng nhiều đoạn văn gốc quá ngắn
+/// (nhiều truyện convert từ web bọc MỖI CÂU vào một đoạn/thẻ `<p>` riêng — xem
+/// `epub_parser.dart`, mỗi câu thoại một `<p>`) thì phải gộp lại với đoạn kế
+/// cho tới khi đủ dài, không thì chunk vỡ vụn thành từng câu một.
 library;
 
 import '../models/book.dart';
 import 'text_normalizer.dart';
 
-/// Độ dài đoạn mục tiêu, tính bằng số từ (cách nhau bởi khoảng trắng).
+/// Độ dài đoạn mục tiêu, tính bằng ký tự — KHÔNG phải mốc tuỳ ý, mà là trần
+/// thật của mô hình sinh âm.
 ///
-/// Từng tính bằng ký tự và cho phép gộp nhiều đoạn văn gốc lại với nhau để
-/// khỏi có chunk quá ngắn — nhưng vậy thì cấu trúc đoạn văn của sách bị xoá
-/// mất, nghe liền mạch tới mức mất luôn chỗ ngắt tác giả cố ý đặt ra. Giờ đơn
-/// vị là từ, và mỗi đoạn văn gốc giữ nguyên là (các) chunk riêng của chính nó.
-const int chunkTargetWords = 200;
+/// Từng thử đổi sang đơn vị từ và nhắm ~200 từ (~1300 ký tự) để chunk bám theo
+/// đoạn văn thật xa hơn — sập ngay: mô hình tự hồi quy VieNeu không "biết dừng
+/// đúng lúc" với đoạn dài cỡ đó, đọc vội và ra tiếng vô nghĩa (đo được: một
+/// đoạn ~200 từ không dừng nổi trong nhiều phút dù đã nới `max_new_frames` lên
+/// 3500).
+///
+/// Hạ từ 400 xuống đúng 256 — con số ghi trong README về thư viện VieNeu gốc:
+/// nó tự cắt câu thành mảnh ≤256 ký tự trước khi đưa vào mô hình. Đo thực
+/// nghiệm thì 256 và 400 cho tỉ lệ lặp chữ giống nhau (không phải nguyên nhân
+/// chính), nhưng 256 là đúng con số nguyên bản nên không có lý do giữ 400.
+///
+/// Đây là MỤC TIÊU chứ không phải trần cứng: hết câu/hết đoạn văn luôn được ưu
+/// tiên hơn bám sát con số này — xem [chunkMaxChars] và nhánh chốt-cuối-đoạn
+/// trong [buildChunks].
+const int chunkTargetChars = 256;
 
-/// Mẩu cuối của một đoạn văn bị chia nhỏ mà dưới ngưỡng này (tính bằng từ) thì
-/// gộp luôn vào mẩu liền trước trong CÙNG đoạn văn, đỡ phải có một chunk tí
-/// hon chỉ vài từ đứng lẻ ở cuối đoạn.
-const int chunkMergeUnderWords = 50;
+/// Trần cứng cho một mẩu câu bị chia nhỏ.
+///
+/// Chỉ áp dụng khi MỘT câu (không có dấu chấm câu nào giữa chừng) tự nó đã dài
+/// hơn mức này — cắt tại dấu phẩy trước, tại khoảng trắng nếu vẫn không đủ.
+/// Câu bình thường không bao giờ chạm tới đây.
+const int chunkMaxChars = 440;
+
+/// Buffer dưới ngưỡng này (tính bằng ký tự) thì coi là "còn quá ngắn" — chưa
+/// đủ để đứng thành một chunk riêng, phải gộp tiếp với câu/đoạn kế dù có vượt
+/// [chunkTargetChars]. Dùng chung cho cả hai chỗ: cuối một đoạn văn (đừng chốt
+/// non khi mới có vài chục ký tự) và mẩu cuối khi một đoạn quá dài bị chia nhỏ.
+const int chunkMergeUnderChars = 100;
 
 /// Số ký tự đọc được trong một giây ở tốc độ chuẩn — đo thực tế với giọng vi-VN.
 const double charsPerSecond = 14.5;
@@ -62,90 +86,40 @@ List<String> splitSentences(String paragraph) {
   return sentences;
 }
 
-final _wordToken = RegExp(r'\S+');
-
-/// Đếm số từ — tách bởi khoảng trắng, không quan tâm nội dung từng từ.
-int _countWords(String text) => _wordToken.allMatches(text).length;
-
-/// Cắt nhỏ câu quá dài tại dấu phẩy, nếu vẫn dài thì cắt tại khoảng trắng —
-/// đo bằng số từ thay vì số ký tự.
-List<String> _splitLongSentence(String sentence, int maxWords) {
-  if (_countWords(sentence) <= maxWords) return [sentence];
+/// Cắt nhỏ câu quá dài tại dấu phẩy, nếu vẫn dài thì cắt tại khoảng trắng.
+List<String> _splitLongSentence(String sentence, int maxChars) {
+  if (sentence.length <= maxChars) return [sentence];
 
   final pieces = <String>[];
   var buffer = '';
-  var bufferWords = 0;
   for (final part in sentence.split(RegExp(r'(?<=[,:–-])\s+'))) {
-    final partWords = _countWords(part);
-    if (buffer.isNotEmpty && bufferWords + partWords > maxWords) {
+    if (buffer.isNotEmpty && buffer.length + part.length + 1 > maxChars) {
       pieces.add(buffer);
-      buffer = '';
-      bufferWords = 0;
+      buffer = part;
+    } else {
+      buffer = buffer.isEmpty ? part : '$buffer $part';
     }
-    buffer = buffer.isEmpty ? part : '$buffer $part';
-    bufferWords += partWords;
   }
   if (buffer.isNotEmpty) pieces.add(buffer);
 
   final out = <String>[];
   for (final piece in pieces) {
-    if (_countWords(piece) <= maxWords) {
+    if (piece.length <= maxChars) {
       out.add(piece);
       continue;
     }
     var line = '';
-    var lineWords = 0;
-    for (final word in piece.split(RegExp(r'\s+'))) {
-      if (lineWords > 0 && lineWords + 1 > maxWords) {
+    for (final word in piece.split(' ')) {
+      if (line.isNotEmpty && line.length + word.length + 1 > maxChars) {
         out.add(line);
         line = word;
-        lineWords = 1;
       } else {
         line = line.isEmpty ? word : '$line $word';
-        lineWords++;
       }
     }
     if (line.isNotEmpty) out.add(line);
   }
   return out;
-}
-
-/// Cắt MỘT đoạn văn gốc thành các chunk theo số từ, ưu tiên ranh giới câu.
-///
-/// Không bao giờ nhận thêm nội dung từ đoạn văn khác — đây là điểm khác biệt
-/// với cách cũ. Nếu đoạn văn phải chia làm nhiều mẩu mà mẩu cuối quá ngắn
-/// (dưới [chunkMergeUnderWords] từ) thì gộp nó vào mẩu liền trước, vẫn trong
-/// cùng đoạn văn này.
-List<String> _splitParagraphIntoChunks(
-  String paragraph, {
-  required int targetWords,
-  required int mergeUnderWords,
-  required int maxWords,
-}) {
-  final pieces = <String>[];
-  var buffer = '';
-  var bufferWords = 0;
-
-  for (final sentence in splitSentences(paragraph)) {
-    for (final piece in _splitLongSentence(sentence, maxWords)) {
-      final pieceWords = _countWords(piece);
-      if (buffer.isNotEmpty && bufferWords + pieceWords > targetWords) {
-        pieces.add(buffer);
-        buffer = '';
-        bufferWords = 0;
-      }
-      buffer = buffer.isEmpty ? piece : '$buffer $piece';
-      bufferWords += pieceWords;
-    }
-  }
-  if (buffer.isNotEmpty) pieces.add(buffer);
-
-  if (pieces.length > 1 && _countWords(pieces.last) < mergeUnderWords) {
-    final last = pieces.removeLast();
-    pieces[pieces.length - 1] = '${pieces.last} $last';
-  }
-
-  return pieces;
 }
 
 final _hasContent = RegExp(r'[A-Za-zÀ-ỹ0-9]');
@@ -187,11 +161,11 @@ class ChunkResult {
 ChunkResult buildChunks(
   List<RawChapter> rawChapters, {
   bool expandNumbers = true,
-  int targetWords = chunkTargetWords,
-  int mergeUnderWords = chunkMergeUnderWords,
+  int targetChars = chunkTargetChars,
+  int mergeUnderChars = chunkMergeUnderChars,
   void Function(int done, int total)? onChapter,
 }) {
-  final maxWords = targetWords + 60;
+  final maxChars = targetChars + 120 > chunkMaxChars ? targetChars + 120 : chunkMaxChars;
   final chunks = <Chunk>[];
   final chapters = <Chapter>[];
 
@@ -232,19 +206,58 @@ ChunkResult buildChunks(
       body = _dropRepeatedTitle(body, title);
     }
 
+    var buffer = '';
+    void flush() {
+      final trimmed = buffer.trim();
+      if (trimmed.isNotEmpty) push(trimmed, false);
+      buffer = '';
+    }
+
     for (final paragraph in body.split(RegExp(r'\n{2,}'))) {
       final clean = paragraph.replaceAll('\n', ' ').trim();
       if (clean.isEmpty) continue;
 
-      for (final piece in _splitParagraphIntoChunks(
-        clean,
-        targetWords: targetWords,
-        mergeUnderWords: mergeUnderWords,
-        maxWords: maxWords,
-      )) {
+      // Xử lý đoạn văn này trên một buffer cục bộ, bắt đầu từ đúng chỗ buffer
+      // đang mang theo (để đoạn ngắn nối được với đoạn ngắn liền trước). Mẩu
+      // nào tràn quá targetChars thì chốt luôn vào [pieces]; phần còn dư sau
+      // khi xử lý hết đoạn văn thì giữ lại trong buffer cục bộ.
+      final pieces = <String>[];
+      var local = buffer;
+      buffer = '';
+
+      for (final sentence in splitSentences(clean)) {
+        for (final piece in _splitLongSentence(sentence, maxChars)) {
+          // Buffer cục bộ còn quá ngắn thì đừng chốt oan thành một chunk tí
+          // hon chỉ vì piece kế đẩy tổng vượt targetChars — cứ gộp xuống.
+          final ngan = local.length < mergeUnderChars;
+          if (local.isNotEmpty && !ngan && local.length + piece.length + 1 > targetChars) {
+            pieces.add(local);
+            local = '';
+          }
+          local = local.isEmpty ? piece : '$local $piece';
+        }
+      }
+
+      // Đoạn văn này đã phải tách thành >=1 mẩu hoàn chỉnh (pieces không
+      // rỗng) mà phần dư lại quá ngắn — thay vì để dư ra một mẩu tí hon riêng,
+      // gộp nó vào mẩu hoàn chỉnh liền trước, vẫn trong cùng đoạn văn.
+      if (pieces.isNotEmpty && local.length < mergeUnderChars) {
+        pieces[pieces.length - 1] = '${pieces.last} $local';
+        local = '';
+      }
+
+      for (final piece in pieces) {
         push(piece, false);
       }
+
+      buffer = local;
+
+      // Hết đoạn văn gốc thì chốt luôn nếu đã đủ dài — ưu tiên khoảng nghỉ tự
+      // nhiên ở ranh giới đoạn văn thật, thay vì kéo sang đoạn kế chỉ vì chưa
+      // chạm mốc targetChars.
+      if (buffer.length >= targetChars * 0.6) flush();
     }
+    flush();
 
     final count = chunks.length - firstChunk;
     if (count > 0) {

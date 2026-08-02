@@ -166,6 +166,13 @@ impl Default for Sampling {
             top_k: 25,
             top_p: 0.85,
             repetition_penalty: 1.4,
+            // 24s — đúng con số đã kiểm chứng từ bản đầu tiên của app (300
+            // khung), đi kèm chunker 400/680 ký tự (xem chunker.dart). ĐỪNG
+            // nâng số này lên mà không hạ chunk xuống tương ứng: đã thử nới
+            // chunk lên ~200 từ (~1300 ký tự) một lần, mô hình tự hồi quy
+            // không "biết dừng" ở độ dài đó dù nới trần này lên 3500 — không
+            // dừng nổi trong nhiều phút, ra tiếng vô nghĩa. Trần khung và độ
+            // dài chunk phải đổi cùng nhau, không đổi lệch một bên.
             max_new_frames: 300,
         }
     }
