@@ -2,31 +2,26 @@
 ///
 /// Mỗi đoạn là đơn vị của mọi thứ trong ứng dụng: đơn vị phát, đơn vị cache,
 /// đơn vị lưu tiến trình và đơn vị ghép file khi xuất. Đoạn luôn kết thúc ở
-/// ranh giới câu để giọng đọc không bị cụt giữa chừng.
+/// ranh giới câu, và KHÔNG BAO GIỜ gộp hai đoạn văn gốc của sách làm một —
+/// ranh giới đoạn văn tác giả đặt ra sao thì giữ y vậy, chunk chỉ chia nhỏ
+/// thêm bên trong một đoạn văn nếu nó dài quá mức.
 library;
 
 import '../models/book.dart';
 import 'text_normalizer.dart';
 
-/// Độ dài đoạn, tính bằng ký tự.
+/// Độ dài đoạn mục tiêu, tính bằng số từ (cách nhau bởi khoảng trắng).
 ///
-/// Từng bị chặn bởi bộ nhớ: bộ giải mã âm tự-chú-ý trên toàn bộ khung của cả
-/// đoạn một lượt, nên RAM tỉ lệ với **bình phương** độ dài — 25 giây ngốn 4,9 GB
-/// và khoảng 50 giây thì ONNX Runtime báo bad allocation. Hai con số dưới đây
-/// (khoảng 14 và 22 giây) sinh ra để né chỗ đó.
-///
-/// Bức tường ấy không còn: bộ giải mã âm giờ chạy cuốn chiếu theo cửa sổ 3 giây
-/// và mang bộ nhớ đệm sang cửa sổ sau, nên bộ nhớ có trần và thời gian tuyến
-/// tính (xem KHUNG_MOI_LUOT trong native/vieneu/src/engine.rs). Đo lại: một đoạn
-/// 121 giây chạy trọn trong 1,16 GB cho cả tiến trình.
-///
-/// Cái còn giữ hai con số này ở mức thấp giờ là chuyện khác: đoạn là đơn vị
-/// phát, đơn vị cache, đơn vị lưu tiến trình và đơn vị ghép file. Đoạn dài thì
-/// nghe câu đầu tiên lâu hơn, dừng giữa chừng mất nhiều hơn, và bộ nhớ đệm
-/// khoá/giá trị của vòng sinh vẫn lớn dần theo độ dài đoạn — nhân với số worker
-/// chạy song song lúc xuất file thì vẫn phải dè chừng.
-const int chunkTargetChars = 200;
-const int chunkMaxChars = 320;
+/// Từng tính bằng ký tự và cho phép gộp nhiều đoạn văn gốc lại với nhau để
+/// khỏi có chunk quá ngắn — nhưng vậy thì cấu trúc đoạn văn của sách bị xoá
+/// mất, nghe liền mạch tới mức mất luôn chỗ ngắt tác giả cố ý đặt ra. Giờ đơn
+/// vị là từ, và mỗi đoạn văn gốc giữ nguyên là (các) chunk riêng của chính nó.
+const int chunkTargetWords = 200;
+
+/// Mẩu cuối của một đoạn văn bị chia nhỏ mà dưới ngưỡng này (tính bằng từ) thì
+/// gộp luôn vào mẩu liền trước trong CÙNG đoạn văn, đỡ phải có một chunk tí
+/// hon chỉ vài từ đứng lẻ ở cuối đoạn.
+const int chunkMergeUnderWords = 50;
 
 /// Số ký tự đọc được trong một giây ở tốc độ chuẩn — đo thực tế với giọng vi-VN.
 const double charsPerSecond = 14.5;
@@ -67,40 +62,90 @@ List<String> splitSentences(String paragraph) {
   return sentences;
 }
 
-/// Cắt nhỏ câu quá dài tại dấu phẩy, nếu vẫn dài thì cắt tại khoảng trắng.
-List<String> _splitLongSentence(String sentence, int maxChars) {
-  if (sentence.length <= maxChars) return [sentence];
+final _wordToken = RegExp(r'\S+');
+
+/// Đếm số từ — tách bởi khoảng trắng, không quan tâm nội dung từng từ.
+int _countWords(String text) => _wordToken.allMatches(text).length;
+
+/// Cắt nhỏ câu quá dài tại dấu phẩy, nếu vẫn dài thì cắt tại khoảng trắng —
+/// đo bằng số từ thay vì số ký tự.
+List<String> _splitLongSentence(String sentence, int maxWords) {
+  if (_countWords(sentence) <= maxWords) return [sentence];
 
   final pieces = <String>[];
   var buffer = '';
+  var bufferWords = 0;
   for (final part in sentence.split(RegExp(r'(?<=[,:–-])\s+'))) {
-    if (buffer.isNotEmpty && buffer.length + part.length + 1 > maxChars) {
+    final partWords = _countWords(part);
+    if (buffer.isNotEmpty && bufferWords + partWords > maxWords) {
       pieces.add(buffer);
-      buffer = part;
-    } else {
-      buffer = buffer.isEmpty ? part : '$buffer $part';
+      buffer = '';
+      bufferWords = 0;
     }
+    buffer = buffer.isEmpty ? part : '$buffer $part';
+    bufferWords += partWords;
   }
   if (buffer.isNotEmpty) pieces.add(buffer);
 
   final out = <String>[];
   for (final piece in pieces) {
-    if (piece.length <= maxChars) {
+    if (_countWords(piece) <= maxWords) {
       out.add(piece);
       continue;
     }
     var line = '';
-    for (final word in piece.split(' ')) {
-      if (line.isNotEmpty && line.length + word.length + 1 > maxChars) {
+    var lineWords = 0;
+    for (final word in piece.split(RegExp(r'\s+'))) {
+      if (lineWords > 0 && lineWords + 1 > maxWords) {
         out.add(line);
         line = word;
+        lineWords = 1;
       } else {
         line = line.isEmpty ? word : '$line $word';
+        lineWords++;
       }
     }
     if (line.isNotEmpty) out.add(line);
   }
   return out;
+}
+
+/// Cắt MỘT đoạn văn gốc thành các chunk theo số từ, ưu tiên ranh giới câu.
+///
+/// Không bao giờ nhận thêm nội dung từ đoạn văn khác — đây là điểm khác biệt
+/// với cách cũ. Nếu đoạn văn phải chia làm nhiều mẩu mà mẩu cuối quá ngắn
+/// (dưới [chunkMergeUnderWords] từ) thì gộp nó vào mẩu liền trước, vẫn trong
+/// cùng đoạn văn này.
+List<String> _splitParagraphIntoChunks(
+  String paragraph, {
+  required int targetWords,
+  required int mergeUnderWords,
+  required int maxWords,
+}) {
+  final pieces = <String>[];
+  var buffer = '';
+  var bufferWords = 0;
+
+  for (final sentence in splitSentences(paragraph)) {
+    for (final piece in _splitLongSentence(sentence, maxWords)) {
+      final pieceWords = _countWords(piece);
+      if (buffer.isNotEmpty && bufferWords + pieceWords > targetWords) {
+        pieces.add(buffer);
+        buffer = '';
+        bufferWords = 0;
+      }
+      buffer = buffer.isEmpty ? piece : '$buffer $piece';
+      bufferWords += pieceWords;
+    }
+  }
+  if (buffer.isNotEmpty) pieces.add(buffer);
+
+  if (pieces.length > 1 && _countWords(pieces.last) < mergeUnderWords) {
+    final last = pieces.removeLast();
+    pieces[pieces.length - 1] = '${pieces.last} $last';
+  }
+
+  return pieces;
 }
 
 final _hasContent = RegExp(r'[A-Za-zÀ-ỹ0-9]');
@@ -142,10 +187,11 @@ class ChunkResult {
 ChunkResult buildChunks(
   List<RawChapter> rawChapters, {
   bool expandNumbers = true,
-  int targetChars = chunkTargetChars,
+  int targetWords = chunkTargetWords,
+  int mergeUnderWords = chunkMergeUnderWords,
   void Function(int done, int total)? onChapter,
 }) {
-  final maxChars = targetChars + 120 > chunkMaxChars ? targetChars + 120 : chunkMaxChars;
+  final maxWords = targetWords + 60;
   final chunks = <Chunk>[];
   final chapters = <Chapter>[];
 
@@ -186,27 +232,19 @@ ChunkResult buildChunks(
       body = _dropRepeatedTitle(body, title);
     }
 
-    var buffer = '';
-    void flush() {
-      final trimmed = buffer.trim();
-      if (trimmed.isNotEmpty) push(trimmed, false);
-      buffer = '';
-    }
-
     for (final paragraph in body.split(RegExp(r'\n{2,}'))) {
       final clean = paragraph.replaceAll('\n', ' ').trim();
       if (clean.isEmpty) continue;
 
-      for (final sentence in splitSentences(clean)) {
-        for (final piece in _splitLongSentence(sentence, maxChars)) {
-          if (buffer.isNotEmpty && buffer.length + piece.length + 1 > targetChars) flush();
-          buffer = buffer.isEmpty ? piece : '$buffer $piece';
-        }
+      for (final piece in _splitParagraphIntoChunks(
+        clean,
+        targetWords: targetWords,
+        mergeUnderWords: mergeUnderWords,
+        maxWords: maxWords,
+      )) {
+        push(piece, false);
       }
-      // Hết đoạn văn thì chốt luôn nếu đã đủ dài — giữ nhịp nghỉ tự nhiên.
-      if (buffer.length >= targetChars * 0.6) flush();
     }
-    flush();
 
     final count = chunks.length - firstChunk;
     if (count > 0) {

@@ -42,9 +42,18 @@ String _decodeEntities(String text) {
   });
 }
 
-const _blockTags = 'p|div|br|li|tr|h[1-6]|blockquote|section|article|figcaption|td|th|pre|hr';
+const _blockTags = 'p|div|li|tr|h[1-6]|blockquote|section|article|figcaption|td|th|pre|hr';
 
 /// Chuyển XHTML thành văn bản thuần, giữ ranh giới đoạn bằng dòng trống.
+///
+/// `<br>` xuống dòng MỀM — nhiều sách convert từ web dùng nó để ngắt dòng
+/// giữa câu (thơ, xuống dòng theo khổ giấy gốc) chứ không phải hết đoạn. Cho
+/// nó thành `\n\n` như các thẻ khối khác thì bộ cắt đoạn (`chunker.dart`, tách
+/// đoạn văn tại `\n{2,}`) hiểu nhầm thành ranh giới đoạn thật, cắt chương ra
+/// nhiều đoạn hơn cần thiết — mỗi đoạn là một lượt tổng hợp riêng nên sinh
+/// thêm chỗ chuyển giọng không đáng có giữa câu. Nên chỉ xuống MỘT dòng, để
+/// bước sau (`chunker.dart` nối dòng bằng khoảng trắng trong cùng đoạn) gộp
+/// nó lại thành một câu liền mạch.
 String htmlToText(String html) {
   var text = html
       .replaceAll(RegExp(r'<\?[\s\S]*?\?>'), '')
@@ -54,6 +63,7 @@ String htmlToText(String html) {
       // Chú thích cuối trang trong EPUB thường là <a epub:type="noteref">1</a>.
       .replaceAll(RegExp(r'''<a\b[^>]*epub:type\s*=\s*["']noteref["'][\s\S]*?</a>''', caseSensitive: false), '')
       .replaceAll(RegExp(r'<sup\b[^>]*>[\s\S]{0,20}?</sup>', caseSensitive: false), '')
+      .replaceAll(RegExp(r'<\s*br\s*/?\s*>', caseSensitive: false), '\n')
       .replaceAll(RegExp('</?(?:$_blockTags)\\b[^>]*>', caseSensitive: false), '\n\n')
       .replaceAll(RegExp(r'<[^>]+>'), '');
 

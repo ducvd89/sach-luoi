@@ -149,11 +149,23 @@ pub struct Sampling {
 
 impl Default for Sampling {
     fn default() -> Self {
+        // Hạ từ 0.8/0.95 xuống 0.6/0.85: lấy mẫu ít ngẫu nhiên hơn nên bớt lạc
+        // vào những đoạn mã nghe như hơi thở giữa hai từ. Đo trên chương 253
+        // Phàm Nhân Tu Tiên (giọng Việt Sử, 12 đoạn nối ngữ cảnh): thời lượng
+        // gần như không đổi (165s -> 168s) nên không phải do cắt bớt nhịp.
+        //
+        // repetition_penalty 1.2 -> 1.4: giảm khả năng mô hình tự hồi quy lặp
+        // lại vài từ cuối câu trước khi dừng hẳn (lỗi đo được thật trên một bản
+        // xuất file — cụm "vậy được" bị đọc hai lần). Lỗi này mang tính xác
+        // suất, phụ thuộc thứ tự cộng dồn dấu phẩy động đa luồng nên không tái
+        // hiện ổn định giữa các lần chạy dù cùng seed — không đo được chính xác
+        // mức giảm, đây là hạ nguy cơ theo hướng chuẩn (phạt mạnh hơn việc dùng
+        // lại mã đã dùng), không phải con số đã kiểm chứng triệt để.
         Sampling {
-            temperature: 0.8,
+            temperature: 0.6,
             top_k: 25,
-            top_p: 0.95,
-            repetition_penalty: 1.2,
+            top_p: 0.85,
+            repetition_penalty: 1.4,
             max_new_frames: 300,
         }
     }

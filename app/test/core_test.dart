@@ -91,12 +91,37 @@ void main() {
       expect(result.chunks[1].display, isNot(contains('Mở đầu')));
     });
 
-    test('đoạn không vượt quá kích thước tối đa', () {
+    test('đoạn không vượt quá số từ tối đa', () {
       final long = 'Đây là một câu văn khá dài để kiểm tra việc cắt đoạn. ' * 40;
       final result = buildChunks([RawChapter('Chương 1', long)]);
       for (final chunk in result.chunks) {
-        expect(chunk.display.length, lessThanOrEqualTo(chunkMaxChars + 120));
+        final words = chunk.display.trim().split(RegExp(r'\s+')).length;
+        expect(words, lessThanOrEqualTo(chunkTargetWords + 60));
       }
+    });
+
+    test('giữ nguyên ranh giới đoạn văn gốc, không gộp hai đoạn văn khác nhau', () {
+      // Trước đây một đoạn văn ngắn ("Cô ấy im lặng.") có thể bị gộp chung với
+      // đoạn văn kế tiếp thành một chunk — xoá mất chỗ ngắt tác giả đặt ra.
+      // Giờ mỗi đoạn văn gốc luôn là (các) chunk riêng của chính nó.
+      final result = buildChunks([
+        RawChapter('', 'Cô ấy im lặng.\n\nHắn cũng không nói gì thêm.'),
+      ]);
+      expect(result.chunks.length, 2);
+      expect(result.chunks[0].speech, 'Cô ấy im lặng.');
+      expect(result.chunks[1].speech, 'Hắn cũng không nói gì thêm.');
+    });
+
+    test('mẩu cuối của một đoạn văn bị chia nhỏ mà quá ngắn thì gộp vào mẩu liền trước', () {
+      // Một đoạn văn DUY NHẤT (không có dòng trống) dài đúng 205 từ: 20 câu 10
+      // từ (200 từ) rồi một câu 5 từ. Câu 21 làm buffer tràn quá 200 từ nên bị
+      // tách thành mẩu riêng — nhưng 5 từ dưới ngưỡng 50 nên phải gộp lại vào
+      // mẩu trước, ra đúng MỘT chunk 205 từ chứ không phải hai chunk 200 + 5.
+      final tenWordSentence = 'Đây là một câu ngắn để đếm từ cho dễ.';
+      final paragraph = '${List.filled(20, tenWordSentence).join(' ')} Chỉ một câu ngắn thôi.';
+      final result = buildChunks([RawChapter('', paragraph)]);
+      expect(result.chunks.length, 1);
+      expect(result.chunks.single.display.trim().split(RegExp(r'\s+')).length, 205);
     });
   });
 

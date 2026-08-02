@@ -7,6 +7,11 @@
 //! set ORT_DYLIB_PATH=...\onnxruntime.dll
 //! cargo run --release --example thu_doc -- <model_dir> <codec_dir> <dict> <voices.json> <ten_giong> <file_ra.wav>
 //! ```
+//!
+//! Để A/B test tham số lấy mẫu (vd nghi ngờ hơi thở lạc giữa từ do sampling
+//! quá ngẫu nhiên) mà không phải sửa code, đặt biến môi trường trước khi chạy:
+//! `VIENEU_TEMPERATURE`, `VIENEU_TOP_K`, `VIENEU_TOP_P`, `VIENEU_REP_PENALTY`.
+//! Không đặt thì dùng đúng `Sampling::default()` như bản chạy thật.
 
 use std::io::Write;
 use std::path::Path;
@@ -39,8 +44,14 @@ fn main() -> Result<(), String> {
     // chừng là panic.
     println!("Âm vị: {}", phonemes.chars().take(90).collect::<String>());
 
+    let sampling = sampling_from_env();
+    println!(
+        "Lấy mẫu: temperature={} top_k={} top_p={} repetition_penalty={}",
+        sampling.temperature, sampling.top_k, sampling.top_p, sampling.repetition_penalty
+    );
+
     let started = Instant::now();
-    let result = synthesize(&mut model, &phonemes, voice, &Sampling::default(), 12345, &[])?;
+    let result = synthesize(&mut model, &phonemes, voice, &sampling, 12345, &[])?;
     let elapsed = started.elapsed().as_secs_f32();
     let seconds = result.samples.len() as f32 / SAMPLE_RATE as f32;
     println!(
@@ -54,6 +65,24 @@ fn main() -> Result<(), String> {
     write_wav(Path::new(&args[6]), &result.samples)?;
     println!("Đã ghi {}", args[6]);
     Ok(())
+}
+
+/// Đọc đè tham số lấy mẫu từ biến môi trường, giữ mặc định cho phần không đặt.
+fn sampling_from_env() -> Sampling {
+    fn env_f32(key: &str, default: f32) -> f32 {
+        std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+    }
+    fn env_usize(key: &str, default: usize) -> usize {
+        std::env::var(key).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+    }
+    let base = Sampling::default();
+    Sampling {
+        temperature: env_f32("VIENEU_TEMPERATURE", base.temperature),
+        top_k: env_usize("VIENEU_TOP_K", base.top_k),
+        top_p: env_f32("VIENEU_TOP_P", base.top_p),
+        repetition_penalty: env_f32("VIENEU_REP_PENALTY", base.repetition_penalty),
+        ..base
+    }
 }
 
 fn load_voices(path: &Path) -> Result<std::collections::HashMap<String, Voice>, String> {
