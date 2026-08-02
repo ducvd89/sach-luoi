@@ -63,9 +63,14 @@ Duration pauseAfterChunk({required bool heading, required int pauseMs}) {
 /// file thật 29,9 phút: WAV 164 MB, Opus 32k 6,8 MB, Opus 64k 14 MB, MP3 128k
 /// 27 MB. Opus nhỏ hơn hẳn ở cùng chất lượng vì nó được thiết kế cho dải bitrate
 /// thấp, còn MP3 giữ lại vì đầu đĩa và dàn xe hơi cũ chỉ đọc được nó.
+///
+/// AAC thêm sau: bộ mã hoá thuần Rust trên máy tính (không cần thư viện C nào),
+/// và trên Android là chính bộ mã hoá hệ điều hành dùng sẵn — máy nào cũng phát
+/// được như MP3, nhưng nhẹ hơn nhiều ở cùng chất lượng, gần với Opus.
 enum ExportFormat {
   opus32('opus32', 'Opus 32 kbps — nhỏ nhất', 'opus', 32000),
   opus64('opus64', 'Opus 64 kbps — chất lượng cao hơn', 'opus', 64000),
+  aac64('aac_64', 'AAC 64 kbps — nhẹ mà máy nào cũng phát được', 'aac', 64000),
   mp3_128('mp3_128', 'MP3 128 kbps — máy nào cũng đọc được', 'mp3', 128),
   wav('wav', 'WAV — không nén, nặng nhất', 'wav', 0);
 
@@ -74,7 +79,7 @@ enum ExportFormat {
   final String label;
   final String extension;
 
-  /// Opus tính theo bit/s, MP3 theo kbps — đúng như thư viện native nhận.
+  /// Opus và AAC tính theo bit/s, MP3 theo kbps — đúng như thư viện native nhận.
   final int bitrate;
 
   bool get isWav => this == ExportFormat.wav;

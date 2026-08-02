@@ -40,7 +40,7 @@ void main() {
     if (dir.existsSync()) dir.deleteSync(recursive: true);
   });
 
-  test('nén được sang Opus và MP3, file nhỏ hơn WAV rất nhiều', () async {
+  test('nén được sang Opus, MP3 và AAC, file nhỏ hơn WAV rất nhiều', () async {
     if (!_coThuVien()) {
       markTestSkipped('Chưa dựng thư viện native — bỏ qua');
       return;
@@ -52,6 +52,7 @@ void main() {
       (EncodeFormat.opus, 32000, 'ra32.opus'),
       (EncodeFormat.opus, 64000, 'ra64.opus'),
       (EncodeFormat.mp3, 128, 'ra.mp3'),
+      (EncodeFormat.aac, 64000, 'ra.aac'),
     ]) {
       final ra = File(p.join(dir.path, ten));
       await encodeAudioFile(
@@ -63,7 +64,8 @@ void main() {
       if (format == EncodeFormat.opus) {
         expect(String.fromCharCodes(bytes.take(4)), 'OggS', reason: 'Opus nằm trong Ogg');
       } else {
-        expect(bytes.first, 0xFF, reason: 'khung MP3 mở đầu bằng 0xFF');
+        // Khung MP3 và khung ADTS (AAC) đều mở đầu bằng 0xFF.
+        expect(bytes.first, 0xFF, reason: '$ten mở đầu bằng 0xFF');
       }
       // Không được để lại file tạm.
       expect(File('${ra.path}.tmp').existsSync(), isFalse);
@@ -116,7 +118,9 @@ void main() {
     // Đổi mấy con số này là đổi luôn giao kèo với thư viện native.
     expect(EncodeFormat.opus.code, 0);
     expect(EncodeFormat.mp3.code, 1);
+    expect(EncodeFormat.aac.code, 2);
     expect(EncodeFormat.opus.extension, 'opus');
     expect(EncodeFormat.mp3.extension, 'mp3');
+    expect(EncodeFormat.aac.extension, 'aac');
   });
 }

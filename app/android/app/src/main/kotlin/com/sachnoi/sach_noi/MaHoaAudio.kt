@@ -2,6 +2,7 @@ package com.sachnoi.sach_noi
 
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
+import android.media.MediaCodecList
 import android.media.MediaFormat
 import android.media.MediaMuxer
 import android.os.Build
@@ -30,8 +31,18 @@ object MaHoaAudio {
     private const val CHO_US = 10_000L
 
     /// Nén [wavPath] rồi ghi cạnh [outBase] với đuôi do máy quyết định.
+    ///
+    /// [baoTienDo] được gọi từ luồng nền đang nén (KHÔNG phải luồng chính), tối
+    /// đa vài chục lần cho cả file — bên gọi tự lo đẩy sang đúng luồng cần.
+    ///
     /// Trả về đường dẫn đã ghi. Ném [IllegalStateException] kèm lý do nếu lỗi.
-    fun nen(wavPath: String, outBase: String, dinhDang: String, bitrate: Int): String {
+    fun nen(
+        wavPath: String,
+        outBase: String,
+        dinhDang: String,
+        bitrate: Int,
+        baoTienDo: (Double) -> Unit = {},
+    ): String {
         val (pcm, sr) = docWav(File(wavPath))
 
         val muonOpus = dinhDang == "opus"
@@ -54,7 +65,27 @@ object MaHoaAudio {
         // file dở dang mà phần xuất file tưởng là đã xong.
         tam.parentFile?.mkdirs()
 
-        val codec = MediaCodec.createEncoderByType(mime)
+        // Mặc định createEncoderByType tự chọn bộ mã hoá đầu tiên khớp mime —
+        // trên nhiều máy đó là bản phần mềm của Google dù máy có bản phần cứng
+        // của hãng (đo thật trên một máy Qualcomm: c2.qti.aac.hw.encoder có sẵn
+        // nhưng không được chọn mặc định). Tự dò danh sách, ưu tiên bản phần
+        // cứng nếu có — đỡ CPU/pin dù tốc độ đo được không khác bản phần mềm là
+        // bao (khung âm thanh quá nhỏ để phần cứng có ích như video).
+        val tenPhanCung = runCatching {
+            MediaCodecList(MediaCodecList.ALL_CODECS).codecInfos
+                .firstOrNull { info ->
+                    info.isEncoder &&
+                        info.supportedTypes.any { it.equals(mime, ignoreCase = true) } &&
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+                        info.isHardwareAccelerated
+                }?.name
+        }.getOrNull()
+
+        val codec = if (tenPhanCung != null) {
+            MediaCodec.createByCodecName(tenPhanCung)
+        } else {
+            MediaCodec.createEncoderByType(mime)
+        }
         val muxer = MediaMuxer(tam.absolutePath, dinhDangMuxer)
         try {
             val fmt = MediaFormat.createAudioFormat(mime, sr, 1)
@@ -68,8 +99,7 @@ object MaHoaAudio {
             fmt.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, KHOI_MAU * 2)
             codec.configure(fmt, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
             codec.start()
-
-            chay(codec, muxer, pcm, sr)
+            chay(codec, muxer, pcm, sr, baoTienDo)
         } finally {
             runCatching { codec.stop() }
             codec.release()
@@ -86,13 +116,24 @@ object MaHoaAudio {
         return ra
     }
 
+    /// Nén này chạy nhanh hơn nhiều so với đọc file — báo mỗi lần đổi từ 1%
+    /// trở lên là đủ mượt cho mắt người mà không dội tin nhắn qua kênh.
+    private const val BUOC_TIEN_DO = 0.01
+
     /// Vòng đẩy PCM vào và hứng khung nén ra.
-    private fun chay(codec: MediaCodec, muxer: MediaMuxer, pcm: ByteArray, sr: Int) {
+    private fun chay(
+        codec: MediaCodec,
+        muxer: MediaMuxer,
+        pcm: ByteArray,
+        sr: Int,
+        baoTienDo: (Double) -> Unit,
+    ) {
         val info = MediaCodec.BufferInfo()
         var daDay = 0            // byte PCM đã đưa vào
         var hetDauVao = false
         var track = -1
         var muxerChay = false
+        var tienDoDaBao = 0.0
 
         while (true) {
             if (!hetDauVao) {
@@ -111,6 +152,15 @@ object MaHoaAudio {
                     hetDauVao = daDay >= pcm.size
                     val co = if (hetDauVao) MediaCodec.BUFFER_FLAG_END_OF_STREAM else 0
                     codec.queueInputBuffer(i, 0, n, us, co)
+
+                    // Tiến độ tính theo lượng PCM đã đẩy vào, không phải khung
+                    // nén đã ra — bộ mã hoá có độ trễ vài khung nên đếm đầu ra
+                    // thì tiến độ giật cục lúc đầu và lúc cuối.
+                    val phan = daDay.toDouble() / pcm.size
+                    if (phan - tienDoDaBao >= BUOC_TIEN_DO || hetDauVao) {
+                        tienDoDaBao = phan
+                        baoTienDo(phan)
+                    }
                 }
             }
 

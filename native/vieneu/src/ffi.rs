@@ -508,10 +508,10 @@ fn dat_loi(loi_ra: *mut *mut c_char, message: String) -> c_int {
     1
 }
 
-/// Nén một file WAV sang Opus (`.opus`) hoặc MP3. Trả 0 khi xong, 1 khi lỗi.
+/// Nén một file WAV sang Opus, MP3 hoặc AAC. Trả 0 khi xong, 1 khi lỗi.
 ///
-/// [dinh_dang]: 0 = Opus, 1 = MP3.
-/// [bitrate]: với Opus tính theo bit/s (32000, 64000), với MP3 theo kbps (128).
+/// [dinh_dang]: 0 = Opus, 1 = MP3, 2 = AAC.
+/// [bitrate]: với Opus và AAC tính theo bit/s (32000, 96000), với MP3 theo kbps (128).
 ///
 /// Vào ra bằng đường dẫn file chứ không qua buffer: một file 30 phút là hàng
 /// trăm MB, đẩy qua FFI rồi lại copy sang bộ nhớ Dart thì tốn vô ích.
@@ -549,6 +549,7 @@ pub extern "C" fn sachnoi_ma_hoa_file(
     let nen = match dinh_dang {
         0 => crate::ma_hoa::wav_sang_opus(&pcm, sr, bitrate),
         1 => crate::ma_hoa::wav_sang_mp3(&pcm, sr, bitrate as u32),
+        2 => crate::ma_hoa::wav_sang_aac(&pcm, sr, bitrate as u32),
         _ => Err(format!("định dạng lạ: {dinh_dang}")),
     };
     let nen = match nen {
@@ -615,13 +616,17 @@ mod kiem_thu_ma_hoa {
     }
 
     #[test]
-    fn nen_qua_cong_c_ra_ca_hai_dinh_dang() {
+    fn nen_qua_cong_c_ra_ca_ba_dinh_dang() {
         let d = std::env::temp_dir().join("sachluoi_ffi_ma_hoa");
         std::fs::create_dir_all(&d).unwrap();
         let vao = d.join("vao.wav");
         std::fs::write(&vao, wav_mot_giay()).unwrap();
 
-        for (dd, br, ten, dau) in [(0, 32_000, "ra.opus", &b"OggS"[..]), (1, 128, "ra.mp3", &b"\xff"[..])] {
+        for (dd, br, ten, dau) in [
+            (0, 32_000, "ra.opus", &b"OggS"[..]),
+            (1, 128, "ra.mp3", &b"\xff"[..]),
+            (2, 96_000, "ra.aac", &b"\xff"[..]),
+        ] {
             let ra = d.join(ten);
             goi(vao.to_str().unwrap(), ra.to_str().unwrap(), dd, br).unwrap();
             let byte = std::fs::read(&ra).unwrap();

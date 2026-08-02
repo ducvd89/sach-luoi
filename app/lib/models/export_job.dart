@@ -187,6 +187,20 @@ class ExportJob {
   PartInProgress? current;
   String? error;
 
+  /// Đang nén phần vừa tổng hợp xong sang Opus/MP3 — chỉ có ý nghĩa lúc job
+  /// thật sự đang chạy trong bộ nhớ, KHÔNG ghi xuống job.json: đọc lại job từ
+  /// đĩa (mở app lại, hay job đang tạm dừng) thì lúc đó chắc chắn không có
+  /// việc nén nào đang chạy cả.
+  bool dangNen = false;
+
+  /// Phần đã nén xong (0..1) trong lúc [dangNen], null nếu chưa có số.
+  ///
+  /// Chỉ Android báo được — MediaCodec chạy trên luồng nền của Kotlin, đẩy %
+  /// qua EventChannel (xem audio_encoder.dart). Máy tính nén xong trong vài
+  /// giây bằng thư viện Rust, gọi đồng bộ nên không có gì để báo giữa chừng;
+  /// giao diện dùng thanh chạy vô định cho trường hợp null.
+  double? nenPhan;
+
   int get totalChunks => toChunk - fromChunk + 1;
   double get progress => totalChunks == 0 ? 0 : (doneChunks / totalChunks).clamp(0.0, 1.0);
   bool get isActive => status == JobStatus.running || status == JobStatus.queued;

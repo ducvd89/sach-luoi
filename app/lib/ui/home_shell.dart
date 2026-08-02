@@ -109,13 +109,26 @@ class HomeShellState extends State<HomeShell> {
               // bấm giữ vẫn vẽ theo indicatorShape, mặc định là viên thuốc bầu
               // dục — lệch hẳn với vòng tròn của mục đang chọn.
               indicatorShape: const CircleBorder(),
+              // NavigationRail tự canh dọc mảng sáng ấy dựa vào iconTheme.size
+              // — không khai thì nó đoán icon cao 24px (mặc định Material) và
+              // không bù gì cả, trong khi icon thật của mình cao 40px (khung
+              // SizedBox 40 phía dưới) nên mảng sáng bị lệch lên trên, không
+              // nằm giữa icon. Khai đúng 40 thì NavigationRail tự bù lại.
+              unselectedIconTheme: const IconThemeData(size: 40),
+              selectedIconTheme: const IconThemeData(size: 40),
               destinations: [
                 for (final d in destinations)
                   NavigationRailDestination(
                     // Hai trạng thái phải chiếm đúng một khung: mục đang chọn
                     // đeo vòng tròn 40px, mục thường chỉ có biểu tượng 24px —
                     // để nguyên thì chọn sang mục khác là cả cột xô lên xuống.
-                    icon: SizedBox.square(dimension: 40, child: Center(child: Icon(d.icon))),
+                    // size: 24 khai rõ, không để hưởng theo unselectedIconTheme
+                    // vừa đặt ở trên (40) — cỡ đó chỉ để NavigationRail tính
+                    // đúng vị trí mảng sáng, không phải cỡ icon thật vẽ ra.
+                    icon: SizedBox.square(
+                      dimension: 40,
+                      child: Center(child: Icon(d.icon, size: 24)),
+                    ),
                     selectedIcon: HinhTronSac(hinh: d.selected, sac: d.sac),
                     padding: const EdgeInsets.symmetric(vertical: 7),
                     label: Text(d.label),
@@ -183,13 +196,21 @@ class _BusyBar extends StatelessWidget {
     final job = state.runningJob;
     if (job != null && tabIndex != 2) {
       final remaining = state.exports.remainingFor(job);
+      final nenPhan = job.nenPhan;
       return _bar(
         context,
         icon: Icons.save_alt_outlined,
-        text: 'Đang xuất MP3 "${job.bookTitle}"'
-            '${remaining == null ? '' : ' — còn khoảng ${formatTime(remaining.inSeconds.toDouble())}'}',
-        value: job.progress,
-        trailing: '${(job.progress * 100).round()}%',
+        text: job.dangNen
+            ? 'Đang nén phần vừa đọc của "${job.bookTitle}"…'
+            : 'Đang xuất MP3 "${job.bookTitle}"'
+                '${remaining == null ? '' : ' — còn khoảng ${formatTime(remaining.inSeconds.toDouble())}'}',
+        // Android báo được % thật lúc đang nén; máy tính (bộ mã hoá Rust gọi
+        // đồng bộ, không báo giữa chừng) thì null cho chạy vô định thay vì
+        // đứng yên.
+        value: job.dangNen ? nenPhan : job.progress,
+        trailing: job.dangNen
+            ? (nenPhan == null ? null : '${(nenPhan * 100).round()}%')
+            : '${(job.progress * 100).round()}%',
       );
     }
 

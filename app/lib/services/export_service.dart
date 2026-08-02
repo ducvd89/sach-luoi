@@ -104,6 +104,12 @@ class ExportService {
     if (!_changes.isClosed) _changes.add(job);
   }
 
+  /// Báo giao diện vẽ lại mà KHÔNG ghi xuống đĩa — dùng cho cờ chạy trong bộ
+  /// nhớ như [ExportJob.dangNen], đổi liên tục hơn những gì đáng để ghi file.
+  void _notify(ExportJob job) {
+    if (!_changes.isClosed) _changes.add(job);
+  }
+
   /// Các job còn dở từ lần chạy trước được đánh dấu tạm dừng để người dùng chủ động chạy tiếp.
   Future<void> recoverJobs() async {
     for (final job in await listJobs()) {
@@ -386,20 +392,35 @@ class ExportService {
       // thời lượng và việc tua chính xác. Mất 5-9 giây cho một file 30 phút.
       var thanhPham = target;
       if (dinhDang != null && !dinhDang.isWav) {
+        job.dangNen = true;
+        job.nenPhan = null;
+        _notify(job);
         try {
           // Đuôi file do bộ mã hoá quyết định: Android không có MP3, và máy dưới
           // Android 10 cũng không có Opus, cả hai trường hợp đều ra .m4a.
           final duongDan = await encodeAudioFile(
             wavPath: target.path,
             outBase: p.join(job.outputDir, tenGoc),
-            format: dinhDang.extension == 'opus' ? EncodeFormat.opus : EncodeFormat.mp3,
+            format: switch (dinhDang.extension) {
+              'opus' => EncodeFormat.opus,
+              'aac' => EncodeFormat.aac,
+              _ => EncodeFormat.mp3,
+            },
             bitrate: dinhDang.bitrate,
+            onProgress: (phan) {
+              job.nenPhan = phan;
+              _notify(job);
+            },
           );
           await target.delete();
           thanhPham = File(duongDan);
         } catch (err) {
           // Nén lỗi thì giữ WAV lại — thà file nặng còn hơn mất cả phần vừa đọc.
           job.error = 'Không nén được $tenGoc: $err (giữ nguyên WAV)';
+        } finally {
+          job.dangNen = false;
+          job.nenPhan = null;
+          _notify(job);
         }
       }
 

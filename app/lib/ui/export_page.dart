@@ -619,19 +619,25 @@ class _JobCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 11),
-            // Đang chuẩn bị thì chưa biết bao nhiêu phần trăm, để nguyên thanh
-            // chạy vô định của Material; có số rồi thì đổi sang thanh kính.
-            preparing && job.doneChunks == 0
+            // Đang chuẩn bị, hoặc đang nén mà chưa có % (máy tính — bộ mã hoá
+            // Rust gọi đồng bộ, không báo giữa chừng) thì để nguyên thanh chạy
+            // vô định của Material, khỏi trông như đứng hình trong lúc chờ.
+            // Android báo được % thật lúc đang nén (xem audio_encoder.dart) nên
+            // vẫn dùng thanh kính, chỉ đổi sang bám theo nenPhan.
+            (preparing && job.doneChunks == 0) || (job.dangNen && job.nenPhan == null)
                 ? ClipRRect(
                     borderRadius: BorderRadius.circular(99),
                     child: const LinearProgressIndicator(minHeight: 6),
                   )
-                : ThanhKinh(phan: job.progress, sac: SacNut.chinh, cao: 8),
+                : ThanhKinh(phan: job.dangNen ? job.nenPhan! : job.progress, sac: SacNut.chinh, cao: 8),
             const SizedBox(height: 6),
             Text(
-              '${job.doneChunks}/${job.totalChunks} đoạn (${(job.progress * 100).round()}%) · '
-              'đã tạo ${formatTime(job.secondsDone)} âm thanh'
-              '${remaining == null ? '' : ' · còn khoảng ${formatTime(remaining.inSeconds.toDouble())}'}',
+              job.dangNen
+                  ? 'Đang nén phần vừa đọc sang ${ExportFormat.fromId(job.formatId).extension.toUpperCase()}'
+                      '${job.nenPhan == null ? '…' : ' (${(job.nenPhan! * 100).round()}%)'}'
+                  : '${job.doneChunks}/${job.totalChunks} đoạn (${(job.progress * 100).round()}%) · '
+                      'đã tạo ${formatTime(job.secondsDone)} âm thanh'
+                      '${remaining == null ? '' : ' · còn khoảng ${formatTime(remaining.inSeconds.toDouble())}'}',
               style: TextStyle(fontSize: 12.5, color: hint),
             ),
             if (job.error != null) ...[

@@ -79,6 +79,43 @@ pub fn wav_sang_mp3(pcm: &[i16], sr: u32, bitrate_kbps: u32) -> Result<Vec<u8>, 
     Ok(ra)
 }
 
+/// Nén sang AAC-LC, đóng khung ADTS (`.aac`) — mỗi khung tự mang đủ thông tin
+/// để phát, không cần bảng mục lục kiểu MP4 nên ghép file cũng đơn giản như MP3.
+///
+/// Bộ mã hoá thuần Rust (rusty_aac), không FFI/thư viện C nào — không phải lo
+/// cross-compile như Opus hay MP3, và theo tài liệu của thư viện thì còn nhanh
+/// hơn hẳn (~450 lần thời gian thực).
+pub fn wav_sang_aac(pcm: &[i16], sr: u32, bitrate_bps: u32) -> Result<Vec<u8>, String> {
+    use rusty_aac::{AacEncoder, AacEncoderConfig, AdtsHeader};
+
+    let mau: Vec<f32> = pcm.iter().map(|&s| s as f32 / 32768.0).collect();
+    let mut enc = AacEncoder::new(AacEncoderConfig { bitrate_bps });
+    enc.push_pcm(&mau, 1, sr)
+        .map_err(|e| format!("AAC push (tần số {sr} Hz): {e}"))?;
+    enc.finish();
+
+    let mut ra = Vec::new();
+    loop {
+        match enc.next_packet() {
+            Ok(goi) => {
+                // 7 byte header + thân khung, không CRC — protection_absent=1.
+                let header = rusty_aac::write_adts_header(&AdtsHeader {
+                    object_type: 2, // AAC-LC
+                    sample_rate: sr,
+                    channels: 1,
+                    frame_length: goi.data.len() + 7,
+                    header_len: 7,
+                });
+                ra.extend_from_slice(&header);
+                ra.extend_from_slice(&goi.data);
+            }
+            Err(rusty_aac::Error::Eof) => break,
+            Err(e) => return Err(format!("AAC encode: {e}")),
+        }
+    }
+    Ok(ra)
+}
+
 fn bitrate_lame(kbps: u32) -> Bitrate {
     match kbps {
         0..=40 => Bitrate::Kbps32,
@@ -214,6 +251,16 @@ mod kiem_thu {
         }
         // 128 kbps trong một giây là khoảng 16 KB.
         assert!(ra.len() > 8_000 && ra.len() < 30_000, "dài {} byte", ra.len());
+    }
+
+    #[test]
+    fn aac_ra_khung_adts_hop_le() {
+        let ra = wav_sang_aac(&sin_mot_giay(), 48_000, 96_000).unwrap();
+        // Chữ ký ADTS: 12 bit đồng bộ (0xFFF) rồi layer = 00.
+        assert_eq!(ra[0], 0xFF, "byte đầu của khung ADTS");
+        assert_eq!(ra[1] & 0xF6, 0xF0, "12 bit đồng bộ + layer");
+        // 96 kbps trong một giây là khoảng 12 KB.
+        assert!(ra.len() > 6_000 && ra.len() < 24_000, "dài {} byte", ra.len());
     }
 
     #[test]

@@ -47,3 +47,6 @@ panic = "abort"
 mp3lame-encoder = "0.2"
 audiopus = "0.2"
 ogg = "0.9"
+# Thuần Rust, không FFI/thư viện C — không có gì để cross-compile, khác hẳn
+# hai bộ mã hoá trên. Cho AAC vào Windows/macOS/Linux dễ như MP3.
+rusty_aac = "0.1"

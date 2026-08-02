@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Bundle
 import com.ryanheise.audioservice.AudioServiceActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 
 /// Kế thừa AudioServiceActivity thay vì FlutterActivity: nút trên tai nghe và
@@ -23,8 +24,21 @@ class MainActivity : AudioServiceActivity() {
     ///
     /// Bản máy tính nén bằng thư viện Rust qua FFI; ở đây dùng MediaCodec của hệ
     /// điều hành nên không phải nhồi thêm thư viện nào vào APK.
+    /// Nơi phát tiến trình nén — Opus/AAC nhanh hơn hẳn đọc file nên chỉ báo lúc
+    /// đổi từ 1% trở lên (xem [MaHoaAudio]), khỏi dội tin nhắn qua kênh.
+    private var tienDoNenSink: EventChannel.EventSink? = null
+
     override fun configureFlutterEngine(engine: FlutterEngine) {
         super.configureFlutterEngine(engine)
+        EventChannel(engine.dartExecutor.binaryMessenger, KENH_TIEN_DO_NEN)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(args: Any?, sink: EventChannel.EventSink) {
+                    tienDoNenSink = sink
+                }
+                override fun onCancel(args: Any?) {
+                    tienDoNenSink = null
+                }
+            })
         MethodChannel(engine.dartExecutor.binaryMessenger, KENH_MA_HOA)
             .setMethodCallHandler { goi, tra ->
                 // Mở màn hình chọn thư mục phải ở luồng giao diện, và kết quả về
@@ -52,12 +66,21 @@ class MainActivity : AudioServiceActivity() {
     }
 
     private fun lamViec(viec: String, goi: io.flutter.plugin.common.MethodCall): Any = when (viec) {
-        "nen" -> MaHoaAudio.nen(
-            goi.argument<String>("wavPath")!!,
-            goi.argument<String>("outBase")!!,
-            goi.argument<String>("dinhDang")!!,
-            goi.argument<Int>("bitrate")!!,
-        )
+        "nen" -> {
+            // requestId rỗng nghĩa là bên Dart không cần nghe tiến trình — đỡ
+            // phải đẩy sự kiện lên luồng chính cho không ai nhận.
+            val requestId = goi.argument<String>("requestId") ?: ""
+            MaHoaAudio.nen(
+                goi.argument<String>("wavPath")!!,
+                goi.argument<String>("outBase")!!,
+                goi.argument<String>("dinhDang")!!,
+                goi.argument<Int>("bitrate")!!,
+            ) { phan ->
+                if (requestId.isNotEmpty()) {
+                    runOnUiThread { tienDoNenSink?.success(mapOf("requestId" to requestId, "phan" to phan)) }
+                }
+            }
+        }
         "dangKy" -> XuatRaThuVien.dangKy(
             applicationContext,
             goi.argument<String>("nguon")!!,
@@ -147,6 +170,7 @@ class MainActivity : AudioServiceActivity() {
         const val MA_XIN_THONG_BAO = 1001
         const val MA_CHON_THU_MUC = 1002
         const val KENH_MA_HOA = "sachnoi/ma_hoa"
+        const val KENH_TIEN_DO_NEN = "sachnoi/ma_hoa_tien_do"
         val VIEC_NEN = setOf("nen", "dangKy", "chepVaoThuMuc", "tenThuMuc", "conQuyenThuMuc")
     }
 }
