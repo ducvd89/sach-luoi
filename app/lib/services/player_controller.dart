@@ -145,14 +145,61 @@ class PlayerController extends ChangeNotifier {
   void updateSettings(AppSettings settings) {
     final voiceChanged =
         settings.voiceNghe != _settings.voiceNghe || settings.engineId != _settings.engineId;
+    final dangPhat = isPlaying;
     _settings = settings;
     _player.setRate(settings.speed);
-    if (voiceChanged) {
+    if (voiceChanged && book != null) {
       _durations.clear();
-      if (book != null) unawaited(playChunk(index, autoplay: isPlaying));
+      if (dangPhat) {
+        // Đang nghe: không ngắt đoạn hiện tại giữa chừng, chỉ tổng hợp trước
+        // đoạn kế bằng giọng mới cho khỏi phải chờ đúng lúc chuyển sang đoạn đó.
+        unawaited(_doiGiongKhiDangNghe(settings.engineId, settings.voiceNghe));
+      } else {
+        unawaited(playChunk(index, autoplay: false));
+      }
     }
     notifyListeners();
   }
+
+  /// Đổi giọng khi đang nghe: đoạn đang phát vẫn giữ nguyên giọng cũ tới hết,
+  /// chỉ tổng hợp trước đoạn KẾ TIẾP bằng giọng mới. Đổi ngay giữa đoạn thì
+  /// tiếng đang nghe cụt lủn nửa chừng; đợi đoạn xong mới tổng hợp thì khựng
+  /// đúng chỗ chuyển đoạn — tổng hợp trước trong lúc đoạn này còn đang phát là
+  /// né được cả hai.
+  ///
+  /// [dangTongHopTruocGiong] khác null suốt lúc này, để giao diện khoá không
+  /// cho chọn giọng khác chồng lên và hiện tiến trình.
+  Future<void> _doiGiongKhiDangNghe(String engineId, String voiceId) async {
+    if (_dangTongHopTruocGiong != null) return; // giao diện đã khoá, chặn kép cho chắc
+    final target = index + 1;
+    if (target >= chunks.length) return;
+
+    _dangTongHopTruocGiong = voiceId;
+    notifyListeners();
+    try {
+      // Không truyền ngữ cảnh: giọng mới không có gì để nối từ đoạn cũ, đoạn
+      // kế coi như mở đầu một mạch mới — xem thêm kiểm tra giọng/engine ở
+      // playChunk khi tính noiTiep.
+      await _tts.audioFor(
+        engineId: engineId,
+        voiceId: voiceId,
+        speed: _synthesisSpeed,
+        text: chunks[target].speech,
+      );
+    } catch (_) {
+      // Tổng hợp trước hỏng thì thôi — lúc sang thật đoạn kế sẽ tổng hợp lại
+      // và báo lỗi tử tế nếu vẫn hỏng.
+    } finally {
+      _dangTongHopTruocGiong = null;
+      notifyListeners();
+    }
+  }
+
+  /// Giọng đang được tổng hợp trước cho đoạn kế (đổi giọng lúc đang nghe), null
+  /// nghĩa là không có việc này đang chạy. Giao diện dùng để khoá ô chọn giọng
+  /// và hiện tiến trình.
+  String? _dangTongHopTruocGiong;
+  String? get dangTongHopTruocGiong => _dangTongHopTruocGiong;
 
   // -- điều khiển ------------------------------------------------------------
 
@@ -176,9 +223,14 @@ class PlayerController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Ngữ cảnh chỉ dùng khi đọc tiếp đúng đoạn liền sau đoạn vừa nghe. Nhảy
-      // lung tung thì bỏ, vì lúc ấy chẳng có gì để nối vào.
-      final noiTiep = _settings.nguCanhNghe != NguCanh.khong && target == _doanCoDuoi + 1;
+      // Ngữ cảnh chỉ dùng khi đọc tiếp đúng đoạn liền sau đoạn vừa nghe, VÀ
+      // bằng đúng giọng đã sinh ra đuôi đó. Nhảy lung tung, hay giọng vừa đổi
+      // giữa chừng, thì bỏ — đuôi của giọng cũ nối vào giọng mới chỉ làm giọng
+      // mới bị kéo lệch về giọng cũ.
+      final noiTiep = _settings.nguCanhNghe != NguCanh.khong &&
+          target == _doanCoDuoi + 1 &&
+          _duoiGiong == _settings.voiceNghe &&
+          _duoiEngine == _settings.engineId;
       final audio = await _tts.audioFor(
         engineId: _settings.engineId,
         voiceId: _settings.voiceNghe,
@@ -190,6 +242,8 @@ class PlayerController extends ChangeNotifier {
 
       _duoi = audio.duoi;
       _doanCoDuoi = audio.duoi.isEmpty ? -2 : target;
+      _duoiGiong = _settings.voiceNghe;
+      _duoiEngine = _settings.engineId;
       _durations[target] = audio.seconds;
 
       final (duongDan, lang) = await _duongDanPhat(audio.file, leadingSilenceMs);
@@ -284,9 +338,13 @@ class PlayerController extends ChangeNotifier {
     }
   }
 
-  /// Mã đuôi của đoạn vừa đọc và chỉ số của nó, để nối ngữ cảnh cho đoạn kế.
+  /// Mã đuôi của đoạn vừa đọc, chỉ số của nó, và giọng/engine đã sinh ra nó —
+  /// để nối ngữ cảnh cho đoạn kế. Phải nhớ cả giọng/engine vì đổi giọng lúc
+  /// đang nghe không huỷ ngay đuôi cũ, chỉ đoạn kế mới hết dùng được nó.
   List<int> _duoi = const [];
   int _doanCoDuoi = -2;
+  String _duoiGiong = '';
+  String _duoiEngine = '';
 
   /// Đọc trước bao nhiêu đoạn khi có nối ngữ cảnh.
   ///
@@ -336,6 +394,13 @@ class PlayerController extends ChangeNotifier {
     await Future<void>.delayed(const Duration(milliseconds: 400));
     if (token != _loadToken) return;
 
+    // Chụp giọng/engine ngay từ đây: đổi giọng lúc đang nghe không tăng
+    // _loadToken (đoạn đang phát vẫn giữ nguyên), nên nếu đọc thẳng từ
+    // _settings mỗi vòng thì đọc trước có thể lỡ đổi giọng giữa chừng mà vẫn
+    // nối vào đuôi của giọng cũ.
+    final engineId = _settings.engineId;
+    final voiceId = _settings.voiceNghe;
+
     var ngu = _duoi;
     for (var i = from + 1; i <= min(from + _sauDocTruoc, chunks.length - 1); i++) {
       // Người dùng nhảy sang chỗ khác thì bỏ dở, đừng đốt CPU cho đoạn không ai
@@ -343,8 +408,8 @@ class PlayerController extends ChangeNotifier {
       if (token != _loadToken || ngu.isEmpty) return;
       try {
         final audio = await _tts.audioFor(
-          engineId: _settings.engineId,
-          voiceId: _settings.voiceNghe,
+          engineId: engineId,
+          voiceId: voiceId,
           speed: _synthesisSpeed,
           text: chunks[i].speech,
           nguCanh: ngu,
@@ -369,6 +434,10 @@ class PlayerController extends ChangeNotifier {
       await _player.play();
       _dongBoGiuNhip(true);
     }
+    // Không chỉ trông chờ luồng `playing` của trình phát: đã thấy trên Android
+    // nút phát/tạm dừng đổi icon rất trễ hoặc không đổi, dù tiếng vẫn phát hay
+    // dừng đúng — báo thẳng ngay tại đây cho chắc, khỏi phụ thuộc luồng đó.
+    notifyListeners();
   }
 
   Future<void> next() => playChunk(min(index + 1, chunks.length - 1), autoplay: isPlaying);

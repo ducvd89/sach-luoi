@@ -67,6 +67,17 @@ class Storage {
 
   Directory bookDir(String id) => Directory(p.join(booksDir.path, id));
 
+  /// Bản riêng của ứng dụng cho từng phần đã xuất, chỉ để PHÁT LẠI trong ứng
+  /// dụng — tách khỏi bản đã đăng ký ra ngoài (thư viện nhạc hệ thống hay thư
+  /// mục người dùng chọn).
+  ///
+  /// Chỉ Android mới cần tới: MediaStore và Storage Access Framework đều xoá
+  /// bản gốc sau khi chép và chỉ trả về một chuỗi hiển thị chứ không phải
+  /// đường dẫn hay URI dùng lại được, nên đây là cách duy nhất mở lại đúng
+  /// file đó từ trong ứng dụng. Trên máy tính không dùng tới — file thật vẫn
+  /// nằm nguyên trong outputDir của job.
+  Directory exportPlaybackDir(String jobId) => Directory(p.join(root.path, 'xuat_nghe', jobId));
+
   /// Thư mục của app trên bộ nhớ ngoài, dùng làm nơi xuất file trên Android.
   ///
   /// Từ Android 10, app không ghi thẳng vào Download hay Music bằng dart:io

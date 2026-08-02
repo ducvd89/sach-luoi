@@ -255,7 +255,14 @@ class _BookCardState extends State<_BookCard> {
               style: TextStyle(fontSize: 12, color: hint),
             ),
             const SizedBox(height: 9),
-            Row(
+            // Wrap chứ không Row: màn hình hẹp mà tên sách dài kéo thẻ hẹp theo
+            // thì hai nút chữ cộng hai icon không đủ chỗ trên một hàng — Row với
+            // Spacer không co được nữa thì tràn hẳn ra ngoài thẻ. Wrap tự xuống
+            // dòng thay vì tràn.
+            Wrap(
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 6,
               children: [
                 NutSac(
                   nho: true,
@@ -264,7 +271,6 @@ class _BookCardState extends State<_BookCard> {
                   dangChay: _opening,
                   onNhan: () => _open(1),
                 ),
-                const SizedBox(width: 8),
                 NutSac(
                   nho: true,
                   vienRong: true,
@@ -273,14 +279,19 @@ class _BookCardState extends State<_BookCard> {
                   hinh: Icons.arrow_downward_rounded,
                   onNhan: _opening ? null : () => _open(2),
                 ),
-                const Spacer(),
+                // Bỏ ô đệm chạm mặc định 48×48 của IconButton — thừa quá nhiều so
+                // với icon 19-20px, chính là phần đẩy hàng này tràn ra ngoài thẻ.
                 IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                   tooltip: 'Dọn lại sách theo cài đặt hiện tại\n'
                       '(bỏ quảng cáo, mục lục, chuẩn hoá số)',
                   icon: const Icon(Icons.cleaning_services_outlined, size: 19),
                   onPressed: _opening ? null : _rebuild,
                 ),
                 IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                   tooltip: 'Xoá khỏi thư viện',
                   icon: const Icon(Icons.delete_outline, size: 20),
                   onPressed: _opening ? null : () => _confirmDelete(context),

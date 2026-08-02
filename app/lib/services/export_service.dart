@@ -228,12 +228,57 @@ class ExportService {
     if (await work.exists()) await work.delete(recursive: true);
     if (await _jobFile(job.id).exists()) await _jobFile(job.id).delete();
 
+    // Bản riêng để phát trong ứng dụng chỉ có ý nghĩa khi còn job — xoá theo
+    // bất kể deleteFiles: đây không phải file người dùng thấy ở thư viện nhạc
+    // hay thư mục họ chọn, xoá nó không mất gì của họ.
+    final playDir = _storage.exportPlaybackDir(job.id);
+    if (await playDir.exists()) await playDir.delete(recursive: true);
+
     if (deleteFiles) {
       for (final part in job.parts) {
         final file = File(p.join(job.outputDir, part.fileName));
         if (await file.exists()) await file.delete();
       }
     }
+  }
+
+  /// Đường dẫn thật để phát [part] của [job] ngay trong ứng dụng, null nếu
+  /// không mở lại được.
+  ///
+  /// Máy tính: file xuất nằm nguyên trong outputDir của job, dùng thẳng.
+  /// Android: bản gốc đã bị MediaStore/thư mục người dùng chọn dọn sau khi
+  /// đăng ký — [part.fileName] ở đó chỉ còn là tên hiển thị dạng
+  /// "Music/Sách lười/..." chứ không phải đường dẫn mở lại được — nên phải
+  /// dùng bản riêng đã chép sẵn lúc xuất, xem [ExportPart.localPlayPath].
+  String? playablePath(ExportJob job, ExportPart part) {
+    if (needsMediaStore) return part.localPlayPath;
+    return p.join(job.outputDir, part.fileName);
+  }
+
+  /// Xoá riêng file của [part] và bỏ nó khỏi danh sách của [job].
+  ///
+  /// Máy tính: xoá được thẳng file thật trong outputDir. Android: file thật
+  /// đã nằm ngoài tầm với của app từ lúc đăng ký ra MediaStore/thư mục người
+  /// dùng chọn (cùng lý do không phát lại được — xem [playablePath]), nên chỉ
+  /// xoá được bản riêng dùng để phát trong ứng dụng; file ở thư viện nhạc hay
+  /// thư mục đã chọn vẫn còn đó, người dùng phải tự xoá bằng ứng dụng quản lý
+  /// file. Không ném lỗi vì việc này — thà xoá được một phần còn hơn không.
+  Future<void> deletePart(ExportJob job, ExportPart part) async {
+    try {
+      final file = File(p.join(job.outputDir, part.fileName));
+      if (await file.exists()) await file.delete();
+    } catch (_) {}
+    final local = part.localPlayPath;
+    if (local != null) {
+      try {
+        final file = File(local);
+        if (await file.exists()) await file.delete();
+      } catch (_) {}
+    }
+
+    job.parts = job.parts.where((each) => each.index != part.index).toList();
+    job.secondsDone = job.parts.fold<double>(0, (sum, each) => sum + each.seconds);
+    await _save(job);
   }
 
   // -- phần chạy chính -------------------------------------------------------
@@ -364,7 +409,24 @@ class ExportService {
       // hệ thống. Ghi thẳng bằng File API vào bộ nhớ chung thì bị chặn.
       final soByte = await thanhPham.length();
       var tenHienThi = p.basename(thanhPham.path);
+      String? localPlayPath;
       if (needsMediaStore) {
+        // Chép một bản riêng cho ứng dụng TRƯỚC khi đăng ký ra ngoài — cả
+        // MediaStore lẫn thư mục người dùng chọn đều xoá bản gốc sau khi chép
+        // và chỉ trả về chuỗi hiển thị, không phải đường dẫn hay URI dùng lại
+        // được, nên đây là cách duy nhất phát file này ngay trong ứng dụng.
+        try {
+          final localDir = _storage.exportPlaybackDir(job.id);
+          await localDir.create(recursive: true);
+          final localFile =
+              File(p.join(localDir.path, 'phan-${current.index}${p.extension(thanhPham.path)}'));
+          await thanhPham.copy(localFile.path);
+          localPlayPath = localFile.path;
+        } catch (_) {
+          // Chép hụt thì chỉ mất khả năng phát trong ứng dụng, file xuất ra
+          // ngoài vẫn không sao — không đáng làm hỏng cả lượt xuất vì việc này.
+        }
+
         final thuMuc = sanitizeFileName(job.bookTitle);
         final thuMucCon = thuMuc.isEmpty ? job.bookId : thuMuc;
         try {
@@ -396,6 +458,7 @@ class ExportService {
         bytes: soByte,
         chunkFrom: current.chunkFrom,
         chunkTo: chunkTo,
+        localPlayPath: localPlayPath,
       ));
     }
 

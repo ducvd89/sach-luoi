@@ -24,8 +24,6 @@ class PlayerPage extends StatefulWidget {
 }
 
 class _PlayerPageState extends State<PlayerPage> {
-  double? _dragFraction;
-
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
@@ -70,14 +68,13 @@ class _PlayerPageState extends State<PlayerPage> {
               ),
               const Divider(height: 1),
               const _ChonGiongNghe(),
-              _PlayerBar(
-                dragFraction: _dragFraction,
-                onDragStart: (v) => setState(() => _dragFraction = v),
-                onDragEnd: (v) {
-                  setState(() => _dragFraction = null);
-                  player.seekFraction(v);
-                },
-              ),
+              // KHÔNG được const: build() đọc thẳng player.isPlaying/elapsed từ
+              // AppScope thay vì tự bọc ListenableBuilder riêng như _ChonGiongNghe
+              // — chỉ trông cậy đúng vào AnimatedBuilder(animation: player) phía
+              // trên để được vẽ lại. const làm Flutter coi đây là widget "không
+              // đổi" giữa các lượt build của Column cha, bỏ qua build() lại từ lần
+              // thứ hai — nút phát/tạm dừng, đồng hồ, thanh tiến trình đứng hình.
+              _PlayerBar(),
             ],
           ),
         );
@@ -251,11 +248,9 @@ class _ChapterListState extends State<_ChapterList> {
 }
 
 class _PlayerBar extends StatelessWidget {
-  const _PlayerBar({required this.dragFraction, required this.onDragStart, required this.onDragEnd});
-
-  final double? dragFraction;
-  final ValueChanged<double> onDragStart;
-  final ValueChanged<double> onDragEnd;
+  // Cố ý KHÔNG const — xem chú thích ở chỗ dựng widget này trong PlayerPage.
+  // ignore: prefer_const_constructors_in_immutables
+  _PlayerBar();
 
   @override
   Widget build(BuildContext context) {
@@ -265,39 +260,41 @@ class _PlayerBar extends StatelessWidget {
 
     final total = player.totalSeconds;
     final elapsed = player.elapsedSeconds;
-    final fraction = dragFraction ?? (total > 0 ? (elapsed / total).clamp(0.0, 1.0) : 0.0);
+    final fraction = total > 0 ? (elapsed / total).clamp(0.0, 1.0) : 0.0;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 14),
       child: Column(
         children: [
-          // Rãnh tua bằng kính, phần đã nghe là dải chuyển sắc. Slider của
-          // Material vẫn nằm trên để nhận thao tác kéo, chỉ bị làm cho vô hình.
-          Stack(
-            alignment: Alignment.center,
-            children: [
-              ThanhKinh(phan: fraction, sac: SacNut.chinh, cao: 8),
-              SliderTheme(
-                data: SliderTheme.of(context).copyWith(
-                  trackHeight: 8,
-                  activeTrackColor: Colors.transparent,
-                  inactiveTrackColor: Colors.transparent,
-                  thumbColor: Colors.white,
-                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
-                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-                ),
-                child: Slider(
-                  value: fraction,
-                  onChanged: onDragStart,
-                  onChangeEnd: onDragEnd,
-                ),
-              ),
-            ],
+          // Chỉ hiện tiến trình, không tua được: sách dài cả chục giờ, chạm hụt
+          // một chút trên thanh này là nhảy vọt sang chỗ khác rất xa. Muốn tua
+          // thì dùng nút lùi/tiến 15 giây hay chọn thẳng chương/đoạn.
+          //
+          // Đang tải/tổng hợp thì báo bằng một chấm tròn nhấp nháy đúng vị trí
+          // trên thanh này — không dùng nút phát để báo việc đó nữa, kẻo icon
+          // của nút lẫn với trạng thái đang phát/tạm dừng thật.
+          LayoutBuilder(
+            builder: (context, constraints) {
+              const duongKinh = 14.0;
+              final left = (constraints.maxWidth * fraction - duongKinh / 2)
+                  .clamp(0.0, constraints.maxWidth - duongKinh);
+              return Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  ThanhKinh(phan: fraction, sac: SacNut.chinh, cao: 8),
+                  if (player.isLoading)
+                    Positioned(
+                      left: left,
+                      top: 4 - duongKinh / 2,
+                      child: const IgnorePointer(child: _ChamDangTai()),
+                    ),
+                ],
+              );
+            },
           ),
           Row(
             children: [
-              Text(formatTime(dragFraction != null ? total * dragFraction! : elapsed),
-                  style: TextStyle(fontSize: 12.5, color: hint)),
+              Text(formatTime(elapsed), style: TextStyle(fontSize: 12.5, color: hint)),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -337,13 +334,13 @@ class _PlayerBar extends StatelessWidget {
               SizedBox(
                 width: 56,
                 height: 56,
-                child: player.isLoading
-                    ? const Padding(padding: EdgeInsets.all(13), child: CircularProgressIndicator(strokeWidth: 3))
-                    : NutTron(
-                        hinh: player.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                        chuThich: player.isPlaying ? 'Tạm dừng (Space)' : 'Phát (Space)',
-                        onNhan: player.togglePlay,
-                      ),
+                // Luôn theo đúng isPlaying — không đổi sang vòng xoay lúc đang
+                // tải nữa, xem chấm nhấp nháy trên thanh tiến trình ở trên.
+                child: NutTron(
+                  hinh: player.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                  chuThich: player.isPlaying ? 'Tạm dừng (Space)' : 'Phát (Space)',
+                  onNhan: player.togglePlay,
+                ),
               ),
               _NutKinh(
                 chuThich: 'Tiến 15 giây (→)',
@@ -361,6 +358,42 @@ class _PlayerBar extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Chấm tròn nhấp nháy báo đang tải/tổng hợp — đặt đúng vị trí trên thanh tiến
+/// trình, dáng giống nút kéo của thanh tua cũ nhưng không bắt cử chỉ nào cả.
+class _ChamDangTai extends StatefulWidget {
+  const _ChamDangTai();
+
+  @override
+  State<_ChamDangTai> createState() => _ChamDangTaiState();
+}
+
+class _ChamDangTaiState extends State<_ChamDangTai> with SingleTickerProviderStateMixin {
+  late final _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 650))
+    ..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaleTransition(
+      scale: Tween(begin: 0.7, end: 1.15).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut)),
+      child: Container(
+        width: 14,
+        height: 14,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.white,
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.25), blurRadius: 3, offset: const Offset(0, 1))],
+        ),
       ),
     );
   }
@@ -501,20 +534,29 @@ class _ChonGiongNghe extends StatelessWidget {
     // riêng — không thì bấm phát xong khoá vẫn chưa hiện.
     return ListenableBuilder(
       listenable: state.player,
-      builder: (context, _) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 2, 16, 0),
-        child: BangChonGiong(
-          voices: state.voices,
-          voiceId: settings.voiceNghe,
-          nguCanh: settings.nguCanhNghe,
-          khoa: state.player.isPlaying ? 'Tạm dừng nghe rồi mới đổi được' : null,
-          onVoice: (v) => AppScope.read(context).setVoiceNghe(v),
-          onNguCanh: (v) {
-            settings.nguCanhNghe = v;
-            AppScope.read(context).saveSettings();
-          },
-        ),
-      ),
+      builder: (context, _) {
+        final dangDoiGiong = state.player.dangTongHopTruocGiong;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 2, 16, 0),
+          child: BangChonGiong(
+            voices: state.voices,
+            voiceId: settings.voiceNghe,
+            nguCanh: settings.nguCanhNghe,
+            // Đang nghe vẫn đổi giọng được — đoạn kế được tổng hợp trước bằng
+            // giọng mới trong lúc đoạn này còn đang phát. Chỉ khoá đúng lúc việc
+            // tổng hợp trước đó đang chạy, và luôn khoá cách nối ngữ cảnh vì nó
+            // gắn liền với đoạn đang phát.
+            dangTaiGiong: dangDoiGiong != null,
+            khoaGiong: dangDoiGiong != null ? 'Đang chuẩn bị giọng mới cho đoạn sau…' : null,
+            khoaNguCanh: state.player.isPlaying ? 'Tạm dừng nghe rồi mới đổi được' : null,
+            onVoice: (v) => AppScope.read(context).setVoiceNghe(v),
+            onNguCanh: (v) {
+              settings.nguCanhNghe = v;
+              AppScope.read(context).saveSettings();
+            },
+          ),
+        );
+      },
     );
   }
 }

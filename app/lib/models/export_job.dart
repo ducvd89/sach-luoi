@@ -32,6 +32,7 @@ class ExportPart {
     required this.bytes,
     required this.chunkFrom,
     required this.chunkTo,
+    this.localPlayPath,
   });
 
   final int index;
@@ -42,6 +43,11 @@ class ExportPart {
   final int chunkFrom;
   final int chunkTo;
 
+  /// Đường dẫn bản riêng của ứng dụng để phát lại phần này ngay trong ứng
+  /// dụng — null trên máy tính (không cần, file thật đã nằm sẵn trong
+  /// outputDir) hoặc trên Android nếu chép hụt. Xem [ExportService.playablePath].
+  final String? localPlayPath;
+
   Map<String, dynamic> toJson() => {
         'index': index,
         'fileName': fileName,
@@ -50,6 +56,7 @@ class ExportPart {
         'bytes': bytes,
         'chunkFrom': chunkFrom,
         'chunkTo': chunkTo,
+        if (localPlayPath != null) 'localPlayPath': localPlayPath,
       };
 
   factory ExportPart.fromJson(Map<String, dynamic> json) => ExportPart(
@@ -60,6 +67,7 @@ class ExportPart {
         bytes: json['bytes'] as int,
         chunkFrom: json['chunkFrom'] as int,
         chunkTo: json['chunkTo'] as int,
+        localPlayPath: json['localPlayPath'] as String?,
       );
 }
 

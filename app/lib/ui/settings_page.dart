@@ -254,7 +254,11 @@ class _SettingsPageState extends State<SettingsPage> {
                 const Divider(height: 26),
                 _CacheLimitPicker(onChanged: _loadCache),
                 const SizedBox(height: 14),
-                Row(
+                // Wrap chứ không Row: hai nút chữ cộng lại rộng hơn màn hình hẹp
+                // là tràn thẳng ra ngoài — Wrap tự xuống dòng thay vì tràn.
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 8,
                   children: [
                     NutSac(
                       nho: true,
@@ -267,7 +271,6 @@ class _SettingsPageState extends State<SettingsPage> {
                         await _loadCache();
                       },
                     ),
-                    const SizedBox(width: 10),
                     NutSac(
                       nho: true,
                       vienRong: true,

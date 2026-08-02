@@ -1,10 +1,12 @@
 /// Màn hình xuất sách nói ra file MP3.
 library;
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:media_kit/media_kit.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'fast_scrollbar.dart';
 import 'package:path/path.dart' as p;
@@ -45,6 +47,17 @@ class _ExportPageState extends State<ExportPage> {
   /// Giữ id chứ không giữ đối tượng Book — danh sách sách được nạp lại sau mỗi
   /// lần thêm/dọn sách, ôm đối tượng cũ là trỏ vào bản đã hết hạn.
   String? _bookId;
+
+  /// Trình phát thử các file đã xuất, dùng chung cho mọi lần xuất trong trang
+  /// này — tách khỏi PlayerController của cả cuốn sách vì đây chỉ nghe thử
+  /// một file lẻ, không dính gì tới tiến trình đang đọc.
+  final _xuatPlayer = _XuatPlayer();
+
+  @override
+  void dispose() {
+    _xuatPlayer.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -223,7 +236,10 @@ class _ExportPageState extends State<ExportPage> {
                   nguCanh: settings.nguCanhXuat,
                   // Khoá khi có job đang chạy: đổi giữa chừng thì nửa file một
                   // giọng. Tạm dừng, đổi, chạy tiếp là phần còn lại theo mức mới.
-                  khoa: state.runningJob != null
+                  khoaGiong: state.runningJob != null
+                      ? 'Tạm dừng việc xuất file rồi mới đổi được'
+                      : null,
+                  khoaNguCanh: state.runningJob != null
                       ? 'Tạm dừng việc xuất file rồi mới đổi được'
                       : null,
                   onVoice: (v) {
@@ -295,8 +311,19 @@ class _ExportPageState extends State<ExportPage> {
             child: Center(child: Text('Chưa có lần xuất nào', style: TextStyle(color: Theme.of(context).hintColor))),
           )
         else
-          for (final job in jobs)
-            Padding(padding: const EdgeInsets.only(bottom: 12), child: _JobCard(job: job)),
+          ListenableBuilder(
+            listenable: _xuatPlayer,
+            builder: (context, _) => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final job in jobs)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _JobCard(job: job, player: _xuatPlayer),
+                  ),
+              ],
+            ),
+          ),
       ],
     );
   }
@@ -486,9 +513,31 @@ class _FolderRowState extends State<_FolderRow> {
   }
 }
 
+/// Hỏi lại trước khi xoá — dùng chung cho xoá cả lần xuất lẫn xoá riêng một
+/// file, đều là việc không lấy lại được.
+Future<bool> xacNhanXoa(BuildContext context, {required String tieuDe, required String noiDung}) async {
+  final dong = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(tieuDe),
+      content: Text(noiDung),
+      actions: [
+        TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Huỷ')),
+        TextButton(
+          onPressed: () => Navigator.of(ctx).pop(true),
+          style: TextButton.styleFrom(foregroundColor: Theme.of(ctx).colorScheme.error),
+          child: const Text('Xoá'),
+        ),
+      ],
+    ),
+  );
+  return dong ?? false;
+}
+
 class _JobCard extends StatelessWidget {
-  const _JobCard({required this.job});
+  const _JobCard({required this.job, required this.player});
   final ExportJob job;
+  final _XuatPlayer player;
 
   @override
   Widget build(BuildContext context) {
@@ -626,6 +675,13 @@ class _JobCard extends StatelessWidget {
                   nhan: 'Xoá',
                   hinh: Icons.delete_outline_rounded,
                   onNhan: () async {
+                    final dong = await xacNhanXoa(
+                      context,
+                      tieuDe: 'Xoá lần xuất này?',
+                      noiDung: 'Bỏ cả danh sách ${job.parts.length} file của lần xuất này khỏi ứng dụng.',
+                    );
+                    if (!dong) return;
+                    await player.stopIfCurrent(job);
                     await state.exports.deleteJob(job);
                     await state.reloadJobs();
                   },
@@ -634,22 +690,7 @@ class _JobCard extends StatelessWidget {
             ),
             if (job.parts.isNotEmpty) ...[
               const SizedBox(height: 12),
-              for (final part in job.parts)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 5),
-                  child: Row(
-                    children: [
-                      Icon(Icons.audio_file_outlined, size: 16, color: hint),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(part.fileName,
-                            maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
-                      ),
-                      Text('${formatTime(part.seconds)} · ${formatBytes(part.bytes)}',
-                          style: TextStyle(fontSize: 12, color: hint)),
-                    ],
-                  ),
-                ),
+              for (final part in job.parts) _PartRow(job: job, part: part, player: player),
             ],
           ],
         ),
@@ -666,6 +707,235 @@ class _JobCard extends StatelessWidget {
     } else if (Platform.isLinux) {
       Process.run('xdg-open', [dir]);
     }
+  }
+}
+
+/// Một file trong danh sách "Các lần xuất", nghe thử được ngay tại chỗ.
+class _PartRow extends StatelessWidget {
+  const _PartRow({required this.job, required this.part, required this.player});
+  final ExportJob job;
+  final ExportPart part;
+  final _XuatPlayer player;
+
+  @override
+  Widget build(BuildContext context) {
+    final hint = Theme.of(context).hintColor;
+    final scheme = Theme.of(context).colorScheme;
+    final state = AppScope.of(context);
+    final path = state.exports.playablePath(job, part);
+    final active = player.isCurrent(job, part);
+    final loading = active && player.isLoading;
+    final playing = active && player.isPlaying;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 5),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              SizedBox(
+                width: 22,
+                height: 22,
+                child: loading
+                    ? Padding(
+                        padding: const EdgeInsets.all(3),
+                        child: CircularProgressIndicator(strokeWidth: 2, color: hint),
+                      )
+                    : IconButton(
+                        padding: EdgeInsets.zero,
+                        iconSize: 18,
+                        color: active ? scheme.primary : hint,
+                        tooltip: path == null
+                            ? 'Không mở lại được trong ứng dụng'
+                            : playing
+                                ? 'Tạm dừng'
+                                : 'Nghe thử',
+                        icon: Icon(playing ? Icons.pause_circle_filled : Icons.play_circle_fill_rounded),
+                        onPressed: path == null ? null : () => player.toggle(job, part, path),
+                      ),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(part.fileName,
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                active && player.duration > Duration.zero
+                    ? '${formatTime(player.position.inMilliseconds / 1000)} / '
+                        '${formatTime(player.duration.inMilliseconds / 1000)}'
+                    : '${formatTime(part.seconds)} · ${formatBytes(part.bytes)}',
+                style: TextStyle(fontSize: 12, color: hint),
+              ),
+              IconButton(
+                padding: EdgeInsets.zero,
+                iconSize: 17,
+                color: scheme.error,
+                tooltip: 'Xoá file này',
+                icon: const Icon(Icons.delete_outline_rounded),
+                onPressed: () async {
+                  final dong = await xacNhanXoa(
+                    context,
+                    tieuDe: 'Xoá file này?',
+                    noiDung: '${part.fileName}\n\nMất luôn, không lấy lại được.',
+                  );
+                  if (!dong) return;
+                  await player.stopIfCurrent(job);
+                  await state.exports.deletePart(job, part);
+                  await state.reloadJobs();
+                },
+              ),
+            ],
+          ),
+          if (active)
+            Padding(
+              padding: const EdgeInsets.only(left: 22, right: 4),
+              child: Row(
+                children: [
+                  IconButton(
+                    padding: EdgeInsets.zero,
+                    iconSize: 20,
+                    color: hint,
+                    tooltip: 'Lùi 30 giây',
+                    icon: const Icon(Icons.replay_30_rounded),
+                    onPressed: () => player.seekRelative(const Duration(seconds: -30)),
+                  ),
+                  Expanded(
+                    child: SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        trackHeight: 3,
+                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5),
+                        overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+                      ),
+                      // Mỗi file xuất chỉ dài tối đa vài chục phút — khác thanh
+                      // tiến trình cả cuốn sách, tua ở đây không lo nhảy vọt đi xa.
+                      child: Slider(
+                        value: player.duration.inMilliseconds > 0
+                            ? (player.position.inMilliseconds / player.duration.inMilliseconds)
+                                .clamp(0.0, 1.0)
+                            : 0.0,
+                        onChanged: (v) => player.seekFraction(v),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    padding: EdgeInsets.zero,
+                    iconSize: 20,
+                    color: hint,
+                    tooltip: 'Tiến 30 giây',
+                    icon: const Icon(Icons.forward_30_rounded),
+                    onPressed: () => player.seekRelative(const Duration(seconds: 30)),
+                  ),
+                ],
+              ),
+            ),
+          if (active && player.error != null)
+            Padding(
+              padding: const EdgeInsets.only(left: 28, top: 2),
+              child: Text(player.error!, style: TextStyle(fontSize: 11.5, color: scheme.error)),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Trình phát thử các file đã xuất — một Player dùng chung cho mọi phần của
+/// mọi lần xuất trong trang này, mở lại (thay vì tạo mới) mỗi lần bấm nghe.
+class _XuatPlayer extends ChangeNotifier {
+  final Player _player = Player();
+  final List<StreamSubscription<dynamic>> _subs = [];
+
+  /// `<jobId>#<partIndex>` của phần đang mở, null nếu chưa mở gì.
+  String? _key;
+
+  bool isLoading = false;
+  String? error;
+  Duration position = Duration.zero;
+  Duration duration = Duration.zero;
+
+  _XuatPlayer() {
+    _subs.addAll([
+      _player.stream.position.listen((v) {
+        position = v;
+        notifyListeners();
+      }),
+      _player.stream.duration.listen((v) {
+        duration = v;
+        notifyListeners();
+      }),
+      _player.stream.playing.listen((_) => notifyListeners()),
+      _player.stream.completed.listen((done) {
+        if (!done) return;
+        position = Duration.zero;
+        notifyListeners();
+      }),
+    ]);
+  }
+
+  bool get isPlaying => _player.state.playing;
+
+  String _keyOf(ExportJob job, ExportPart part) => '${job.id}#${part.index}';
+
+  bool isCurrent(ExportJob job, ExportPart part) => _key == _keyOf(job, part);
+
+  Future<void> toggle(ExportJob job, ExportPart part, String path) async {
+    final key = _keyOf(job, part);
+    if (_key == key) {
+      if (isPlaying) {
+        await _player.pause();
+      } else {
+        await _player.play();
+      }
+      return;
+    }
+
+    _key = key;
+    isLoading = true;
+    error = null;
+    position = Duration.zero;
+    duration = Duration.zero;
+    notifyListeners();
+    try {
+      await _player.open(Media(path));
+    } catch (err) {
+      error = err.toString();
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> seekFraction(double fraction) async {
+    if (duration <= Duration.zero) return;
+    await _player.seek(Duration(milliseconds: (duration.inMilliseconds * fraction).round()));
+  }
+
+  Future<void> seekRelative(Duration delta) async {
+    var target = position + delta;
+    if (target.isNegative) target = Duration.zero;
+    if (duration > Duration.zero && target > duration) target = duration;
+    await _player.seek(target);
+  }
+
+  /// Dừng nếu đang phát một phần thuộc [job] — gọi trước khi xoá job đó, kẻo
+  /// giao diện biến mất mà tiếng vẫn còn phát dở.
+  Future<void> stopIfCurrent(ExportJob job) async {
+    final key = _key;
+    if (key == null || !key.startsWith('${job.id}#')) return;
+    await _player.stop();
+    _key = null;
+    notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    for (final sub in _subs) {
+      unawaited(sub.cancel());
+    }
+    unawaited(_player.dispose());
+    super.dispose();
   }
 }
 
