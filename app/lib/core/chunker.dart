@@ -122,6 +122,24 @@ List<String> _splitLongSentence(String sentence, int maxChars) {
   return out;
 }
 
+final _terminalPunct = RegExp('[.!?;…]["\')\\]»]*\$');
+final _trailingSoftPunct = RegExp(r'[,:–—-]+\s*$');
+
+/// Đảm bảo văn bản kết thúc bằng dấu hết câu.
+///
+/// Mô hình sinh giọng dựa vào dấu câu để biết khi nào nên dừng hẳn — thiếu nó
+/// là một phần lý do mô hình đôi khi lặp lại vài từ cuối trước khi dừng. Hai
+/// trường hợp hay thiếu: đoạn văn gốc vốn không có dấu kết (lỗi cào từ web
+/// thường gặp), và câu quá dài bị cắt tại dấu phẩy/hai chấm/gạch ngang (xem
+/// [_splitLongSentence]) — mẩu đầu của nó kết thúc bằng dấu phẩy dở dang chứ
+/// không phải dấu hết câu. Gặp trường hợp sau thì bỏ dấu dở dang rồi mới thêm
+/// ".", kẻo ra "...này,." sai chính tả.
+String _ensureTerminal(String text) {
+  final trimmed = text.trimRight();
+  if (trimmed.isEmpty || _terminalPunct.hasMatch(trimmed)) return trimmed;
+  return '${trimmed.replaceFirst(_trailingSoftPunct, '')}.';
+}
+
 final _hasContent = RegExp(r'[A-Za-zÀ-ỹ0-9]');
 
 final _titleKey = RegExp(r'[^A-Za-zÀ-ỹ0-9]');
@@ -175,7 +193,8 @@ ChunkResult buildChunks(
     final firstChunk = chunks.length;
     var charCount = 0;
 
-    void push(String display, bool heading) {
+    void push(String rawDisplay, bool heading) {
+      final display = _ensureTerminal(rawDisplay);
       final speech = normalizeForSpeech(display, expandNumbers: expandNumbers);
       if (!_hasContent.hasMatch(speech)) return; // không còn gì để đọc
       chunks.add(Chunk(

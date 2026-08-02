@@ -153,6 +153,35 @@ void main() {
       expect(result.chunks.length, 1);
       expect(result.chunks.single.display, paragraph);
     });
+
+    test('đoạn văn gốc không có dấu kết thì được thêm dấu chấm', () {
+      // Sách cào từ web hay thiếu hẳn dấu câu ở cuối đoạn (splitSentences trả
+      // phần đuôi này nguyên trạng, không dấu). Mô hình sinh giọng dựa vào dấu
+      // câu để biết khi nào dừng — thiếu nó dễ thành đọc dở dang.
+      final result = buildChunks([
+        RawChapter('', 'Hôm nay trời đẹp'),
+      ]);
+      expect(result.chunks.single.display, 'Hôm nay trời đẹp.');
+    });
+
+    test('mẩu bị cắt tại dấu phẩy khi câu quá dài thì đổi thành dấu chấm, không để lửng dấu phẩy', () {
+      // Một câu dài phải chia làm nhiều mẩu tại dấu phẩy (_splitLongSentence).
+      // Mẩu ĐẦU khi đứng thành chunk riêng đang kết thúc bằng dấu phẩy dở dang
+      // — phải đổi thành dấu chấm, không được vừa có phẩy vừa thêm chấm.
+      const word = 'con mèo ngồi trên nóc tủ nhìn ra ngoài cửa sổ';
+      var clause = word;
+      while (clause.length < chunkTargetChars) {
+        clause = '$clause, $word';
+      }
+      final sentence = '$clause, và cứ thế tiếp tục mãi cho đến hết câu văn này.';
+      final result = buildChunks([RawChapter('', sentence)]);
+
+      expect(result.chunks, isNotEmpty);
+      for (final chunk in result.chunks) {
+        expect(chunk.display, isNot(endsWith(',')));
+        expect(chunk.display, matches(RegExp(r'[.!?;…]["\)\]»]*$')));
+      }
+    });
   });
 
   group('MP3', () {
