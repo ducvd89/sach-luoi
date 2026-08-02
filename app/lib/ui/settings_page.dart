@@ -254,32 +254,37 @@ class _SettingsPageState extends State<SettingsPage> {
                 const Divider(height: 26),
                 _CacheLimitPicker(onChanged: _loadCache),
                 const SizedBox(height: 14),
-                // Wrap chứ không Row: hai nút chữ cộng lại rộng hơn màn hình hẹp
-                // là tràn thẳng ra ngoài — Wrap tự xuống dòng thay vì tràn.
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 8,
+                // Flexible + coGian chứ không Wrap: cửa sổ máy tính kéo hẹp thì
+                // chữ trong nút co lại (thêm ...) thay vì tràn hay lùi dòng.
+                Row(
                   children: [
-                    NutSac(
-                      nho: true,
-                      vienRong: true,
-                      sac: SacNut.nguyHiem,
-                      nhan: 'Xoá bộ nhớ đệm',
-                      hinh: Icons.delete_sweep_outlined,
-                      onNhan: () async {
-                        await AppScope.read(context).clearCache();
-                        await _loadCache();
-                      },
+                    Flexible(
+                      child: NutSac(
+                        nho: true,
+                        coGian: true,
+                        vienRong: true,
+                        sac: SacNut.nguyHiem,
+                        nhan: 'Xoá bộ nhớ đệm',
+                        hinh: Icons.delete_sweep_outlined,
+                        onNhan: () async {
+                          await AppScope.read(context).clearCache();
+                          await _loadCache();
+                        },
+                      ),
                     ),
-                    NutSac(
-                      nho: true,
-                      vienRong: true,
-                      sac: SacNut.phu,
-                      nhan: 'Mở thư mục dữ liệu',
-                      hinh: Icons.folder_open_rounded,
-                      onNhan: () {
-                        if (Platform.isWindows) Process.run('explorer', [state.dataDirectory]);
-                      },
+                    const SizedBox(width: 10),
+                    Flexible(
+                      child: NutSac(
+                        nho: true,
+                        coGian: true,
+                        vienRong: true,
+                        sac: SacNut.phu,
+                        nhan: 'Mở thư mục dữ liệu',
+                        hinh: Icons.folder_open_rounded,
+                        onNhan: () {
+                          if (Platform.isWindows) Process.run('explorer', [state.dataDirectory]);
+                        },
+                      ),
                     ),
                   ],
                 ),

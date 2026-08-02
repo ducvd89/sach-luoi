@@ -23,6 +23,7 @@ class NutSac extends StatelessWidget {
     this.dangChay = false,
     this.rongHet = false,
     this.nho = false,
+    this.coGian = false,
   });
 
   final String nhan;
@@ -43,6 +44,18 @@ class NutSac extends StatelessWidget {
 
   /// Cỡ nhỏ, cho những chỗ chật như trong thẻ sách hay hàng nút phụ.
   final bool nho;
+
+  /// Cho phép chữ co ngắn lại (thêm dấu ... ) khi chỗ đặt hẹp hơn nhu cầu tự
+  /// nhiên của nút, thay vì tràn ra ngoài.
+  ///
+  /// Mặc định false — GIỮ NGUYÊN cách cũ ở mọi chỗ khác trong ứng dụng, vì bọc
+  /// Flexible mà đặt nút vào một Row khác không hề bọc Flexible ở ngoài thì bề
+  /// ngang thành vô hạn, flex gặp vô hạn là vỡ bố cục, bản dựng phát hành
+  /// không báo gì mà nút lặng lẽ biến mất (xem chú thích trong build()). Chỉ
+  /// bật true ở chỗ ĐÃ tự bọc chính nút này trong Flexible/Expanded của một
+  /// Row có bề ngang giới hạn thật sự — ví dụ hàng nút trong thẻ sách hay
+  /// trong Cài đặt, nơi cửa sổ máy tính có thể bị kéo hẹp hơn nhu cầu của chữ.
+  final bool coGian;
 
   static const double _cao = 52;
   static const double _caoNho = 40;
@@ -72,11 +85,10 @@ class NutSac extends StatelessWidget {
       mainAxisSize: rongHet ? MainAxisSize.max : MainAxisSize.min,
       children: [
         SizedBox(width: nho ? 15 : 22),
-        // Chỉ bọc Flexible khi nút trải hết bề ngang. Nút tự co mà đặt trong một
-        // Row khác thì ràng buộc bề ngang là vô hạn, mà flex gặp vô hạn là vỡ bố
-        // cục — bản dựng phát hành không báo gì, nút chỉ lặng lẽ biến mất.
+        // Chỉ bọc Flexible khi nút trải hết bề ngang hoặc đã khai rõ coGian —
+        // xem chú thích ở khai báo [coGian].
         _MaybeFlexible(
-          flexible: rongHet,
+          flexible: rongHet || coGian,
           child: Text(
             nhan,
             maxLines: 1,

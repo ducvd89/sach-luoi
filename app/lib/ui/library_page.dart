@@ -74,8 +74,18 @@ class _LibraryPageState extends State<LibraryPage> {
       children: [
         Row(
           children: [
-            Text('Thư viện', style: Theme.of(context).textTheme.headlineSmall),
-            const Spacer(),
+            // Expanded + ellipsis chứ không phải Spacer trần: cửa sổ máy tính
+            // kéo hẹp tới mức "Thư viện" cộng nút "THÊM SÁCH" không đủ chỗ thì
+            // chữ tiêu đề co lại trước, nút chính vẫn giữ nguyên hình dạng.
+            Expanded(
+              child: Text(
+                'Thư viện',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.headlineSmall,
+              ),
+            ),
+            const SizedBox(width: 12),
             NutSac(
               nhan: 'THÊM SÁCH',
               hinh: Icons.add_rounded,
@@ -122,7 +132,11 @@ class _LibraryPageState extends State<LibraryPage> {
                   crossAxisCount: columns,
                   mainAxisSpacing: 14,
                   crossAxisSpacing: 14,
-                  mainAxisExtent: 186,
+                  // Cao hơn 186 cũ: giờ luôn có hai hàng nút cố định (xem
+                  // _BookCard) thay vì một hàng có thể lùi dòng. Dư thêm một
+                  // ít so với mức tối thiểu (~213) để cỡ chữ hệ thống lớn hơn
+                  // bình thường không bị tràn ngược lại.
+                  mainAxisExtent: 234,
                 ),
                 itemBuilder: (context, i) => _BookCard(book: books[i]),
               );
@@ -255,32 +269,45 @@ class _BookCardState extends State<_BookCard> {
               style: TextStyle(fontSize: 12, color: hint),
             ),
             const SizedBox(height: 9),
-            // Wrap chứ không Row: màn hình hẹp mà tên sách dài kéo thẻ hẹp theo
-            // thì hai nút chữ cộng hai icon không đủ chỗ trên một hàng — Row với
-            // Spacer không co được nữa thì tràn hẳn ra ngoài thẻ. Wrap tự xuống
-            // dòng thay vì tràn.
-            Wrap(
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 8,
-              runSpacing: 6,
+            // Hai hàng CỐ ĐỊNH, không dùng Wrap: thẻ nằm trong ô lưới cao cố
+            // định, không có chỗ cho một dòng tràn thêm bất ngờ. Wrap từng thử
+            // ở đây tự lùi dòng theo độ dài nhãn nút ("Nghe" so với "Nghe tiếp"),
+            // nên hai thẻ cạnh nhau lùi khác nhau — trông như nút nhảy lung tung
+            // giữa các thẻ. Cố định hai hàng thì mọi thẻ luôn giống nhau.
+            Row(
               children: [
-                NutSac(
-                  nho: true,
-                  nhan: percent > 0 && percent < 1 ? 'Nghe tiếp' : 'Nghe',
-                  hinh: Icons.play_arrow_rounded,
-                  dangChay: _opening,
-                  onNhan: () => _open(1),
+                // Flexible + coGian: cửa sổ máy tính kéo hẹp hơn nhu cầu của
+                // hai nút thì chữ co lại (thêm ...) thay vì tràn ra ngoài thẻ.
+                Flexible(
+                  child: NutSac(
+                    nho: true,
+                    coGian: true,
+                    nhan: percent > 0 && percent < 1 ? 'Nghe tiếp' : 'Nghe',
+                    hinh: Icons.play_arrow_rounded,
+                    dangChay: _opening,
+                    onNhan: () => _open(1),
+                  ),
                 ),
-                NutSac(
-                  nho: true,
-                  vienRong: true,
-                  sac: SacNut.phu,
-                  nhan: 'Xuất file',
-                  hinh: Icons.arrow_downward_rounded,
-                  onNhan: _opening ? null : () => _open(2),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: NutSac(
+                    nho: true,
+                    coGian: true,
+                    vienRong: true,
+                    sac: SacNut.phu,
+                    nhan: 'Xuất file',
+                    hinh: Icons.arrow_downward_rounded,
+                    onNhan: _opening ? null : () => _open(2),
+                  ),
                 ),
+              ],
+            ),
+            const SizedBox(height: 2),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
                 // Bỏ ô đệm chạm mặc định 48×48 của IconButton — thừa quá nhiều so
-                // với icon 19-20px, chính là phần đẩy hàng này tràn ra ngoài thẻ.
+                // với icon 19-20px.
                 IconButton(
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
