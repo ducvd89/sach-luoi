@@ -19,6 +19,7 @@ import '../storage.dart';
 import 'model_store.dart';
 import 'tts_engine.dart';
 import 'ondevice_engine.dart';
+import 'system_tts_engine.dart';
 import 'vieneu_engine.dart';
 
 class CachedAudio {
@@ -34,14 +35,16 @@ class CachedAudio {
 class TtsManager {
   TtsManager({ModelStore? store}) : modelStore = store ?? ModelStore() {
     onDevice = OnDeviceVieNeuEngine(modelStore);
-    // Hai engine, cùng chạy thẳng trên máy: VieNeu cho chất lượng, Piper cho
-    // nhẹ. Không còn đường nào phải nhờ máy khác đọc hộ.
-    _engines = {onDevice.id: onDevice, piper.id: piper};
+    // Ba engine, cùng chạy thẳng trên máy: VieNeu cho chất lượng, Piper cho
+    // nhẹ, TTS hệ thống cho máy đã có sẵn giọng mà không muốn tải gì thêm.
+    // Không còn đường nào phải nhờ máy khác đọc hộ.
+    _engines = {onDevice.id: onDevice, piper.id: piper, systemTts.id: systemTts};
   }
 
   final ModelStore modelStore;
   late final OnDeviceVieNeuEngine onDevice;
   final OnDeviceTtsEngine piper = OnDeviceTtsEngine();
+  final SystemTtsEngine systemTts = SystemTtsEngine();
   late final Map<String, TtsEngine> _engines;
 
   /// Các yêu cầu đang chạy, để hai nơi cùng xin một đoạn thì chỉ tổng hợp một lần.

@@ -10,7 +10,7 @@ Mô hình giọng nói chạy trong chính tiến trình của ứng dụng qua 
 
 ## Cài đặt
 
-**Windows** — chạy bộ cài `SachLuoi-Setup-1.3.1.exe` (~33 MB). Không cần quyền quản trị: nó cài vào
+**Windows** — chạy bộ cài `SachLuoi-Setup-1.3.2.exe` (~33 MB). Không cần quyền quản trị: nó cài vào
 `%LOCALAPPDATA%\Programs\SachLuoi`, tạo lối tắt Start Menu và trình gỡ cài. Lúc gỡ có **hỏi riêng**
 trước khi xoá thư viện sách — mặc định giữ lại.
 
@@ -143,7 +143,7 @@ nhảy tới đó. Tua ±15 giây, kéo thanh tiến trình trên toàn bộ sá
 Trên điện thoại có thanh chương mở lên từ dưới để nhảy tới chương bất kỳ.
 Phím tắt trên máy tính: `Space` phát/dừng · `←` `→` tua · `↑` `↓` chuyển đoạn.
 
-Đổi tốc độ (0.75×–2.0×) có hiệu lực ngay vì áp vào lúc phát, không phải tạo lại âm thanh.
+Đổi tốc độ (0.4×–2.0×) có hiệu lực ngay vì áp vào lúc phát, không phải tạo lại âm thanh.
 
 **Điều khiển ngoài ứng dụng (Android)** — sách đang nghe hiện ở phần "Đang phát" của hệ điều hành:
 điều khiển được từ màn hình khoá, từ khu thông báo và bằng nút trên tai nghe. Thanh tua trong thông

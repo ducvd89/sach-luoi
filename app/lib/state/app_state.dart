@@ -38,7 +38,7 @@ class AppState extends ChangeNotifier {
     await Storage.init();
     final json = await Storage.readJsonMap(Storage.instance.settingsFile);
 
-    final settings = json != null ? AppSettings.fromJson(json) : AppSettings();
+    final settings = json != null ? AppSettings.fromJson(json) : AppSettings(engineId: defaultEngineId);
 
     final state = AppState._(settings);
     await state._bootstrap();

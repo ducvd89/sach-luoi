@@ -400,7 +400,7 @@ class _ChamDangTaiState extends State<_ChamDangTai> with SingleTickerProviderSta
 }
 
 class _SpeedSelector extends StatelessWidget {
-  static const _speeds = [0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0];
+  static const _speeds = [0.4, 0.5, 0.6, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0];
 
   @override
   Widget build(BuildContext context) {
@@ -536,6 +536,9 @@ class _ChonGiongNghe extends StatelessWidget {
       listenable: state.player,
       builder: (context, _) {
         final dangDoiGiong = state.player.dangTongHopTruocGiong;
+        // Chỉ VieNeu nối được ngữ cảnh giữa các đoạn — engine khác thì ô này
+        // vô nghĩa, khoá lại cho khỏi chọn nhầm.
+        final khongHoTroNguCanh = settings.engineId != 'vieneu';
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 2, 16, 0),
           child: BangChonGiong(
@@ -548,7 +551,9 @@ class _ChonGiongNghe extends StatelessWidget {
             // gắn liền với đoạn đang phát.
             dangTaiGiong: dangDoiGiong != null,
             khoaGiong: dangDoiGiong != null ? 'Đang chuẩn bị giọng mới cho đoạn sau…' : null,
-            khoaNguCanh: state.player.isPlaying ? 'Tạm dừng nghe rồi mới đổi được' : null,
+            khoaNguCanh: khongHoTroNguCanh
+                ? 'Chỉ VieNeu hỗ trợ nối ngữ cảnh'
+                : (state.player.isPlaying ? 'Tạm dừng nghe rồi mới đổi được' : null),
             onVoice: (v) => AppScope.read(context).setVoiceNghe(v),
             onNguCanh: (v) {
               settings.nguCanhNghe = v;

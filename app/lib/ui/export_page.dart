@@ -239,9 +239,12 @@ class _ExportPageState extends State<ExportPage> {
                   khoaGiong: state.runningJob != null
                       ? 'Tạm dừng việc xuất file rồi mới đổi được'
                       : null,
-                  khoaNguCanh: state.runningJob != null
-                      ? 'Tạm dừng việc xuất file rồi mới đổi được'
-                      : null,
+                  // Chỉ VieNeu nối được ngữ cảnh giữa các đoạn.
+                  khoaNguCanh: settings.engineId != 'vieneu'
+                      ? 'Chỉ VieNeu hỗ trợ nối ngữ cảnh'
+                      : (state.runningJob != null
+                          ? 'Tạm dừng việc xuất file rồi mới đổi được'
+                          : null),
                   onVoice: (v) {
                     settings.voiceXuat = v;
                     AppScope.read(context).saveSettings();

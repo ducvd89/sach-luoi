@@ -1,6 +1,13 @@
 /// Cài đặt của người dùng, lưu thành một file JSON duy nhất.
 library;
 
+import 'dart:io';
+
+/// Engine mặc định cho bản cài mới. Android/iOS có sẵn giọng tiếng Việt hệ
+/// thống nên chọn TTS hệ thống cho nhẹ máy ngay từ đầu; nền tảng khác (trước
+/// hết là Windows, chưa có giọng Việt hệ thống) vẫn mặc định VieNeu.
+String get defaultEngineId => (Platform.isAndroid || Platform.isIOS) ? 'system' : 'vieneu';
+
 /// Cách chia file khi xuất.
 enum SplitMode {
   duration('duration', 'Theo độ dài'),
@@ -136,7 +143,8 @@ class AppSettings {
     this.darkMode,
   });
 
-  /// 'vieneu', 'piper' (mô hình trên máy) hoặc 'edge' (giọng qua mạng).
+  /// 'vieneu', 'piper' (hai mô hình chạy trong ứng dụng) hoặc 'system'
+  /// (giọng có sẵn của hệ điều hành).
   String engineId;
 
   /// Giọng dùng khi nghe. Rỗng nghĩa là chưa chọn — ứng dụng lấy giọng đầu tiên.
