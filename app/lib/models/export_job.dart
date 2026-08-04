@@ -107,6 +107,69 @@ class PartInProgress {
       );
 }
 
+/// Một dòng nhật ký soi âm: đoạn nào đọc ra không khớp văn bản, đã đọc lại mấy
+/// lần và kết cục thế nào.
+///
+/// Chỉ những đoạn có vấn đề mới được ghi — đoạn đọc trúng ngay lần đầu (gần như
+/// tất cả) mà cũng ghi thì nhật ký thành một bức tường vô nghĩa.
+class MucNhatKy {
+  MucNhatKy({
+    required this.doan,
+    required this.soTu,
+    required this.soAm,
+    this.soLan = 1,
+    this.xong = false,
+    this.dat = false,
+  });
+
+  /// Chỉ số đoạn trong sách, đếm từ 0.
+  final int doan;
+
+  /// Số từ trong văn bản của đoạn.
+  final int soTu;
+
+  /// Số âm nghe được ở bản đọc đang xét — bản cuối lúc còn đang đọc lại, bản
+  /// được chọn khi đã [xong].
+  int soAm;
+
+  /// Đã đọc cả thảy mấy lượt.
+  int soLan;
+
+  /// Đã chốt xong đoạn này chưa. False nghĩa là đang đọc lại.
+  bool xong;
+
+  /// Chốt ở bản đạt, hay đành lấy bản gần đúng nhất.
+  bool dat;
+
+  double get tiLe => soTu == 0 ? 1 : soAm / soTu;
+
+  Map<String, dynamic> toJson() => {
+        'doan': doan,
+        'soTu': soTu,
+        'soAm': soAm,
+        'soLan': soLan,
+        'xong': xong,
+        'dat': dat,
+      };
+
+  factory MucNhatKy.fromJson(Map<String, dynamic> json) => MucNhatKy(
+        doan: json['doan'] as int? ?? 0,
+        soTu: json['soTu'] as int? ?? 0,
+        soAm: json['soAm'] as int? ?? 0,
+        soLan: json['soLan'] as int? ?? 1,
+        // Ghi lại từ đĩa thì chắc chắn không còn lượt đọc nào đang chạy dở.
+        xong: json['xong'] as bool? ?? true,
+        dat: json['dat'] as bool? ?? false,
+      );
+}
+
+/// Giữ bao nhiêu dòng nhật ký gần nhất.
+///
+/// Sách dày mà mô hình đang có ngày xấu thì hàng trăm đoạn phải đọc lại; giữ
+/// hết thì job.json phình ra vì một thứ chỉ để liếc qua. Vài chục dòng gần nhất
+/// là đủ để biết máy đang vật lộn ở chỗ nào.
+const int _toiDaNhatKy = 50;
+
 class ExportJob {
   ExportJob({
     required this.id,
@@ -135,10 +198,12 @@ class ExportJob {
     this.doanChuaDat = 0,
     this.secondsDone = 0,
     List<ExportPart>? parts,
+    List<MucNhatKy>? nhatKy,
     this.current,
     this.error,
   })  : cursor = cursor ?? fromChunk,
-        parts = parts ?? [];
+        parts = parts ?? [],
+        nhatKy = nhatKy ?? [];
 
   final String id;
   final String bookId;
@@ -194,8 +259,18 @@ class ExportJob {
 
   double secondsDone;
   List<ExportPart> parts;
+
+  /// Nhật ký soi âm, cũ ở đầu và mới ở cuối.
+  List<MucNhatKy> nhatKy;
+
   PartInProgress? current;
   String? error;
+
+  /// Ghi thêm một dòng nhật ký, bỏ dòng cũ nhất khi đã quá dài.
+  void ghiNhatKy(MucNhatKy muc) {
+    nhatKy.add(muc);
+    if (nhatKy.length > _toiDaNhatKy) nhatKy.removeRange(0, nhatKy.length - _toiDaNhatKy);
+  }
 
   /// Đang nén phần vừa tổng hợp xong sang Opus/MP3 — chỉ có ý nghĩa lúc job
   /// thật sự đang chạy trong bộ nhớ, KHÔNG ghi xuống job.json: đọc lại job từ
@@ -244,6 +319,7 @@ class ExportJob {
         'doanChuaDat': doanChuaDat,
         'secondsDone': secondsDone,
         'parts': parts.map((p) => p.toJson()).toList(),
+        'nhatKy': nhatKy.map((m) => m.toJson()).toList(),
         'current': current?.toJson(),
         'error': error,
       };
@@ -278,6 +354,9 @@ class ExportJob {
         secondsDone: (json['secondsDone'] as num?)?.toDouble() ?? 0,
         parts: (json['parts'] as List<dynamic>? ?? [])
             .map((p) => ExportPart.fromJson(p as Map<String, dynamic>))
+            .toList(),
+        nhatKy: (json['nhatKy'] as List<dynamic>? ?? [])
+            .map((m) => MucNhatKy.fromJson(m as Map<String, dynamic>))
             .toList(),
         current: json['current'] == null ? null : PartInProgress.fromJson(json['current'] as Map<String, dynamic>),
         error: json['error'] as String?,

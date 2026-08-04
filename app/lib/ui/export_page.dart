@@ -650,6 +650,10 @@ class _JobCard extends StatelessWidget {
               const SizedBox(height: 5),
               Text(job.error!, style: TextStyle(fontSize: 12.5, color: scheme.error)),
             ],
+            if (job.nhatKy.isNotEmpty) ...[
+              const SizedBox(height: 9),
+              KhungNhatKy(job: job),
+            ],
             const SizedBox(height: 10),
             Wrap(
               spacing: 8,
@@ -719,6 +723,122 @@ class _JobCard extends StatelessWidget {
     } else if (Platform.isLinux) {
       Process.run('xdg-open', [dir]);
     }
+  }
+}
+
+/// Khung nhật ký soi âm: đoạn nào đọc ra không khớp văn bản và đang đọc lại.
+///
+/// Chỉ hiện khi đã có ít nhất một đoạn có vấn đề. Dòng mới nhất nằm dưới cùng
+/// và luôn ở trong tầm mắt — khung cuộn ngược như cửa sổ log, không phải cuộn
+/// tay theo mỗi lần máy ghi thêm.
+class KhungNhatKy extends StatelessWidget {
+  const KhungNhatKy({super.key, required this.job});
+  final ExportJob job;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final hint = Theme.of(context).hintColor;
+    final dangDoc = job.nhatKy.any((m) => !m.xong);
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(9),
+        border: Border.all(color: scheme.outlineVariant),
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
+      ),
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.hearing_rounded, size: 14, color: hint),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Soi âm — đoạn đọc ra không khớp văn bản'
+                  '${job.doanChuaDat == 0 ? '' : ' · ${job.doanChuaDat} đoạn vẫn lệch'}',
+                  style: TextStyle(fontSize: 11.5, color: hint),
+                ),
+              ),
+              if (dangDoc)
+                SizedBox(
+                  width: 10,
+                  height: 10,
+                  child: CircularProgressIndicator(strokeWidth: 1.6, color: hint),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 116),
+            child: ListView(
+              reverse: true, // dòng mới nhất ở dưới cùng, tự nằm trong tầm mắt
+              shrinkWrap: true,
+              padding: EdgeInsets.zero,
+              children: [
+                for (final muc in job.nhatKy.reversed) DongNhatKy(muc: muc),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class DongNhatKy extends StatelessWidget {
+  const DongNhatKy({super.key, required this.muc});
+  final MucNhatKy muc;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final hint = Theme.of(context).hintColor;
+
+    // Ba trạng thái, ba màu: đang đọc lại (cam), đọc lại xong đã khớp (xanh),
+    // hết lượt vẫn lệch (đỏ — đoạn này nghe có thể thừa hoặc thiếu chữ).
+    final (mau, chu) = !muc.xong
+        ? (Colors.orange, 'đang đọc lại lần ${muc.soLan + 1}…')
+        : muc.dat
+            ? (Colors.green, 'đã khớp sau ${muc.soLan} lượt')
+            : (scheme.error, 'vẫn lệch sau ${muc.soLan} lượt, lấy bản gần nhất');
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(top: 5, right: 6),
+            child: Container(
+              width: 5,
+              height: 5,
+              decoration: BoxDecoration(color: mau, shape: BoxShape.circle),
+            ),
+          ),
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: 'Đoạn ${muc.doan + 1}',
+                    style: TextStyle(color: hint, fontWeight: FontWeight.w600),
+                  ),
+                  TextSpan(
+                    text: ' · ${muc.soAm}/${muc.soTu} âm (${(muc.tiLe * 100).round()}%) · ',
+                    style: TextStyle(color: hint),
+                  ),
+                  TextSpan(text: chu, style: TextStyle(color: mau)),
+                ],
+              ),
+              style: const TextStyle(fontSize: 11.5, height: 1.35),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

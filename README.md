@@ -165,6 +165,10 @@ lệch quá một âm) là đọc lại đoạn ấy bằng một hạt giống 
 lấy bản gần đúng nhất chứ không bỏ trống. Phép đếm dựa vào đường cường độ trong dải nguyên âm, đo
 trên 120 câu đọc thật bằng ba giọng thì trúng 113 câu — xem `app/lib/core/kiem_am.dart`.
 
+Màn hình xuất file có khung nhật ký chạy theo thời gian thực: đoạn nào lệch thì hiện ngay số âm
+nghe được so với số từ và đang đọc lại lần thứ mấy, đọc lại xong khớp thì chuyển xanh, hết lượt vẫn
+lệch thì chuyển đỏ để biết chỗ nào nên nghe lại bằng tai.
+
 Không dùng GPU. Lý do nằm ở chỗ mô hình được xuất ra ONNX với chiều batch **cố định bằng 1** — GPU
 chỉ thắng khi gộp được nhiều đoạn vào một lượt, mà đồ thị hiện tại không cho gộp; chạy từng đoạn
 một thì card rời còn chậm hơn CPU (đo được 1,83× so với 2,94×).

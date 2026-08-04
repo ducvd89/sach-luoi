@@ -173,6 +173,7 @@ void main() {
     expect(engine.lanDaGoi, [0]);
     expect(job.doanDocLai, 0);
     expect(job.doanChuaDat, 0);
+    expect(job.nhatKy, isEmpty, reason: 'đọc trúng ngay thì không có gì để ghi');
   });
 
   test('lệch thì đọc lại tới khi đạt rồi dừng', () async {
@@ -183,6 +184,15 @@ void main() {
     expect(engine.lanDaGoi, [0, 1, 2], reason: 'phải dừng ngay khi có bản đạt');
     expect(job.doanDocLai, 1);
     expect(job.doanChuaDat, 0);
+
+    // Một dòng nhật ký cho cả đoạn, chốt lại ở trạng thái đã khớp.
+    final muc = job.nhatKy.single;
+    expect(muc.doan, 0);
+    expect(muc.soTu, 10);
+    expect(muc.soAm, 10);
+    expect(muc.soLan, 3);
+    expect(muc.xong, isTrue);
+    expect(muc.dat, isTrue);
   });
 
   test('đọc lại tối đa năm lần rồi lấy bản gần đúng nhất', () async {
@@ -198,6 +208,13 @@ void main() {
     final file = File('${outDir.path}${Platform.pathSeparator}${job.parts.single.fileName}');
     expect(await file.exists(), isTrue);
     expect(wavDuration(await file.readAsBytes()), closeTo(12 * 0.25, 0.05));
+
+    // Nhật ký chốt theo bản được chọn chứ không phải bản đọc cuối cùng.
+    final muc = job.nhatKy.single;
+    expect(muc.soAm, 12);
+    expect(muc.soLan, 6);
+    expect(muc.xong, isTrue);
+    expect(muc.dat, isFalse);
   });
 
   test('bản gần đúng nhất là bản đọc đầu thì vẫn tính là đã đọc lại', () async {
@@ -220,5 +237,35 @@ void main() {
 
     expect(engine.lanDaGoi, [0], reason: 'đọc lại cũng ra đúng bản cũ, phí thời gian');
     expect(job.doanDocLai, 0);
+    // Không đọc lại được không có nghĩa là im lặng: đoạn lệch vẫn phải vào sổ.
+    expect(job.nhatKy.single.dat, isFalse);
+    expect(job.nhatKy.single.soLan, 1);
+  });
+
+  test('nhật ký chỉ giữ những dòng gần nhất', () {
+    final job = ExportJob(
+      id: 'x',
+      bookId: 'x',
+      bookTitle: 'x',
+      author: '',
+      createdAt: DateTime.now(),
+      engineId: 'gia',
+      voiceId: 'gia',
+      voiceName: 'Giả',
+      speed: 1,
+      pauseMs: 0,
+      splitMode: SplitMode.single,
+      partMinutes: 30,
+      alignChapter: false,
+      fromChunk: 0,
+      toChunk: 200,
+      outputDir: '',
+    );
+    for (var i = 0; i < 200; i++) {
+      job.ghiNhatKy(MucNhatKy(doan: i, soTu: 10, soAm: 3));
+    }
+    expect(job.nhatKy.length, lessThanOrEqualTo(50));
+    expect(job.nhatKy.last.doan, 199, reason: 'dòng mới nhất phải còn');
+    expect(job.nhatKy.first.doan, 150);
   });
 }

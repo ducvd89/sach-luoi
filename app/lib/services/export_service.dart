@@ -309,6 +309,26 @@ class ExportService {
     final soLan = _tts.engine(job.engineId).docLaiRaKhac ? _docLaiToiDa : 0;
     _DoanDaDoc? tot;
 
+    // Dòng nhật ký của riêng đoạn này, chỉ mở ra khi thật sự có chuyện. Sửa tại
+    // chỗ qua từng lượt đọc chứ không đẻ thêm dòng mới: người xem cần biết đoạn
+    // nào đang vật lộn, không cần biên bản từng lượt một.
+    MucNhatKy? muc;
+    void ghiSo(KetQuaKiemAm ket, int lan, {bool xong = false}) {
+      if (muc == null) {
+        if (ket.dat) return; // đọc trúng ngay lần đầu thì không có gì để ghi
+        muc = MucNhatKy(doan: chunk.index, soTu: ket.soTu, soAm: ket.soAm ?? 0, soLan: lan);
+        job.ghiNhatKy(muc!);
+      } else {
+        muc!
+          ..soAm = ket.soAm ?? 0
+          ..soLan = lan;
+      }
+      muc!
+        ..xong = xong
+        ..dat = ket.dat;
+      _notify(job);
+    }
+
     for (var lan = 0; lan <= soLan; lan++) {
       final audio = await _tts.audioFor(
         engineId: job.engineId,
@@ -325,14 +345,17 @@ class ExportService {
         kiemAm(speech: chunk.speech, wav: raw, nhip: job.speed),
         lan + 1,
       );
+      ghiSo(doan.kiem, lan + 1, xong: doan.kiem.dat);
       if (doan.kiem.dat) return doan;
       // Lệch bằng nhau thì giữ bản đầu: các lần sau không hơn gì mà bản đầu còn
       // là bản người dùng nghe thấy trong ứng dụng.
       if (tot == null || doan.kiem.lech < tot.kiem.lech) tot = doan;
     }
+    // Chốt sổ theo bản được chọn, không phải bản đọc cuối cùng.
+    ghiSo(tot!.kiem, soLan + 1, xong: true);
     // Số lần đọc là của cả lượt, không phải của riêng bản được chọn: bản gần
     // đúng nhất có thể chính là bản đọc đầu tiên.
-    return _DoanDaDoc(tot!.audio, tot.raw, tot.kiem, soLan + 1);
+    return _DoanDaDoc(tot.audio, tot.raw, tot.kiem, soLan + 1);
   }
 
   // -- phần chạy chính -------------------------------------------------------
