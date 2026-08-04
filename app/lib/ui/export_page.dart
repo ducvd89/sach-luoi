@@ -640,7 +640,10 @@ class _JobCard extends StatelessWidget {
                       '${job.nenPhan == null ? '…' : ' (${(job.nenPhan! * 100).round()}%)'}'
                   : '${job.doneChunks}/${job.totalChunks} đoạn (${(job.progress * 100).round()}%) · '
                       'đã tạo ${formatTime(job.secondsDone)} âm thanh'
-                      '${remaining == null ? '' : ' · còn khoảng ${formatTime(remaining.inSeconds.toDouble())}'}',
+                      '${remaining == null ? '' : ' · còn khoảng ${formatTime(remaining.inSeconds.toDouble())}'}'
+                      // Đọc lại là chuyện bình thường, chỉ hiện cho biết máy
+                      // đang làm gì trong lúc thanh tiến trình đứng yên.
+                      '${job.doanDocLai == 0 ? '' : ' · đọc lại ${job.doanDocLai} đoạn'}',
               style: TextStyle(fontSize: 12.5, color: hint),
             ),
             if (job.error != null) ...[

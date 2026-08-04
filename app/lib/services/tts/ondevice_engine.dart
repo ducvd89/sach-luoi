@@ -102,6 +102,10 @@ class OnDeviceTtsEngine implements TtsEngine {
   @override
   String get audioFormat => 'wav';
 
+  /// Đọc theo luật, không lấy mẫu ngẫu nhiên — đọc lại cũng ra đúng bản cũ.
+  @override
+  bool get docLaiRaKhac => false;
+
   @override
   Future<EngineStatus> status() async {
     if (installedVoicePacks().isEmpty) {
@@ -160,6 +164,7 @@ class OnDeviceTtsEngine implements TtsEngine {
     required String voiceId,
     double speed = 1.0,
     List<int>? nguCanh, // engine này không nối ngữ cảnh
+    int lanThu = 0, // đọc theo luật, lần nào cũng y hệt
   }) async {
     await _ensure(voiceId);
     final send = _send;

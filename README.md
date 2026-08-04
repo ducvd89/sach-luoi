@@ -158,6 +158,13 @@ chạy sáu luồng, tức sách 10 giờ mất hơn một tiếng thay vì ba t
 của máy, tối đa sáu. Chỉ bật lúc xuất file: nghe trực tiếp một luồng đã nhanh hơn tốc độ nghe, mở
 thêm chỉ tốn RAM (mỗi bản mô hình khoảng 250 MB) và làm máy nóng. Điện thoại luôn giữ một luồng.
 
+**Soi lại từng đoạn ngay khi xuất** — tiếng Việt gần như mỗi từ là một âm riêng, nên đếm số âm nghe
+được trong đoạn vừa tạo rồi so với số từ trong văn bản là biết mô hình có đọc hỏng hay không: lặp
+lại mấy chữ cuối, nuốt mất nửa câu, hay lảm nhảm không dừng. Lệch quá 15% (đoạn dưới bảy từ thì
+lệch quá một âm) là đọc lại đoạn ấy bằng một hạt giống khác, tối đa năm lần; hết lượt vẫn lệch thì
+lấy bản gần đúng nhất chứ không bỏ trống. Phép đếm dựa vào đường cường độ trong dải nguyên âm, đo
+trên 120 câu đọc thật bằng ba giọng thì trúng 113 câu — xem `app/lib/core/kiem_am.dart`.
+
 Không dùng GPU. Lý do nằm ở chỗ mô hình được xuất ra ONNX với chiều batch **cố định bằng 1** — GPU
 chỉ thắng khi gộp được nhiều đoạn vào một lượt, mà đồ thị hiện tại không cho gộp; chạy từng đoạn
 một thì card rời còn chậm hơn CPU (đo được 1,83× so với 2,94×).
@@ -191,12 +198,13 @@ app/                     Ứng dụng Flutter (Windows + Android)
       txt_parser.dart      TXT -> danh sách chương, đoán bảng mã
       mp3.dart             đo thời lượng, thẻ ID3, khung im lặng — không cần ffmpeg
       wav.dart             dựng/ghép WAV cho engine chạy trong ứng dụng
+      kiem_am.dart         đếm âm trong sóng, soi lại đoạn vừa đọc có khớp văn bản không
     models/              Book, Chunk, Progress, ExportJob, AppSettings, WorkProgress
     services/
       library_service.dart   thư viện sách và tiến trình nghe
       import_worker.dart     phân tích sách ở isolate nền + báo tiến trình
       player_controller.dart điều khiển phát, tổng hợp trước, lưu vị trí
-      export_service.dart    xuất file, tạm dừng và chạy tiếp
+      export_service.dart    xuất file, tạm dừng và chạy tiếp, đọc lại đoạn đọc hỏng
       media_session.dart     đưa sách lên phần "Đang phát" của hệ điều hành
       tts/
         tts_engine.dart      giao diện chung cho các engine

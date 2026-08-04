@@ -98,16 +98,27 @@ abstract class TtsEngine {
   /// Danh sách giọng đọc.
   Future<List<TtsVoice>> voices();
 
+  /// Đọc lại cùng một đoạn có ra âm thanh khác không.
+  ///
+  /// Mô hình sinh có lấy mẫu ngẫu nhiên thì đổi hạt giống là ra bản đọc khác —
+  /// nhờ vậy lúc xuất file, đoạn đọc hỏng còn có cửa đọc lại (xem
+  /// `export_service.dart`). Engine đọc theo luật (Piper, TTS hệ thống) thì lần
+  /// nào cũng y hệt, đọc lại chỉ tốn thời gian vô ích.
+  bool get docLaiRaKhac => false;
+
   /// Tổng hợp một đoạn văn bản thành MP3.
   ///
   /// [speed] là hệ số tốc độ (1.0 là chuẩn).
   /// [nguCanh] là mã đuôi của đoạn đọc ngay trước. Có nó thì giọng không nhảy ở
   /// chỗ chuyển đoạn; engine nào không hỗ trợ thì bỏ qua.
+  /// [lanThu] là lần đọc thứ mấy của cùng đoạn ấy — 0 là lần đầu. Engine có
+  /// [docLaiRaKhac] dùng nó để đổi hạt giống; engine khác bỏ qua.
   Future<TtsResult> synthesize({
     required String text,
     required String voiceId,
     double speed = 1.0,
     List<int>? nguCanh,
+    int lanThu = 0,
   });
 
   /// Báo cho engine biết sắp có nhiều đoạn cần tổng hợp liên tiếp (xuất file).

@@ -55,6 +55,10 @@ class SystemTtsEngine implements TtsEngine {
   @override
   String get audioFormat => 'wav';
 
+  /// Giọng của hệ thống đọc theo luật — đọc lại cũng ra đúng bản cũ.
+  @override
+  bool get docLaiRaKhac => false;
+
   bool get _hoTro => Platform.isAndroid || Platform.isIOS;
 
   @override
@@ -121,6 +125,7 @@ class SystemTtsEngine implements TtsEngine {
     required String voiceId,
     double speed = 1.0,
     List<int>? nguCanh, // engine này không nối ngữ cảnh
+    int lanThu = 0, // đọc theo luật, lần nào cũng y hệt
   }) {
     if (!_hoTro) throw TtsException('TTS hệ thống chưa hỗ trợ trên nền tảng này');
 

@@ -227,12 +227,17 @@ class OnDeviceVieNeuEngine implements TtsEngine {
     }).toList();
   }
 
+  /// Đổi hạt giống là ra bản đọc khác — đoạn đọc hỏng còn đường sửa.
+  @override
+  bool get docLaiRaKhac => true;
+
   @override
   Future<TtsResult> synthesize({
     required String text,
     required String voiceId,
     double speed = 1.0,
     List<int>? nguCanh,
+    int lanThu = 0,
   }) async {
     final primary = await _ensure();
     final native = _leastBusy(primary);
@@ -240,8 +245,10 @@ class OnDeviceVieNeuEngine implements TtsEngine {
     if (voice.isEmpty) throw TtsException('Chưa có giọng nào trong mô hình');
 
     // Hạt giống cố định theo nội dung: cùng một đoạn phải luôn cho cùng kết quả,
-    // nếu không bộ nhớ đệm của ứng dụng mất hết ý nghĩa.
-    final seed = _seedOf('$voice|$text');
+    // nếu không bộ nhớ đệm của ứng dụng mất hết ý nghĩa. Đọc lại lần thứ mấy
+    // cũng nằm trong khoá — mỗi lần một bản đọc khác, nhưng lần thứ ba của đoạn
+    // này thì mãi mãi là đúng bản đọc ấy.
+    final seed = _seedOf('$voice|$text${lanThu == 0 ? '' : '|lần $lanThu'}');
     _busy[native] = (_busy[native] ?? 0) + 1;
     final Float32List raw;
     final Int32List duoi;

@@ -131,6 +131,8 @@ class ExportJob {
     this.status = JobStatus.queued,
     int? cursor,
     this.doneChunks = 0,
+    this.doanDocLai = 0,
+    this.doanChuaDat = 0,
     this.secondsDone = 0,
     List<ExportPart>? parts,
     this.current,
@@ -182,6 +184,14 @@ class ExportJob {
   /// Đoạn tiếp theo cần xử lý.
   int cursor;
   int doneChunks;
+
+  /// Số đoạn phải đọc lại vì số âm không khớp số từ — xem `kiem_am.dart`.
+  int doanDocLai;
+
+  /// Trong số ấy, số đoạn đọc lại hết lượt mà vẫn lệch; những đoạn này lấy bản
+  /// gần đúng nhất, có thể nghe ra thừa hoặc thiếu chữ.
+  int doanChuaDat;
+
   double secondsDone;
   List<ExportPart> parts;
   PartInProgress? current;
@@ -230,6 +240,8 @@ class ExportJob {
         'status': status.id,
         'cursor': cursor,
         'doneChunks': doneChunks,
+        'doanDocLai': doanDocLai,
+        'doanChuaDat': doanChuaDat,
         'secondsDone': secondsDone,
         'parts': parts.map((p) => p.toJson()).toList(),
         'current': current?.toJson(),
@@ -261,6 +273,8 @@ class ExportJob {
         status: JobStatus.fromId(json['status'] as String?),
         cursor: json['cursor'] as int?,
         doneChunks: json['doneChunks'] as int? ?? 0,
+        doanDocLai: json['doanDocLai'] as int? ?? 0,
+        doanChuaDat: json['doanChuaDat'] as int? ?? 0,
         secondsDone: (json['secondsDone'] as num?)?.toDouble() ?? 0,
         parts: (json['parts'] as List<dynamic>? ?? [])
             .map((p) => ExportPart.fromJson(p as Map<String, dynamic>))

@@ -13,6 +13,7 @@ import 'dart:typed_data';
 
 import 'package:path/path.dart' as p;
 
+import '../core/kiem_am.dart';
 import '../core/mp3.dart';
 import '../core/wav.dart';
 import '../models/book.dart';
@@ -36,6 +37,13 @@ const _lookahead = 10;
 /// đầu mỗi lô vẫn tổng hợp trước được song song với lô đang chạy. Chỗ chuyển
 /// giọng chỉ còn ở ranh giới lô — cứ 24 đoạn một lần thay vì mọi đoạn.
 const _kichThuocLo = 24;
+
+/// Đọc lại tối đa mấy lần khi soi ra đoạn vừa đọc không khớp văn bản.
+///
+/// Mỗi lần đọc lại tốn đúng bằng một đoạn mới, nên phải có trần: đoạn nào mô
+/// hình đọc hỏng đủ năm lần liền thì lần thứ sáu cũng khó khá hơn, mà cả lượt
+/// xuất thì đứng lại chờ. Hết lượt vẫn lệch thì lấy bản gần đúng nhất.
+const _docLaiToiDa = 5;
 
 /// Tên file cho một phần đã xuất, chưa kèm đuôi.
 ///
@@ -287,6 +295,46 @@ class ExportService {
     await _save(job);
   }
 
+  /// Đọc một đoạn rồi soi lại ngay: số âm nghe được có khớp số từ không.
+  ///
+  /// Không khớp là dấu hiệu mô hình đã đọc hỏng — lặp lại mấy chữ cuối, nuốt
+  /// mất nửa câu, hay lảm nhảm không dừng — nên đọc lại, mỗi lần một hạt giống
+  /// khác nên ra một bản đọc khác. Hết [_docLaiToiDa] lượt mà vẫn lệch thì lấy
+  /// bản gần đúng nhất trong tất cả các lần: thà lệch một chút còn hơn để trống
+  /// một đoạn giữa sách, mà cũng không thể bắt cả lượt xuất đứng lại mãi.
+  ///
+  /// Engine đọc theo luật (Piper, TTS hệ thống) thì đọc lại cũng ra đúng bản
+  /// cũ — không phí thời gian, chỉ đọc một lần rồi lấy.
+  Future<_DoanDaDoc> _docVaSoi(ExportJob job, Chunk chunk, List<int>? nguCanh) async {
+    final soLan = _tts.engine(job.engineId).docLaiRaKhac ? _docLaiToiDa : 0;
+    _DoanDaDoc? tot;
+
+    for (var lan = 0; lan <= soLan; lan++) {
+      final audio = await _tts.audioFor(
+        engineId: job.engineId,
+        voiceId: job.voiceId,
+        speed: job.speed,
+        text: chunk.speech,
+        nguCanh: nguCanh,
+        lanThu: lan,
+      );
+      final raw = await audio.file.readAsBytes();
+      final doan = _DoanDaDoc(
+        audio,
+        raw,
+        kiemAm(speech: chunk.speech, wav: raw, nhip: job.speed),
+        lan + 1,
+      );
+      if (doan.kiem.dat) return doan;
+      // Lệch bằng nhau thì giữ bản đầu: các lần sau không hơn gì mà bản đầu còn
+      // là bản người dùng nghe thấy trong ứng dụng.
+      if (tot == null || doan.kiem.lech < tot.kiem.lech) tot = doan;
+    }
+    // Số lần đọc là của cả lượt, không phải của riêng bản được chọn: bản gần
+    // đúng nhất có thể chính là bản đọc đầu tiên.
+    return _DoanDaDoc(tot!.audio, tot.raw, tot.kiem, soLan + 1);
+  }
+
   // -- phần chạy chính -------------------------------------------------------
 
   Future<void> _run(ExportJob job, List<Chunk> chunks, List<Chapter> chapters, _Control control) async {
@@ -534,14 +582,13 @@ class ExportService {
       final chunk = chunks[index];
 
       prefetchFrom(index);
-      final audio = await _tts.audioFor(
-        engineId: job.engineId,
-        voiceId: job.voiceId,
-        speed: job.speed,
-        text: chunk.speech,
-        nguCanh: dauLo(index) ? null : duoi,
-      );
+      final doc = await _docVaSoi(job, chunk, dauLo(index) ? null : duoi);
+      final audio = doc.audio;
       duoi = audio.duoi;
+      if (doc.soLanDoc > 1) {
+        job.doanDocLai++;
+        if (!doc.kiem.dat) job.doanChuaDat++;
+      }
 
       // Quyết định đóng phần hiện tại *sau khi* biết đoạn này dài bao nhiêu, và
       // chọn bên nào gần mốc hơn — thiếu một chút hay thừa một chút — để độ dài
@@ -570,7 +617,7 @@ class ExportService {
         await _save(job);
       }
 
-      final raw = await audio.file.readAsBytes();
+      final raw = doc.raw;
       final Uint8List frames;
       if (isWav) {
         wavRate = readWavInfo(raw)?.sampleRate ?? wavRate;
@@ -615,6 +662,21 @@ class ExportService {
   }
 
   void dispose() => unawaited(_changes.close());
+}
+
+/// Một đoạn đã đọc xong kèm kết quả soi lại.
+class _DoanDaDoc {
+  const _DoanDaDoc(this.audio, this.raw, this.kiem, this.soLanDoc);
+
+  final CachedAudio audio;
+
+  /// Byte của chính bản đọc này. Giữ lại chứ không đọc lại từ đĩa: file trong
+  /// bộ nhớ đệm có thể bị dọn bất cứ lúc nào (xem [TtsManager.cacheLimitBytes]).
+  final Uint8List raw;
+  final KetQuaKiemAm kiem;
+
+  /// Đã đọc cả thảy mấy lượt cho đoạn này — 1 là đọc một lần rồi đạt luôn.
+  final int soLanDoc;
 }
 
 class _Control {
