@@ -1,7 +1,7 @@
 name: sach_noi
 description: "Sách lười — chuyển sách EPUB/TXT thành sách nói tiếng Việt"
 publish_to: "none"
-version: 1.4.1+16
+version: 1.5.0+17
 
 environment:
   sdk: ^3.12.2
@@ -30,6 +30,8 @@ dependencies:
   web_socket_channel: ^3.0.3
   intl: ^0.20.2
   ffi: ^2.2.0
+  # XInput để đọc tay cầm chơi game trên Windows (xem services/tay_cam_windows.dart)
+  win32: ^5.15.0
   audio_service: ^0.18.19
   sherpa_onnx: ^1.13.4
   scrollable_positioned_list: ^0.3.8

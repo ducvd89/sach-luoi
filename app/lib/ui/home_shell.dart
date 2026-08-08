@@ -23,10 +23,36 @@ class HomeShell extends StatefulWidget {
 class HomeShellState extends State<HomeShell> {
   int _index = 0;
 
+  /// Số tab, để lệnh chuyển tab của tay cầm biết đâu là mép.
+  static const soTab = 4;
+
   /// Cho các màn hình khác chuyển tab (ví dụ bấm "Nghe" ở thư viện).
   static HomeShellState? of(BuildContext context) => context.findAncestorStateOfType<HomeShellState>();
 
+  /// Bản đang hiển thị.
+  ///
+  /// Cần một đường vào từ NGOÀI cây widget vì lớp lái tay cầm nằm ở
+  /// `MaterialApp.builder`, tức là phía trên Navigator — tra ngược lên từ đó
+  /// không bao giờ thấy HomeShell vì nó là con cháu, không phải tổ tiên.
+  static HomeShellState? hienTai;
+
   void goTo(int index) => setState(() => _index = index);
+
+  /// Sang tab bên cạnh. Tới mép thì dừng, không vòng lại: L1/R1 bấm liên tục mà
+  /// vòng vèo thì người dùng mất dấu mình đang ở đâu.
+  void tabKe(int buoc) => goTo((_index + buoc).clamp(0, soTab - 1));
+
+  @override
+  void initState() {
+    super.initState();
+    hienTai = this;
+  }
+
+  @override
+  void dispose() {
+    if (hienTai == this) hienTai = null;
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

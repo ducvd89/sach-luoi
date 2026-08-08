@@ -143,6 +143,30 @@ nhảy tới đó. Tua ±15 giây, kéo thanh tiến trình trên toàn bộ sá
 Trên điện thoại có thanh chương mở lên từ dưới để nhảy tới chương bất kỳ.
 Phím tắt trên máy tính: `Space` phát/dừng · `←` `→` tua · `↑` `↓` chuyển đoạn.
 
+**Tay cầm chơi game** — lái được cả ứng dụng mà không cần chạm màn hình:
+
+| Nút | Việc |
+|---|---|
+| Cần trái, phím mũi tên | đi giữa các điểm chọn (giữ thì chạy đều như giữ phím mũi tên) |
+| `A` | chọn |
+| `B` | quay lại |
+| `Y` | phát/tạm dừng |
+| `L1` `L2` / `R1` `R2` | chuyển tab qua lại (Thư viện · Nghe · Xuất file · Cài đặt) |
+| Cần phải | cuộn phần chữ trong màn hình Nghe, không đổi đoạn đang phát |
+
+Điểm đang chọn được khoanh một vòng sáng đủ rõ để nhìn từ xa; chạm vào màn hình hay chuột là vòng
+ấy tự tắt.
+
+Thanh kéo (ví dụ *khoảng nghỉ giữa các đoạn*) cần một chế độ riêng, vì trái/phải vốn đã là lệnh đi
+giữa các điểm chọn: bấm `A` để mở, trái/phải đổi từng nấc, `A` chốt, `B` bỏ và trả về giá trị lúc
+chưa chỉnh. Đang chỉnh thì lên/xuống bị giữ lại — không thì đẩy chệch một cái là tiêu điểm bỏ đi,
+để lại giá trị sửa dở không ai chốt.
+
+Trên Windows đọc bằng XInput (`xinput1_4.dll`, có sẵn từ Windows 8). Android **không có** XInput —
+đó là API riêng của Windows — nên cùng cái tay cầm ấy được bắt bằng `KeyEvent`/`MotionEvent` trong
+`MainActivity.kt` rồi chuyển sang Dart; phần hiểu và xử lý thì hai hệ dùng chung. Máy chơi game
+cầm tay chạy Android (AYANEO Pocket DMG và tương tự) dùng luôn nút liền máy.
+
 Đổi tốc độ (0.4×–2.0×) có hiệu lực ngay vì áp vào lúc phát, không phải tạo lại âm thanh.
 
 **Điều khiển ngoài ứng dụng (Android)** — sách đang nghe hiện ở phần "Đang phát" của hệ điều hành:
@@ -210,6 +234,8 @@ app/                     Ứng dụng Flutter (Windows + Android)
       player_controller.dart điều khiển phát, tổng hợp trước, lưu vị trí
       export_service.dart    xuất file, tạm dừng và chạy tiếp, đọc lại đoạn đọc hỏng
       media_session.dart     đưa sách lên phần "Đang phát" của hệ điều hành
+      tay_cam.dart           tay cầm chơi game: dịch cần gạt/nút thành lệnh giao diện
+      tay_cam_windows.dart   đọc tay cầm bằng XInput (chỉ Windows)
       tts/
         tts_engine.dart      giao diện chung cho các engine
         vieneu_native.dart   nạp thư viện Rust, chạy mô hình ở isolate riêng

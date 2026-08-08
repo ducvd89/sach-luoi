@@ -112,4 +112,65 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('Đoạn thứ 100 '), findsOneWidget);
   });
+
+  testWidgets('đoạn văn không nằm trong đường đi của tay cầm', (tester) async {
+    // Từng đoạn văn là một InkWell nên mặc định nhận được tiêu điểm. Với tay cầm
+    // thì cả chương 200 đoạn thành 200 điểm chọn: gạt cần xuống một cái là trôi
+    // vào giữa bài đọc rồi cuộn mãi không ra được.
+    final data = _book();
+    final tren = FocusNode(debugLabel: 'trên');
+    final duoi = FocusNode(debugLabel: 'dưới');
+    addTearDown(tren.dispose);
+    addTearDown(duoi.dispose);
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: Column(
+          children: [
+            TextButton(
+              focusNode: tren,
+              autofocus: true,
+              onPressed: () {},
+              child: const Text('Trên'),
+            ),
+            Expanded(
+              child: ReadingPane(
+                chapter: data.chapter,
+                currentIndex: 0,
+                chunks: data.chunks,
+                onTapChunk: (_) {},
+              ),
+            ),
+            TextButton(focusNode: duoi, onPressed: () {}, child: const Text('Dưới')),
+          ],
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(tren.hasFocus, isTrue);
+
+    // Một bước xuống phải sang thẳng nút dưới, không rơi vào giữa bài đọc.
+    tren.focusInDirection(TraversalDirection.down);
+    await tester.pumpAndSettle();
+    expect(duoi.hasFocus, isTrue);
+  });
+
+  testWidgets('chạm vào đoạn văn vẫn nhảy tới đoạn ấy như cũ', (tester) async {
+    // Bỏ khỏi đường tiêu điểm KHÔNG được làm mất khả năng chạm: hai việc đó đi
+    // bằng hai đường khác nhau, nhưng lỡ chặn quá tay thì người dùng chuột và
+    // cảm ứng mất hẳn cách nhảy tới một đoạn.
+    final data = _book();
+    final daBam = <int>[];
+    await tester.pumpWidget(_wrap(ReadingPane(
+      chapter: data.chapter,
+      currentIndex: 0,
+      chunks: data.chunks,
+      onTapChunk: daBam.add,
+    )));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.textContaining('Đoạn thứ 3 '));
+    await tester.pumpAndSettle();
+    expect(daBam, [3]);
+  });
 }

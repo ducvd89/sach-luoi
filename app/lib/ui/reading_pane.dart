@@ -22,6 +22,8 @@ import 'package:flutter/material.dart';
 import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../models/book.dart';
+import '../services/tay_cam.dart';
+import 'dieu_khien_tay_cam.dart';
 import 'fast_scrollbar.dart';
 
 /// Đoạn đang đọc được đặt ở khoảng một phần ba từ trên xuống — mắt hay dừng ở
@@ -66,6 +68,9 @@ class _ReadingPaneState extends State<ReadingPane> {
   int? _lastFollowed;
   int? _lastChapter;
 
+  /// Đang nghe lệnh cuộn từ cần phải của tay cầm.
+  StreamSubscription<LenhTayCam>? _tayCam;
+
   @override
   void initState() {
     super.initState();
@@ -73,10 +78,68 @@ class _ReadingPaneState extends State<ReadingPane> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Khung chữ không phải một điểm chọn nên không nằm trong đường tiêu điểm
+    // nào — nghe thẳng dòng lệnh thay vì chờ tiêu điểm rơi vào đây.
+    _tayCam?.cancel();
+    _tayCam = LenhTayCamScope.cua(context)?.listen(_nhanLenh);
+  }
+
+  @override
   void dispose() {
+    _tayCam?.cancel();
     _positions.itemPositions.removeListener(_onPositions);
     _idleTimer?.cancel();
     super.dispose();
+  }
+
+  void _nhanLenh(LenhTayCam lenh) {
+    if (!mounted) return;
+    switch (lenh) {
+      case LenhTayCam.cuonLen:
+        _cuonTayCam(-1);
+      case LenhTayCam.cuonXuong:
+        _cuonTayCam(1);
+      default:
+        break;
+    }
+  }
+
+  /// Đích của lượt cuộn tay cầm gần nhất, và lúc nó được ra lệnh.
+  ///
+  /// Phải tự nhớ đích chứ không thể cứ lấy [_firstVisible] làm mốc: giữ cần
+  /// phải thì lệnh kế tới sau 90 ms mà cú cuộn mất 140 ms mới xong, nên vị trí
+  /// đang nhìn còn là vị trí cũ — tính từ đó ra lại đúng cái đích vừa đặt, và
+  /// khung chữ đứng im như bị kẹt.
+  int? _dichCuon;
+  DateTime? _lucCuon;
+
+  /// Cuộn một đoạn theo lệnh cần phải.
+  ///
+  /// Nhảy theo CHỈ SỐ đoạn chứ không theo pixel: danh sách này cuộn theo chỉ số
+  /// (xem chú thích đầu file), mà một đoạn cũng vừa đúng một nhịp mắt đọc. Đây
+  /// là cuộn để đọc chứ không phải để nhảy tới chỗ khác nên KHÔNG đổi đoạn đang
+  /// phát, và cũng tính là người đọc tự cuộn nên nhả quyền bám như khi vuốt tay.
+  void _cuonTayCam(int buoc) {
+    if (!_scrollController.isAttached || _count == 0) return;
+    _handedOver();
+
+    final gio = DateTime.now();
+    final luc = _lucCuon;
+    final noiTiep = luc != null && gio.difference(luc) < const Duration(milliseconds: 500);
+    final tu = noiTiep ? (_dichCuon ?? _firstVisible) : _firstVisible;
+    _lucCuon = gio;
+
+    final dich = (tu + buoc).clamp(0, _count - 1);
+    if (dich == tu) return; // đã ở đầu hoặc cuối chương
+    _dichCuon = dich;
+    _scrollController.scrollTo(
+      index: dich,
+      alignment: 0,
+      duration: const Duration(milliseconds: 140),
+      curve: Curves.easeOut,
+    );
   }
 
   int get _from => widget.chapter?.firstChunk ?? 0;
@@ -164,19 +227,28 @@ class _ReadingPaneState extends State<ReadingPane> {
     final list = Listener(
       onPointerMove: (_) => _handedOver(),
       onPointerSignal: (_) => _handedOver(),
-      child: ScrollablePositionedList.builder(
-        itemScrollController: _scrollController,
-        itemPositionsListener: _positions,
-        // Mở lại sách là thấy ngay đoạn đang dở, không cần chờ lệnh cuộn nào.
-        initialScrollIndex: _currentRow,
-        initialAlignment: _alignment,
-        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 26),
-        itemCount: _count,
-        itemBuilder: (context, row) => _Paragraph(
-          chunk: widget.chunks[_from + row],
-          isCurrent: _from + row == widget.currentIndex,
-          isDone: _from + row < widget.currentIndex,
-          onTap: () => widget.onTapChunk(_from + row),
+      // Từng đoạn văn là một InkWell (chạm để nhảy tới đoạn ấy) nên mặc định nó
+      // cũng là một điểm nhận tiêu điểm. Với chuột thì vô hại, nhưng với tay cầm
+      // thì cả chương vài trăm đoạn biến thành vài trăm điểm chọn: gạt cần xuống
+      // một cái là trôi vào giữa bài đọc rồi cuộn mãi không ra được. Bỏ hẳn khỏi
+      // đường tiêu điểm — chạm và bấm chuột vẫn nguyên, vì hai việc đó đi bằng
+      // sự kiện con trỏ chứ không qua tiêu điểm. Muốn đọc lướt bằng tay cầm thì
+      // đã có cần phải để cuộn (xem [_cuonTayCam]).
+      child: ExcludeFocus(
+        child: ScrollablePositionedList.builder(
+          itemScrollController: _scrollController,
+          itemPositionsListener: _positions,
+          // Mở lại sách là thấy ngay đoạn đang dở, không cần chờ lệnh cuộn nào.
+          initialScrollIndex: _currentRow,
+          initialAlignment: _alignment,
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 26),
+          itemCount: _count,
+          itemBuilder: (context, row) => _Paragraph(
+            chunk: widget.chunks[_from + row],
+            isCurrent: _from + row == widget.currentIndex,
+            isDone: _from + row < widget.currentIndex,
+            onTap: () => widget.onTapChunk(_from + row),
+          ),
         ),
       ),
     );

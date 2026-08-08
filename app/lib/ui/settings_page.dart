@@ -14,6 +14,7 @@ import '../services/tts/model_store.dart';
 import '../services/tts/voice_pack.dart';
 import 'app_scope.dart';
 import 'nut_sac.dart';
+import 'thanh_keo_tay_cam.dart';
 import 'theme.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -195,7 +196,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 Row(
                   children: [
                     Expanded(
-                      child: Slider(
+                      child: ThanhKeoTayCam(
                         value: settings.chunkPauseMs.toDouble().clamp(0, 2000),
                         min: 0,
                         max: 2000,

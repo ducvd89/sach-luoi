@@ -9,6 +9,7 @@ import 'package:media_kit/media_kit.dart';
 
 import 'state/app_state.dart';
 import 'ui/app_scope.dart';
+import 'ui/dieu_khien_tay_cam.dart';
 import 'ui/home_shell.dart';
 import 'ui/theme.dart';
 
@@ -28,6 +29,9 @@ class SachLuoiApp extends StatefulWidget {
 class _SachLuoiAppState extends State<SachLuoiApp> {
   late final Future<AppState> _future = AppState.create();
   AppState? _state;
+
+  /// Nút B trên tay cầm cần Navigator gốc để quay lại — xem [DieuKhienTayCam].
+  final _khoaDieuHuong = GlobalKey<NavigatorState>();
 
   @override
   void dispose() {
@@ -64,6 +68,13 @@ class _SachLuoiAppState extends State<SachLuoiApp> {
             builder: (context, _) => MaterialApp(
               title: 'Sách lười',
               debugShowCheckedModeBanner: false,
+              navigatorKey: _khoaDieuHuong,
+              // Bọc ngoài Navigator nên tay cầm lái được cả hộp thoại và bảng
+              // mở lên từ dưới, không riêng gì các trang chính.
+              builder: (context, child) => DieuKhienTayCam(
+                khoaDieuHuong: _khoaDieuHuong,
+                child: child ?? const SizedBox.shrink(),
+              ),
               theme: buildTheme(Brightness.light),
               darkTheme: buildTheme(Brightness.dark),
               themeMode: switch (state.settings.darkMode) {
