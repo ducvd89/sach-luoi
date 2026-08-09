@@ -1,14 +1,14 @@
-/// Kiểm thử các phần logic thuần: đọc số, chuẩn hoá văn bản, cắt đoạn, MP3.
+/// Kiểm thử các phần logic thuần: đọc số, chuẩn hoá văn bản, cắt đoạn, WAV.
 ///
 /// Đây là những chỗ dễ sai âm thầm nhất — sai một quy tắc đọc số thì cả cuốn
 /// sách đọc lệch mà không có gì báo lỗi.
 library;
 
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sach_noi/core/chunker.dart';
-import 'package:sach_noi/core/mp3.dart';
 import 'package:sach_noi/core/text_normalizer.dart';
 import 'package:sach_noi/core/vi_number.dart';
 import 'package:sach_noi/core/wav.dart';
@@ -95,7 +95,8 @@ void main() {
       final long = 'Đây là một câu văn khá dài để kiểm tra việc cắt đoạn. ' * 40;
       final result = buildChunks([RawChapter('Chương 1', long)]);
       for (final chunk in result.chunks) {
-        expect(chunk.display.length, lessThanOrEqualTo(chunkMaxChars + 120));
+        // +1 vì _ensureTerminal có thể thêm một dấu chấm vào cuối.
+        expect(chunk.display.length, lessThanOrEqualTo(chunkMaxChars + 1));
       }
     });
 
@@ -136,7 +137,7 @@ void main() {
       // một mình chưa tràn nên chưa chốt, nhưng cộng thêm câu đuôi thì tràn —
       // bị tách thành mẩu riêng. Câu đuôi dưới ngưỡng gộp nên phải nhập lại
       // vào mẩu trước, ra đúng MỘT chunk chứ không phải hai (to + tí hon).
-      const word = 'con mèo ngồi trên nóc tủ nhìn ra ngoài cửa sổ ';
+      const word = 'con mèo nhỏ ';
       var big = '';
       while (big.length < chunkTargetChars) {
         big += word;
@@ -146,12 +147,88 @@ void main() {
       // Câu đầu một mình đã đủ (hoặc hơn) targetChars, nhưng vì buffer BẮT ĐẦU
       // rỗng nên nó luôn được nhận không điều kiện — chỉ câu ĐUÔI đến sau mới
       // kích hoạt việc kiểm tra tràn.
-      expect(bigSentence.length, lessThanOrEqualTo(chunkMaxChars));
+      expect(bigSentence.length, greaterThanOrEqualTo(chunkTargetChars));
+      // Và cả hai cộng lại vẫn dưới trần cứng — đó là điều kiện để được gộp.
+      expect(bigSentence.length + 1 + tail.length, lessThanOrEqualTo(chunkMaxChars));
 
       final paragraph = '$bigSentence $tail';
       final result = buildChunks([RawChapter('', paragraph)]);
       expect(result.chunks.length, 1);
       expect(result.chunks.single.display, paragraph);
+    });
+
+    test('gộp mẩu cuối phải nhường trần cứng: quá trần thì để riêng', () {
+      // Cùng tình huống trên nhưng câu đầu đã sát trần. Gộp thêm cái đuôi vào
+      // là vượt sức mô hình (xem chunkMaxChars) nên thà để nó đứng riêng.
+      const word = 'con mèo nhỏ ';
+      var big = '';
+      while (big.length < chunkMaxChars - 12) {
+        big += word;
+      }
+      final bigSentence = '${big.trim()}.';
+      const tail = 'Ngắn thôi.';
+      expect(bigSentence.length + 1 + tail.length, greaterThan(chunkMaxChars));
+
+      final result = buildChunks([RawChapter('', '$bigSentence $tail')]);
+      expect(result.chunks.length, 2);
+      for (final chunk in result.chunks) {
+        expect(chunk.display.length, lessThanOrEqualTo(chunkMaxChars + 1));
+      }
+    });
+
+    test('ưu tiên cắt ở cuối câu, không xé câu còn vừa vặn', () {
+      // Mỗi câu đều thừa sức nằm dưới trần và kết thúc bằng '!'. Nếu bộ cắt tôn
+      // trọng ranh giới câu thì MỌI đoạn đều kết thúc bằng '!'. Còn nếu nó xé
+      // câu tại dấu phẩy thì mẩu ấy kết thúc bằng '.' — _ensureTerminal đổi dấu
+      // phẩy dở dang thành dấu chấm — nên chỉ cần nhìn dấu cuối là biết.
+      const cau = 'Con mèo ngồi trên nóc tủ, nhìn ra ngoài cửa sổ, rồi ngủ thiếp đi!';
+      expect(cau.length, lessThan(chunkMaxChars));
+      final result = buildChunks([RawChapter('', List.filled(9, cau).join(' '))]);
+
+      expect(result.chunks.length, greaterThan(1));
+      for (final chunk in result.chunks) {
+        expect(chunk.display, endsWith('!'));
+      }
+    });
+
+    test('câu quá dài chia tại dấu phẩy thành ít mẩu nhất và đều nhau', () {
+      // Một câu một mạch, chỉ ngăn bằng dấu phẩy, dài gấp mấy lần trần. Đây là
+      // ca đã làm mô hình đọc hỏng: cách xếp tham lam cũ cho ra mẩu đầu sát
+      // trần rồi mẩu đuôi tí hon.
+      const ve = 'con mèo ngồi trên nóc tủ nhìn ra ngoài cửa sổ';
+      var cau = ve;
+      while (cau.length < chunkMaxChars * 3) {
+        cau = '$cau, $ve';
+      }
+      cau = '$cau.';
+
+      final result = buildChunks([RawChapter('', cau)]);
+      final dai = result.chunks.map((c) => c.display.length).toList();
+
+      // Không mẩu nào vượt trần (+1 cho dấu chấm mà _ensureTerminal thêm vào).
+      for (final n in dai) {
+        expect(n, lessThanOrEqualTo(chunkMaxChars + 1));
+      }
+      // Ít mẩu nhất có thể: bớt đi một mẩu là không còn đủ chỗ cho cả câu.
+      expect((dai.length - 1) * chunkMaxChars, lessThan(cau.length));
+      // Đều nhau: mẩu ngắn nhất không thua mẩu dài nhất quá một phần tư.
+      expect(dai.reduce(min) / dai.reduce(max), greaterThan(0.75));
+    });
+
+    test('phần đọc cũng phải dưới trần dù chuẩn hoá làm văn bản nở ra', () {
+      // Trần áp cho phần hiển thị, nhưng thứ mô hình đọc là phần speech đã
+      // chuẩn hoá — mà "1.234.567" chín ký tự nở thành hơn năm mươi. Đoạn đầy
+      // số vì thế vượt trần ở phần đọc dù phần hiển thị vẫn gọn.
+      final cau = List.filled(12, 'Năm 1.234.567 có 89,5% vào 20/11/1954').join(', ');
+      final result = buildChunks([RawChapter('', '$cau.')]);
+
+      expect(result.chunks, isNotEmpty);
+      // Chính là ca mà phép kiểm trên phần hiển thị bỏ lọt.
+      expect(result.chunks.map((c) => c.speech.length).reduce(max),
+          greaterThan(result.chunks.map((c) => c.display.length).reduce(max)));
+      for (final chunk in result.chunks) {
+        expect(chunk.speech.length, lessThanOrEqualTo(chunkMaxChars));
+      }
     });
 
     test('đoạn văn gốc không có dấu kết thì được thêm dấu chấm', () {
@@ -181,53 +258,6 @@ void main() {
         expect(chunk.display, isNot(endsWith(',')));
         expect(chunk.display, matches(RegExp(r'[.!?;…]["\)\]»]*$')));
       }
-    });
-  });
-
-  group('MP3', () {
-    test('thẻ ID3 hợp lệ và bị cắt đúng', () {
-      final tag = buildId3(title: 'Chương một', artist: 'Tác giả', album: 'Sách', track: '1');
-      expect(tag[0], 0x49); // 'I'
-      expect(tag[1], 0x44); // 'D'
-      expect(tag[2], 0x33); // '3'
-
-      final fake = Uint8List.fromList([...tag, 0xFF, 0xFB, 0x90, 0x00]);
-      final stripped = stripTags(fake);
-      expect(stripped.length, 4);
-      expect(stripped[0], 0xFF);
-    });
-
-    test('thời lượng của luồng rỗng là 0', () {
-      expect(mp3Duration(Uint8List(0)), 0);
-    });
-
-    test('khung im lặng ghép vào đúng thời lượng và đúng định dạng', () {
-      // Một khung MPEG1 Layer III, 64 kbps, 24 kHz... thực tế 24 kHz là MPEG2:
-      // 0xFF 0xF3 = MPEG2 Layer III, 0x40 = 64 kbps + 24 kHz.
-      final frame = Uint8List(4 + 100);
-      frame[0] = 0xFF;
-      frame[1] = 0xF3;
-      frame[2] = 0x40;
-      frame[3] = 0xC4; // mono
-      final oneFrame = mp3Duration(frame);
-      expect(oneFrame, greaterThan(0));
-
-      final silence = silentFramesLike(frame, 0.6);
-      expect(silence, isNotEmpty);
-      expect(mp3Duration(silence), closeTo(0.6, oneFrame));
-
-      // Phải giữ nguyên tần số lấy mẫu và bitrate của luồng gốc, nếu không nối
-      // vào là méo tiếng.
-      expect(silence[0], 0xFF);
-      expect(silence[2], frame[2]);
-      expect(silence[1] & 0xFE, frame[1] & 0xFE);
-      // Thân khung toàn số 0 — đó là chỗ tạo ra im lặng.
-      expect(silence.sublist(4, 30).every((b) => b == 0), isTrue);
-    });
-
-    test('không có khung hợp lệ thì không dựng được im lặng', () {
-      expect(silentFramesLike(Uint8List.fromList([1, 2, 3, 4]), 1.0), isEmpty);
-      expect(silentFramesLike(Uint8List(0), 1.0), isEmpty);
     });
   });
 
@@ -345,6 +375,34 @@ void main() {
       // không thì hết đoạn nghe giống hết câu.
       expect(doan.inMilliseconds, greaterThan(700));
       expect(pauseAfterChunk(heading: false, pauseMs: 0), Duration.zero);
+    });
+  });
+
+  group('Nghe và Xuất file đặt riêng', () {
+    test('giọng, ngữ cảnh và tốc độ giữ được hai giá trị khác nhau', () {
+      final dat = AppSettings(
+        voiceNghe: 'Thái Sơn',
+        voiceXuat: 'Ngọc Linh',
+        nguCanhNghe: NguCanh.tuanTu,
+        nguCanhXuat: NguCanh.khong,
+        speed: 1.5,
+        speedXuat: 0.9,
+      );
+      final lai = AppSettings.fromJson(dat.toJson());
+      expect(lai.voiceNghe, 'Thái Sơn');
+      expect(lai.voiceXuat, 'Ngọc Linh');
+      expect(lai.nguCanhNghe, NguCanh.tuanTu);
+      expect(lai.nguCanhXuat, NguCanh.khong);
+      expect(lai.speed, 1.5);
+      expect(lai.speedXuat, 0.9);
+    });
+
+    test('cài đặt cũ chỉ có một con số tốc độ thì phần xuất giữ đúng số ấy', () {
+      // Bản trước dùng chung `speed` cho cả nghe lẫn xuất. Ai đang quen xuất ở
+      // 1.25 thì phải tiếp tục ở 1.25, không được lặng lẽ kéo về 1.0.
+      final lai = AppSettings.fromJson({'speed': 1.25});
+      expect(lai.speedXuat, 1.25);
+      expect(lai.speed, 1.25);
     });
   });
 }

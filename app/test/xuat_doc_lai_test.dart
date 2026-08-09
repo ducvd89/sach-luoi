@@ -64,7 +64,6 @@ class _EngineGia implements TtsEngine {
   @override
   String get description => '';
   @override
-  String get audioFormat => 'wav';
   @override
   bool get docLaiRaKhac => raKhac;
 

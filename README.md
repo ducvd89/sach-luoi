@@ -11,7 +11,7 @@ Chạy **hoàn toàn trên máy**: không cần mạng, không gửi sách đi �
 
 | | |
 |---|---|
-| **Windows** | Chạy `SachLuoi-Setup-1.5.2.exe`. Không cần quyền quản trị, cài vào `%LOCALAPPDATA%`. |
+| **Windows** | Chạy `SachLuoi-Setup-1.5.3.exe`. Không cần quyền quản trị, cài vào `%LOCALAPPDATA%`. |
 | **Android** | Cài `SachLuoi-android-arm64.apk`. Cần Android 7 trở lên, máy 64-bit. |
 
 Sau khi cài, mở *Cài đặt → Giọng đọc* và bấm **Tải mô hình (206 MB)** một lần. Từ đó đọc được cả
@@ -89,7 +89,7 @@ gần như tức thì; trần dung lượng chọn trong *Cài đặt → Dữ l
 
 ```
 app/                  Ứng dụng Flutter (Windows + Android)
-  lib/core/             logic thuần: đọc số, chuẩn hoá, cắt đoạn, EPUB/TXT, WAV/MP3, soi âm
+  lib/core/             logic thuần: đọc số, chuẩn hoá, cắt đoạn, EPUB/TXT, WAV, soi âm
   lib/models/           Book, Chunk, Progress, ExportJob, AppSettings
   lib/services/         thư viện sách, phát, xuất file, tay cầm, media session
   lib/services/tts/     các engine giọng nói + bộ nhớ đệm

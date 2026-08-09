@@ -43,6 +43,14 @@ const int defaultChunkPauseMs = 900;
 /// lên mức mới; ai đã tự chọn 550 thì giữ nguyên ý họ.
 const int _chunkPauseMsCu = 550;
 
+/// Các mức tốc độ đọc cho người dùng chọn. Dùng chung cho cả trang Nghe lẫn
+/// trang Xuất file, để hai nơi không lệch danh sách nhau.
+const tocDoChon = <double>[0.4, 0.5, 0.6, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0];
+
+/// "1.0×", "1.25×" — bỏ số lẻ thừa cho các mức tròn.
+String nhanTocDo(double toc) =>
+    '${toc.toStringAsFixed(toc == toc.roundToDouble() ? 1 : 2)}×';
+
 /// Các mức bộ nhớ đệm cho người dùng chọn, tính bằng MB. 0 nghĩa là không hạn.
 const cacheLimitChoices = <int>[100, 200, 500, 1024, 0];
 
@@ -124,6 +132,7 @@ class AppSettings {
     this.voiceNghe = '',
     this.voiceXuat = '',
     this.speed = 1.0,
+    this.speedXuat = 1.0,
     this.chunkPauseMs = defaultChunkPauseMs,
     this.cacheLimitMb = defaultCacheLimitMb,
     this.exportFormat = ExportFormat.opus32,
@@ -151,8 +160,22 @@ class AppSettings {
   /// Giọng dùng khi xuất file, độc lập với [voiceNghe].
   String voiceXuat;
 
-  /// Hệ số tốc độ đọc, 1.0 là chuẩn.
+  /// Hệ số tốc độ khi NGHE, 1.0 là chuẩn.
+  ///
+  /// Chỉ áp vào lúc phát chứ không tổng hợp lại, nên kéo là nghe khác ngay và
+  /// bộ nhớ đệm vẫn dùng được.
   double speed;
+
+  /// Hệ số tốc độ khi XUẤT FILE, độc lập với [speed].
+  ///
+  /// Phải tách ra vì hai con số này khác hẳn nhau về bản chất: tốc độ nghe chỉ
+  /// là nhịp phát lại, còn tốc độ xuất được NƯỚNG THẲNG vào file bằng phép lấy
+  /// mẫu lại (xem `vieneu_engine.dart`) — đổi nó là phải tổng hợp lại từ đầu,
+  /// và cao độ giọng cũng đổi theo.
+  ///
+  /// Dùng chung một biến thì kéo thanh tốc độ lúc đang nghe sẽ âm thầm đổi luôn
+  /// tốc độ của mọi file xuất về sau, mà không có gì trên màn hình báo cả.
+  double speedXuat;
 
   /// Khoảng nghỉ chèn thêm giữa hai đoạn, tính bằng mili giây.
   ///
@@ -200,6 +223,7 @@ class AppSettings {
         'voiceNghe': voiceNghe,
         'voiceXuat': voiceXuat,
         'speed': speed,
+        'speedXuat': speedXuat,
         'chunkPauseMs': chunkPauseMs,
         'cacheLimitMb': cacheLimitMb,
         'exportFormat': exportFormat.id,
@@ -228,6 +252,11 @@ class AppSettings {
             ? (json['voiceXuat'] as String? ?? json['voiceId'] as String? ?? '')
             : '',
         speed: (json['speed'] as num?)?.toDouble() ?? 1.0,
+        // Bản trước dùng chung một con số. Ai đã quen xuất file ở tốc độ nào
+        // thì giữ đúng tốc độ ấy, đừng lặng lẽ kéo họ về 1.0.
+        speedXuat: (json['speedXuat'] as num?)?.toDouble() ??
+            (json['speed'] as num?)?.toDouble() ??
+            1.0,
         chunkPauseMs: _napKhoangNghi(json['chunkPauseMs']),
         cacheLimitMb: (json['cacheLimitMb'] as num?)?.toInt() ?? defaultCacheLimitMb,
         exportFormat: ExportFormat.fromId(json['exportFormat'] as String?),

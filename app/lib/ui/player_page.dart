@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/book.dart';
+import '../models/settings.dart';
 import '../services/player_controller.dart';
 import 'app_scope.dart';
 import 'chon_giong.dart';
@@ -263,18 +264,16 @@ class _ChamDangTaiState extends State<_ChamDangTai> with SingleTickerProviderSta
 }
 
 class _SpeedSelector extends StatelessWidget {
-  static const _speeds = [0.4, 0.5, 0.6, 0.75, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0];
-
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     return DropdownButton<double>(
-      value: _speeds.contains(state.settings.speed) ? state.settings.speed : 1.0,
+      value: tocDoChon.contains(state.settings.speed) ? state.settings.speed : 1.0,
       underline: const SizedBox.shrink(),
       borderRadius: BorderRadius.circular(10),
       items: [
-        for (final s in _speeds)
-          DropdownMenuItem(value: s, child: Text('${s.toStringAsFixed(s == s.roundToDouble() ? 1 : 2)}×')),
+        for (final s in tocDoChon)
+          DropdownMenuItem(value: s, child: Text(nhanTocDo(s))),
       ],
       onChanged: (value) {
         if (value != null) AppScope.read(context).setSpeed(value);

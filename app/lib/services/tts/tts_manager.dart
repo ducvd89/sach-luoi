@@ -13,7 +13,6 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
-import '../../core/mp3.dart';
 import '../../core/wav.dart';
 import '../storage.dart';
 import 'model_store.dart';
@@ -108,12 +107,8 @@ class TtsManager {
       int lanThu) {
     final (dir, goc) = _viTri(engineId, voiceId, speed, text);
     final lan = lanThu > 0 ? '-l$lanThu' : '';
-    return File(p.join(dir.path, '$goc$dauNguCanh$lan.${engine(engineId).audioFormat}'));
+    return File(p.join(dir.path, '$goc$dauNguCanh$lan.wav'));
   }
-
-  /// Thời lượng của một file đã nằm trong bộ nhớ đệm.
-  double _durationOf(String engineId, Uint8List bytes) =>
-      engine(engineId).audioFormat == 'wav' ? wavDuration(bytes) : mp3Duration(bytes);
 
   /// Lấy âm thanh cho một đoạn, dùng lại cache nếu có.
   Future<CachedAudio> audioFor({
@@ -134,7 +129,7 @@ class TtsManager {
         // Chạm vào file để nó không bị coi là cũ: đoạn đang nghe lại phải sống
         // lâu hơn đoạn của cuốn sách bỏ dở từ tháng trước.
         unawaited(file.setLastModified(DateTime.now()).catchError((Object _) {}));
-        return CachedAudio(file, _durationOf(engineId, bytes), true, duoi: await _docDuoi(file));
+        return CachedAudio(file, wavDuration(bytes), true, duoi: await _docDuoi(file));
       }
     }
 

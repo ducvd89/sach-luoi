@@ -1,9 +1,17 @@
 /// Giao diện chung cho các bộ tổng hợp giọng nói.
 ///
 /// Ứng dụng không quan tâm giọng đến từ đâu — mô hình đóng gói trong ứng dụng
-/// hay giọng có sẵn của hệ điều hành — miễn là trả về âm thanh kèm thời lượng.
-/// Nhờ vậy đổi engine chỉ là đổi một dòng trong Cài đặt, và sau này thêm engine
-/// mới không phải sửa phần còn lại.
+/// hay giọng có sẵn của hệ điều hành — miễn là trả về WAV kèm thời lượng. Nhờ
+/// vậy đổi engine chỉ là đổi một dòng trong Cài đặt, và sau này thêm engine mới
+/// không phải sửa phần còn lại.
+///
+/// Vì sao chốt WAV chứ không để engine tự chọn định dạng: mọi engine đều sinh
+/// ra mẫu âm thô rồi ứng dụng đóng gói WAV, và không engine nào có đường trả về
+/// dữ liệu đã nén. VieNeu trả `*mut c_float` từ thư viện Rust; còn trên Android
+/// thì không có lấy một bộ mã hoá MP3 nào (MediaCodec thiếu nó, libmp3lame bị
+/// chặn khỏi bản Android trong `native/vieneu/Cargo.toml`). Việc nén sang
+/// Opus/AAC/MP3 nằm ở bước xuất file, sau khi WAV đã hoàn chỉnh — xem
+/// `services/audio_encoder.dart`.
 library;
 
 import 'dart:typed_data';
@@ -82,13 +90,6 @@ abstract class TtsEngine {
   /// Một dòng mô tả điểm mạnh/điểm yếu, hiện dưới tên trong phần Cài đặt.
   String get description;
 
-  /// Định dạng âm thanh engine trả về: 'mp3' hoặc 'wav'.
-  ///
-  /// Engine chạy trong ứng dụng sinh ra mẫu âm thô, nhúng bộ mã hoá MP3 vào
-  /// Flutter thì nặng hơn cả mô hình giọng nói nên nó dùng WAV. Bộ nhớ đệm và
-  /// phần xuất file nhìn vào đây để biết cách ghép các đoạn lại.
-  String get audioFormat => 'mp3';
-
   /// Kiểm tra engine đã sẵn sàng chưa.
   Future<EngineStatus> status();
 
@@ -103,7 +104,7 @@ abstract class TtsEngine {
   /// nào cũng y hệt, đọc lại chỉ tốn thời gian vô ích.
   bool get docLaiRaKhac => false;
 
-  /// Tổng hợp một đoạn văn bản thành âm thanh, định dạng theo [audioFormat].
+  /// Tổng hợp một đoạn văn bản thành WAV.
   ///
   /// [speed] là hệ số tốc độ (1.0 là chuẩn).
   /// [nguCanh] là mã đuôi của đoạn đọc ngay trước. Có nó thì giọng không nhảy ở

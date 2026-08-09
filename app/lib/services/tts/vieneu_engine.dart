@@ -93,10 +93,6 @@ class OnDeviceVieNeuEngine implements TtsEngine {
   String get description =>
       'Mô hình chạy thẳng trên máy, không cần mạng. Đọc nhanh hơn tốc độ nghe.';
 
-  /// Mô hình sinh ra mẫu âm thô; ứng dụng tự đóng gói WAV.
-  @override
-  String get audioFormat => 'wav';
-
   @override
   Future<EngineStatus> status() async {
     if (_native != null) {

@@ -34,12 +34,25 @@ import 'text_normalizer.dart';
 /// trong [buildChunks].
 const int chunkTargetChars = 256;
 
-/// Trần cứng cho một mẩu câu bị chia nhỏ.
+/// Trần CỨNG cho một đoạn, tính cả sau khi đã gộp mẩu ngắn. Không đoạn nào được
+/// vượt, kể cả khi phải cắt một câu ra làm đôi để giữ được nó.
 ///
-/// Chỉ áp dụng khi MỘT câu (không có dấu chấm câu nào giữa chừng) tự nó đã dài
-/// hơn mức này — cắt tại dấu phẩy trước, tại khoảng trắng nếu vẫn không đủ.
-/// Câu bình thường không bao giờ chạm tới đây.
-const int chunkMaxChars = 440;
+/// Đây không phải con số chọn cho đẹp mà suy thẳng từ giới hạn của mô hình: nó
+/// chỉ sinh tối đa `max_new_frames = 300` khung (xem `native/vieneu/src/model.rs`),
+/// 12,5 khung cho mỗi giây âm thanh, tức **24 giây tiếng**. Ở nhịp
+/// [charsPerSecond] (~14,5 ký tự mỗi giây) thì 24 giây là khoảng 348 ký tự.
+///
+/// Chạm trần thì mô hình không hỏng theo kiểu báo lỗi — nó chỉ đơn giản hết
+/// lượt sinh giữa chừng, đoạn đọc mất đuôi. Bộ soi âm (`kiem_am.dart`) thấy
+/// thiếu âm nên đọc lại, mà lần nào cũng chạm đúng cái trần ấy, nên đủ năm lượt
+/// đều trượt rồi đành lấy bản cụt.
+///
+/// 280 chừa lại 20% cho những đoạn đọc chậm hơn trung bình — 348 là mức KHÔNG
+/// còn biên nào cả, không được lấy làm trần.
+///
+/// Bản trước để 440, lại còn cho phép gộp thêm mẩu ngắn lên trên nó, nên đoạn
+/// dài nhất thực tế chạm ~540 ký tự ≈ 465 khung: gấp rưỡi mức mô hình làm nổi.
+const int chunkMaxChars = 280;
 
 /// Buffer dưới ngưỡng này (tính bằng ký tự) thì coi là "còn quá ngắn" — chưa
 /// đủ để đứng thành một chunk riêng, phải gộp tiếp với câu/đoạn kế dù có vượt
@@ -83,40 +96,158 @@ List<String> splitSentences(String paragraph) {
   return sentences;
 }
 
-/// Cắt nhỏ câu quá dài tại dấu phẩy, nếu vẫn dài thì cắt tại khoảng trắng.
+/// Xếp các mảnh vào từng mẩu theo đúng thứ tự, mỗi mẩu không quá [tran] ký tự.
+///
+/// Mảnh nào tự nó đã dài hơn [tran] thì vẫn đứng riêng một mẩu — không cắt được
+/// nữa thì thà để dài còn hơn vứt đi.
+List<String> _xepMau(List<String> manh, int tran) {
+  final ra = <String>[];
+  var dang = '';
+  for (final m in manh) {
+    if (dang.isEmpty) {
+      dang = m;
+    } else if (dang.length + 1 + m.length <= tran) {
+      dang = '$dang $m';
+    } else {
+      ra.add(dang);
+      dang = m;
+    }
+  }
+  if (dang.isNotEmpty) ra.add(dang);
+  return ra;
+}
+
+/// Câu không có dấu phẩy nào mà vẫn quá dài — đành cắt tại khoảng trắng.
+List<String> _tachTaiKhoangTrang(String text, int tran) {
+  final ra = <String>[];
+  var dong = '';
+  for (final tu in text.split(' ')) {
+    if (dong.isNotEmpty && dong.length + 1 + tu.length > tran) {
+      ra.add(dong);
+      dong = tu;
+    } else {
+      dong = dong.isEmpty ? tu : '$dong $tu';
+    }
+  }
+  if (dong.isNotEmpty) ra.add(dong);
+  return ra;
+}
+
+/// Chia [manh] thành ĐÚNG [soMau] mẩu liền mạch, độ dài các mẩu đều nhau nhất,
+/// mỗi mẩu không quá [tran].
+///
+/// Quy hoạch động, phạt theo BÌNH PHƯƠNG độ lệch so với độ dài lý tưởng
+/// (tổng chia [soMau]). Phạt bình phương nên nó ghét một mẩu lệch nhiều hơn là
+/// vài mẩu lệch ít — đúng nghĩa "đều nhau".
+///
+/// Vì sao không dùng phép dò trần nhỏ nhất rồi xếp tham lam: cách ấy cho ra mẩu
+/// dài nhất ngắn nhất thật, nhưng vẫn dồn hết phần dư vào mẩu CUỐI. Đo trên câu
+/// 18 mảnh chia 4 mẩu: ra 5-5-5-3 (234/234/234/140) chứ không phải 5-5-4-4
+/// (234/234/187/187).
+///
+/// [manh] chỉ vài chục phần tử nên O(soMau × n²) là rẻ.
+List<String> _chiaDeu(List<String> manh, int soMau, int tran) {
+  final n = manh.length;
+
+  // cong[i] = độ dài chuỗi ghép manh[0..i-1] bằng dấu cách.
+  final cong = List<int>.filled(n + 1, 0);
+  for (var i = 0; i < n; i++) {
+    cong[i + 1] = cong[i] + manh[i].length + (i == 0 ? 0 : 1);
+  }
+  int dai(int i, int j) => i == 0 ? cong[j] : cong[j] - cong[i] - 1;
+
+  final lyTuong = dai(0, n) / soMau;
+  const voCung = double.infinity;
+  final chiPhi = List.generate(soMau + 1, (_) => List<double>.filled(n + 1, voCung));
+  final tu = List.generate(soMau + 1, (_) => List<int>.filled(n + 1, -1));
+  chiPhi[0][0] = 0;
+
+  for (var p = 1; p <= soMau; p++) {
+    for (var j = p; j <= n; j++) {
+      for (var i = p - 1; i < j; i++) {
+        if (chiPhi[p - 1][i] == voCung) continue;
+        final d = dai(i, j);
+        if (d > tran) continue;
+        final lech = d - lyTuong;
+        final gia = chiPhi[p - 1][i] + lech * lech;
+        if (gia < chiPhi[p][j]) {
+          chiPhi[p][j] = gia;
+          tu[p][j] = i;
+        }
+      }
+    }
+  }
+
+  // Không xếp nổi đúng soMau mẩu (mảnh nào đó tự nó đã quá trần) thì lùi về
+  // cách xếp tham lam — thà dài còn hơn không có gì.
+  if (chiPhi[soMau][n] == voCung) return _xepMau(manh, tran);
+
+  final ra = <String>[];
+  var j = n;
+  for (var p = soMau; p >= 1; p--) {
+    final i = tu[p][j];
+    ra.insert(0, manh.sublist(i, j).join(' '));
+    j = i;
+  }
+  return ra;
+}
+
+/// Cắt một câu quá dài thành **ít mẩu nhất có thể**, và các mẩu **đều nhau nhất
+/// có thể**.
+///
+/// Vì sao phải đều: cách cũ xếp tham lam — nhồi đầy tới sát trần rồi mới sang
+/// mẩu mới — nên một câu 300 ký tự ra một mẩu 280 và một mẩu 20. Mẩu sát trần
+/// chính là mẩu dễ chạm giới hạn khung của mô hình nhất (xem [chunkMaxChars]),
+/// còn mẩu tí hon thì đọc lên cụt lủn. Chia đều thì cả hai cùng nằm giữa vùng
+/// an toàn, mà tổng số mẩu vẫn không tăng.
+///
+/// 1. Cắt tại dấu phẩy (và `:`, `–`, `-`) thành các mảnh. Mảnh nào tự nó vẫn
+///    quá dài thì cắt tiếp tại khoảng trắng.
+/// 2. Xếp tham lam ở trần [maxChars] cho ra ĐÚNG số mẩu ít nhất có thể — tham
+///    lam là tối ưu cho riêng việc đếm số mẩu.
+/// 3. Giữ nguyên con số ấy rồi chia lại cho đều — xem [_chiaDeu].
 List<String> _splitLongSentence(String sentence, int maxChars) {
   if (sentence.length <= maxChars) return [sentence];
 
-  final pieces = <String>[];
-  var buffer = '';
-  for (final part in sentence.split(RegExp(r'(?<=[,:–-])\s+'))) {
-    if (buffer.isNotEmpty && buffer.length + part.length + 1 > maxChars) {
-      pieces.add(buffer);
-      buffer = part;
+  final manh = <String>[];
+  for (final m in sentence.split(RegExp(r'(?<=[,:–-])\s+'))) {
+    if (m.length <= maxChars) {
+      manh.add(m);
     } else {
-      buffer = buffer.isEmpty ? part : '$buffer $part';
+      // Cả câu không có dấu ngắt nào — đành cắt giữa câu, tại khoảng trắng.
+      manh.addAll(_tachTaiKhoangTrang(m, maxChars));
     }
   }
-  if (buffer.isNotEmpty) pieces.add(buffer);
+  return _chiaMoc(manh, maxChars);
+}
 
-  final out = <String>[];
-  for (final piece in pieces) {
-    if (piece.length <= maxChars) {
-      out.add(piece);
-      continue;
+/// Gom [moc] thành ít mẩu nhất có thể, các mẩu đều nhau nhất có thể.
+///
+/// [moc] là các đơn vị KHÔNG được xé lẻ thêm — câu, hoặc vế câu ngăn bởi dấu
+/// phẩy. Xếp tham lam cho ra số mẩu ít nhất (tham lam là tối ưu cho riêng việc
+/// đếm), rồi [_chiaDeu] chia lại đúng chừng ấy mẩu cho đều.
+List<String> _chiaMoc(List<String> moc, int tran) {
+  final soMau = _xepMau(moc, tran).length;
+  if (soMau <= 1) return _xepMau(moc, tran);
+  return _chiaDeu(moc, soMau, tran);
+}
+
+/// Chia một đoạn nhiều câu, **ưu tiên cắt ở cuối câu**.
+///
+/// Chỉ câu nào tự nó đã dài quá [tran] mới bị cắt bên trong, và khi ấy mới tới
+/// lượt dấu phẩy rồi mới tới khoảng trắng — xem [_splitLongSentence]. Câu vừa
+/// vặn thì luôn nguyên vẹn, dù có phải để một mẩu ngắn hơn hẳn các mẩu khác.
+List<String> _chiaTheoCau(String text, int tran) {
+  final moc = <String>[];
+  for (final cau in splitSentences(text)) {
+    if (cau.length <= tran) {
+      moc.add(cau);
+    } else {
+      moc.addAll(_splitLongSentence(cau, tran));
     }
-    var line = '';
-    for (final word in piece.split(' ')) {
-      if (line.isNotEmpty && line.length + word.length + 1 > maxChars) {
-        out.add(line);
-        line = word;
-      } else {
-        line = line.isEmpty ? word : '$line $word';
-      }
-    }
-    if (line.isNotEmpty) out.add(line);
   }
-  return out;
+  if (moc.isEmpty) return [text];
+  return _chiaMoc(moc, tran);
 }
 
 final _terminalPunct = RegExp('[.!?;…]["\')\\]»]*\$');
@@ -180,7 +311,11 @@ ChunkResult buildChunks(
   int mergeUnderChars = chunkMergeUnderChars,
   void Function(int done, int total)? onChapter,
 }) {
-  final maxChars = targetChars + 120 > chunkMaxChars ? targetChars + 120 : chunkMaxChars;
+  // Trần đến từ mô hình nên KHÔNG được nới theo targetChars. Bản trước lấy
+  // max(targetChars + 120, chunkMaxChars), tức là cứ nâng mục tiêu là trần tự
+  // dâng theo — đúng cái khiến đoạn vượt quá sức mô hình mà không ai thấy.
+  const maxChars = chunkMaxChars;
+  final target = targetChars > maxChars ? maxChars : targetChars;
   final chunks = <Chunk>[];
   final chapters = <Chapter>[];
 
@@ -194,6 +329,32 @@ ChunkResult buildChunks(
       final display = _ensureTerminal(rawDisplay);
       final speech = normalizeForSpeech(display, expandNumbers: expandNumbers);
       if (!_hasContent.hasMatch(speech)) return; // không còn gì để đọc
+
+      // Trần ở trên áp cho phần HIỂN THỊ, nhưng thứ mô hình phải đọc là phần
+      // speech đã chuẩn hoá — mà chuẩn hoá làm văn bản NỞ RA: "1.234.567" chín
+      // ký tự thành hơn năm mươi. Một đoạn đầy số vì thế vẫn có thể vượt trần ở
+      // phần đọc dù phần hiển thị vẫn gọn. Đo trên ba bộ truyện thật: đoạn dài
+      // nhất sau chuẩn hoá là 344 ký tự trong khi trần là 280 — sát ngân sách
+      // khung tới mức không còn biên nào.
+      //
+      // Chia tiếp theo ĐÚNG tỉ lệ nở của chính đoạn này rồi đẩy lại từng mẩu.
+      // Mỗi mẩu ngắn hơn hẳn đoạn cha nên đệ quy chắc chắn dừng.
+      //
+      // Đi qua [_chiaTheoCau] chứ không cắt thẳng tại dấu phẩy: đoạn này có thể
+      // gồm nhiều câu, mà ranh giới câu vẫn phải được ưu tiên trước.
+      if (!heading && speech.length > maxChars) {
+        final tranHienThi = display.length * maxChars ~/ speech.length;
+        if (tranHienThi > 0) {
+          final manh = _chiaTheoCau(display, tranHienThi);
+          if (manh.length > 1) {
+            for (final m in manh) {
+              push(m, false);
+            }
+            return;
+          }
+        }
+      }
+
       chunks.add(Chunk(
         index: chunks.length,
         chapter: chapterIndex,
@@ -243,10 +404,13 @@ ChunkResult buildChunks(
 
       for (final sentence in splitSentences(clean)) {
         for (final piece in _splitLongSentence(sentence, maxChars)) {
+          final tong = local.isEmpty ? piece.length : local.length + 1 + piece.length;
           // Buffer cục bộ còn quá ngắn thì đừng chốt oan thành một chunk tí
-          // hon chỉ vì piece kế đẩy tổng vượt targetChars — cứ gộp xuống.
+          // hon chỉ vì piece kế đẩy tổng vượt target — cứ gộp xuống. NHƯNG
+          // quyền gộp ấy dừng lại ở trần cứng: thà một chunk tí hon còn hơn
+          // một chunk mô hình đọc không hết.
           final ngan = local.length < mergeUnderChars;
-          if (local.isNotEmpty && !ngan && local.length + piece.length + 1 > targetChars) {
+          if (local.isNotEmpty && (tong > maxChars || (!ngan && tong > target))) {
             pieces.add(local);
             local = '';
           }
@@ -256,8 +420,12 @@ ChunkResult buildChunks(
 
       // Đoạn văn này đã phải tách thành >=1 mẩu hoàn chỉnh (pieces không
       // rỗng) mà phần dư lại quá ngắn — thay vì để dư ra một mẩu tí hon riêng,
-      // gộp nó vào mẩu hoàn chỉnh liền trước, vẫn trong cùng đoạn văn.
-      if (pieces.isNotEmpty && local.length < mergeUnderChars) {
+      // gộp nó vào mẩu hoàn chỉnh liền trước, vẫn trong cùng đoạn văn. Chỉ gộp
+      // khi còn chỗ dưới trần cứng, cùng lý do như vòng lặp phía trên.
+      if (pieces.isNotEmpty &&
+          local.isNotEmpty &&
+          local.length < mergeUnderChars &&
+          pieces.last.length + 1 + local.length <= maxChars) {
         pieces[pieces.length - 1] = '${pieces.last} $local';
         local = '';
       }

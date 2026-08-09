@@ -1,4 +1,4 @@
-/// Công việc xuất sách nói ra file MP3.
+/// Công việc xuất sách nói ra file âm thanh.
 ///
 /// Toàn bộ trạng thái nằm trong job.json để có thể dừng giữa chừng, tắt ứng
 /// dụng rồi mở lại chạy tiếp mà không mất công đã làm.
@@ -22,7 +22,7 @@ enum JobStatus {
       JobStatus.values.firstWhere((s) => s.id == id, orElse: () => JobStatus.queued);
 }
 
-/// Một file MP3 đã xuất xong.
+/// Một file đã xuất xong.
 class ExportPart {
   const ExportPart({
     required this.index,

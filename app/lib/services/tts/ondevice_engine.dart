@@ -108,9 +108,6 @@ class OnDeviceTtsEngine implements TtsEngine {
       'Chỉ 21–64 MB, chạy được cả trên máy yếu và điện thoại. Giọng máy hơn '
       'VieNeu và file xuất ra là WAV nên nặng hơn MP3.';
 
-  @override
-  String get audioFormat => 'wav';
-
   /// Đọc theo luật, không lấy mẫu ngẫu nhiên — đọc lại cũng ra đúng bản cũ.
   @override
   bool get docLaiRaKhac => false;
