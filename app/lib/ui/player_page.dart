@@ -1,18 +1,16 @@
 /// Màn hình nghe: danh sách chương, nội dung đang đọc và thanh điều khiển.
 library;
 
-import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import 'package:flutter/services.dart';
 
 import '../models/book.dart';
 import 'app_scope.dart';
 import 'chon_giong.dart';
+import 'danh_sach_chuong.dart';
 import 'kinh.dart';
 import 'nut_sac.dart';
-import 'fast_scrollbar.dart';
 import 'reading_pane.dart';
 import 'theme.dart';
 
@@ -59,7 +57,17 @@ class _PlayerPageState extends State<PlayerPage> {
                 child: wide
                     ? Row(
                         children: [
-                          SizedBox(width: 280, child: _ChapterList(book: book, currentChapter: chapter)),
+                          SizedBox(
+                            width: 280,
+                            child: DanhSachChuong(
+                              book: book,
+                              currentChapter: chapter,
+                              onChon: (chuong) => player.playChunk(
+                                chuong.firstChunk,
+                                autoplay: player.isPlaying,
+                              ),
+                            ),
+                          ),
                           const VerticalDivider(width: 1),
                           Expanded(child: reading),
                         ],
@@ -99,151 +107,6 @@ class _PlayerPageState extends State<PlayerPage> {
         return KeyEventResult.ignored;
     }
     return KeyEventResult.handled;
-  }
-}
-
-class _ChapterList extends StatefulWidget {
-  const _ChapterList({required this.book, required this.currentChapter, this.onPicked});
-  final Book book;
-  final Chapter? currentChapter;
-
-  /// Gọi sau khi chọn chương — bản mở từ dưới lên dùng để tự đóng lại.
-  final VoidCallback? onPicked;
-
-  @override
-  State<_ChapterList> createState() => _ChapterListState();
-}
-
-class _ChapterListState extends State<_ChapterList> {
-  final _controller = ItemScrollController();
-  final _positions = ItemPositionsListener.create();
-  int _firstVisible = 0;
-
-  /// Thanh cuộn kéo tay chỉ có ích khi vuốt là cách duy nhất để đi — trên máy
-  /// tính đã có chuột và bánh xe.
-  bool get _dungThanhKeo => Platform.isAndroid || Platform.isIOS;
-
-  @override
-  void initState() {
-    super.initState();
-    // Mở ra là thấy ngay chương đang nghe. Sách 2.467 chương mà bắt đầu từ
-    // chương 1 thì người dùng phải tự cuộn tìm chỗ mình đang đọc.
-    _firstVisible = _viTriHienTai();
-    _positions.itemPositions.addListener(_theoDoi);
-  }
-
-  @override
-  void dispose() {
-    _positions.itemPositions.removeListener(_theoDoi);
-    super.dispose();
-  }
-
-  int _viTriHienTai() {
-    final at = widget.book.chapters.indexWhere((c) => c.index == widget.currentChapter?.index);
-    return at < 0 ? 0 : at;
-  }
-
-  void _theoDoi() {
-    final hien = _positions.itemPositions.value;
-    if (hien.isEmpty) return;
-    final dau = hien.where((p) => p.itemTrailingEdge > 0).fold<int>(
-        hien.first.index, (nho, p) => p.index < nho ? p.index : nho);
-    if (dau != _firstVisible && mounted) setState(() => _firstVisible = dau);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final book = widget.book;
-    final currentChapter = widget.currentChapter;
-    final onPicked = widget.onPicked;
-    final state = AppScope.of(context);
-    final hint = Theme.of(context).hintColor;
-    final scheme = Theme.of(context).colorScheme;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(book.title, maxLines: 2, overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 3),
-              Text(
-                '${book.author.isEmpty ? '' : '${book.author} · '}${book.chapters.length} chương',
-                style: TextStyle(fontSize: 12.5, color: hint),
-              ),
-            ],
-          ),
-        ),
-        const Divider(height: 1),
-        Expanded(
-          child: Stack(
-            children: [
-              ScrollablePositionedList.builder(
-            itemScrollController: _controller,
-            itemPositionsListener: _positions,
-            initialScrollIndex: _viTriHienTai(),
-            initialAlignment: 0.25,
-            padding: EdgeInsets.only(
-                top: 6, bottom: 6, left: 8, right: _dungThanhKeo ? 42 : 8),
-            itemCount: book.chapters.length,
-            itemBuilder: (context, i) {
-              final chapter = book.chapters[i];
-              final selected = chapter.index == currentChapter?.index;
-              return InkWell(
-                borderRadius: BorderRadius.circular(9),
-                onTap: () {
-                  state.player.playChunk(chapter.firstChunk, autoplay: state.player.isPlaying);
-                  onPicked?.call();
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
-                  decoration: BoxDecoration(
-                    color: selected ? scheme.primaryContainer.withValues(alpha: 0.55) : null,
-                    borderRadius: BorderRadius.circular(9),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          chapter.title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 13.5,
-                            color: selected ? scheme.primary : null,
-                            fontWeight: selected ? FontWeight.w600 : null,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(formatTime(chapter.charCount / 14.5), style: TextStyle(fontSize: 11.5, color: hint)),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-              if (_dungThanhKeo && book.chapters.length > 12)
-                Positioned(
-                  top: 4,
-                  bottom: 4,
-                  right: 0,
-                  child: FastScrollBar(
-                    count: book.chapters.length,
-                    firstVisible: _firstVisible,
-                    labelBuilder: (i) => book.chapters[i].title,
-                    onJump: (i) => _controller.jumpTo(index: i),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ],
-    );
   }
 }
 
@@ -507,9 +370,15 @@ class _ChapterBar extends StatelessWidget {
         child: FractionallySizedBox(
           heightFactor: 0.85,
           // Chọn chương xong thì đóng luôn, khỏi phải bấm thêm lần nữa.
-          child: _ChapterList(
+          child: DanhSachChuong(
             book: book,
             currentChapter: chapter,
+            // Mở bảng ra là tay cầm lái được ngay, khỏi phải mò tiêu điểm.
+            tuNhanTieuDiem: true,
+            onChon: (chuong) => state.player.playChunk(
+              chuong.firstChunk,
+              autoplay: state.player.isPlaying,
+            ),
             onPicked: () => Navigator.of(sheetContext).pop(),
           ),
         ),
