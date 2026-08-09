@@ -247,6 +247,3 @@ String _slugify(String text) {
       .replaceAll(RegExp(r'^-+|-+$'), '');
   return slug.length > 40 ? slug.substring(0, 40).replaceAll(RegExp(r'-+$'), '') : slug;
 }
-
-/// Dùng khi cần chuyển tên sách sang chuỗi không dấu (đặt tên file).
-String slugify(String text) => _slugify(text);

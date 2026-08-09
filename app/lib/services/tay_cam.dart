@@ -86,29 +86,6 @@ class TrangThaiTayCam {
   final bool vaiPhai;
 
   static const khong = TrangThaiTayCam();
-
-  TrangThaiTayCam copyWith({
-    double? x,
-    double? y,
-    double? xPhai,
-    double? yPhai,
-    bool? chon,
-    bool? quayLai,
-    bool? phatDung,
-    bool? vaiTrai,
-    bool? vaiPhai,
-  }) =>
-      TrangThaiTayCam(
-        x: x ?? this.x,
-        y: y ?? this.y,
-        xPhai: xPhai ?? this.xPhai,
-        yPhai: yPhai ?? this.yPhai,
-        chon: chon ?? this.chon,
-        quayLai: quayLai ?? this.quayLai,
-        phatDung: phatDung ?? this.phatDung,
-        vaiTrai: vaiTrai ?? this.vaiTrai,
-        vaiPhai: vaiPhai ?? this.vaiPhai,
-      );
 }
 
 /// Đổi trạng thái thô thành lệnh rời rạc.

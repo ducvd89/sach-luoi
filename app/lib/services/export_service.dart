@@ -24,7 +24,6 @@ import 'storage.dart';
 import 'thu_muc_xuat.dart';
 import 'tts/tts_manager.dart';
 
-/// Số đoạn tổng hợp trước để không phải chờ mạng/GPU giữa chừng.
 /// Số đoạn tổng hợp trước trong lúc đang ghi đoạn hiện tại.
 ///
 /// Phải nhiều hơn số worker chạy song song, không thì có worker ngồi không.
@@ -102,11 +101,6 @@ class ExportService {
     return jobs;
   }
 
-  Future<ExportJob?> getJob(String id) async {
-    final json = await Storage.readJsonMap(_jobFile(id));
-    return json == null ? null : ExportJob.fromJson(json);
-  }
-
   Future<void> _save(ExportJob job) async {
     await Storage.writeJson(_jobFile(job.id), job.toJson());
     if (!_changes.isClosed) _changes.add(job);
@@ -180,7 +174,7 @@ class ExportService {
   /// Ước lượng thời gian còn lại của một job đang chạy.
   ///
   /// Tính từ nhịp thực tế của chính máy này (trung bình động), vì tốc độ tổng
-  /// hợp chênh nhau rất nhiều giữa giọng Edge và mô hình chạy trên GPU.
+  /// hợp chênh nhau rất nhiều giữa các engine và giữa máy mạnh với máy yếu.
   Duration? remainingFor(ExportJob job) {
     final control = _controls[job.id];
     if (control == null || control.secondsPerChunk <= 0) return null;
@@ -222,16 +216,6 @@ class ExportService {
       control.pause = true;
     } else if (job.isActive) {
       job.status = JobStatus.paused;
-      await _save(job);
-    }
-  }
-
-  Future<void> cancel(ExportJob job) async {
-    final control = _controls[job.id];
-    if (control != null) {
-      control.cancel = true;
-    } else if (job.status != JobStatus.done) {
-      job.status = JobStatus.canceled;
       await _save(job);
     }
   }

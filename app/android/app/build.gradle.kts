@@ -34,6 +34,17 @@ android {
 
     // abiFilters không loại được thư viện đến từ các gói AAR (sherpa-onnx,
     // media_kit), phải chặn thẳng ở bước đóng gói.
+    //
+    // ĐỪNG chép libonnxruntime.so vào jniLibs/. ONNX Runtime đến từ gói
+    // sherpa_onnx và cả hai engine dùng chung nó (VieNeu nạp lúc chạy qua
+    // load-dynamic nên không kén phiên bản).
+    //
+    // Thêm bản thứ hai là hỏng engine Giọng nhẹ mà build vẫn xanh:
+    // libsherpa-onnx-c-api.so nhập symbol CÓ GẮN VERSION
+    // (OrtGetApiBase@VERS_1.27.0), hai file lại cùng SONAME libonnxruntime.so
+    // nên chỉ một bản sống sót — và bản trong jniLibs/ thắng. Sai version node
+    // là dlopen hỏng, engine im lặng không chạy. Windows không dính vì PE
+    // không có symbol versioning, nên lỗi chỉ lộ ra trên Android.
     packaging {
         jniLibs {
             excludes += setOf("**/armeabi-v7a/**", "**/x86/**", "**/x86_64/**")

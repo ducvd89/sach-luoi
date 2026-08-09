@@ -97,11 +97,14 @@ const _genders = {'male': 'Nam', 'female': 'Nữ'};
 bool _tuThem(String source) => source == nhanTuThem;
 
 class ModelStore {
-  ModelStore({Directory? root}) : _root = root;
+  ModelStore({Directory? root}) : _overrideRoot = root;
 
-  final Directory? _root;
+  /// Null nghĩa là lấy thư mục mặc định trong vùng dữ liệu của ứng dụng; kiểm
+  /// thử truyền vào một thư mục tạm để không đụng dữ liệu thật.
+  final Directory? _overrideRoot;
 
-  Directory get root => _root ?? Directory(p.join(Storage.instance.root.path, 'vieneu'));
+  Directory get root =>
+      _overrideRoot ?? Directory(p.join(Storage.instance.root.path, 'vieneu'));
   Directory get modelDir => Directory(p.join(root.path, 'model'));
   Directory get codecDir => Directory(p.join(root.path, 'codec'));
   File get dictFile => File(p.join(root.path, 'sea_g2p.bin'));
@@ -323,16 +326,5 @@ class ModelStore {
     } catch (_) {
       return {};
     }
-  }
-
-  Future<int> installedBytes() async {
-    var total = 0;
-    for (final dir in [modelDir, codecDir]) {
-      if (!await dir.exists()) continue;
-      await for (final entity in dir.list()) {
-        if (entity is File) total += await entity.length();
-      }
-    }
-    return total;
   }
 }

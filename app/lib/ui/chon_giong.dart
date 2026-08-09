@@ -16,8 +16,8 @@ library;
 import 'package:flutter/material.dart';
 
 import '../models/settings.dart';
-import 'kinh.dart';
 import '../services/tts/tts_engine.dart';
+import 'kinh.dart';
 
 class BangChonGiong extends StatelessWidget {
   const BangChonGiong({

@@ -17,9 +17,9 @@ import '../../core/mp3.dart';
 import '../../core/wav.dart';
 import '../storage.dart';
 import 'model_store.dart';
-import 'tts_engine.dart';
 import 'ondevice_engine.dart';
 import 'system_tts_engine.dart';
+import 'tts_engine.dart';
 import 'vieneu_engine.dart';
 
 class CachedAudio {
@@ -73,9 +73,10 @@ class TtsManager {
 
   TtsEngine engine(String id) => _engines[id] ?? onDevice;
 
+  /// Thư mục và tên file cho một đoạn.
+  ///
   /// Khoá cache gồm mọi thứ ảnh hưởng tới âm thanh sinh ra — đổi bất kỳ thứ nào
   /// thì phải tổng hợp lại chứ không được lấy nhầm bản cũ.
-  /// Thư mục và tên file cho một đoạn.
   ///
   /// Tên chia làm hai phần: phần đầu băm từ (engine, giọng, tốc độ, văn bản),
   /// phần đuôi băm từ ngữ cảnh — mọi bản của cùng một đoạn nằm cạnh nhau.

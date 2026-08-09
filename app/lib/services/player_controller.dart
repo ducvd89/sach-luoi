@@ -106,7 +106,7 @@ class PlayerController extends ChangeNotifier {
     if (known != null) return known;
     final b = book;
     if (b == null || b.chunkCount == 0) return 8;
-    return b.charCount / 14.5 / b.chunkCount;
+    return b.charCount / charsPerSecond / b.chunkCount;
   }
 
   /// Tổng thời lượng ước tính của cả sách (giây).

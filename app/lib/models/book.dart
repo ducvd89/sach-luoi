@@ -1,6 +1,13 @@
 /// Các kiểu dữ liệu cốt lõi của sách và tiến trình nghe.
 library;
 
+/// Số ký tự đọc được trong một giây ở tốc độ chuẩn — đo thực tế với giọng vi-VN.
+///
+/// Mọi con số "~3 giờ 20" hiện trên giao diện đều quy từ đây, nên phải có đúng
+/// một chỗ định nghĩa: thư viện, danh sách chương, thanh tiến trình và màn hình
+/// xuất file mà mỗi nơi tự chép một số thì chúng lệch nhau ngay.
+const double charsPerSecond = 14.5;
+
 /// Một chương thô vừa trích từ file, trước khi cắt đoạn.
 class RawChapter {
   const RawChapter(this.title, this.text);
@@ -165,7 +172,7 @@ class Book {
   Progress progress;
 
   /// Thời lượng ước lượng của cả sách ở tốc độ chuẩn.
-  Duration get estimatedDuration => Duration(seconds: (charCount / 14.5).round());
+  Duration get estimatedDuration => Duration(seconds: (charCount / charsPerSecond).round());
 
   double get percentListened => chunkCount == 0 ? 0 : (progress.listenedChunks / chunkCount).clamp(0.0, 1.0);
 

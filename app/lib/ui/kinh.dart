@@ -48,9 +48,9 @@ class Kinh extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final toi = Theme.of(context).brightness == Brightness.dark;
-    // Nền tối phủ trắng, nền sáng phủ trắng đậm hơn — cả hai đều là "sáng lên",
-    // vì kính bắt sáng chứ không đổ bóng.
-    final sac = toi ? Colors.white : Colors.white;
+    // Cả hai nền đều phủ TRẮNG — kính bắt sáng chứ không đổ bóng. Khác nhau ở
+    // độ đậm: nền tối chỉ cần một lớp mỏng, nền sáng phải dày hơn mới thấy.
+    const sac = Colors.white;
     final d = dam ?? (toi ? 0.10 : 0.55);
     final r = BorderRadius.circular(bo);
 

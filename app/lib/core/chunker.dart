@@ -47,9 +47,6 @@ const int chunkMaxChars = 440;
 /// non khi mới có vài chục ký tự) và mẩu cuối khi một đoạn quá dài bị chia nhỏ.
 const int chunkMergeUnderChars = 100;
 
-/// Số ký tự đọc được trong một giây ở tốc độ chuẩn — đo thực tế với giọng vi-VN.
-const double charsPerSecond = 14.5;
-
 final _nonTerminal = RegExp(r'(?:^|\s)(?:[A-ZĐÀ-Ỹ]|TS|GS|Th|Ths|Mr|Mrs|Ms|Dr|St|vd|tr|Nxb|NXB|vv)$');
 
 /// Tách một đoạn văn thành các câu.

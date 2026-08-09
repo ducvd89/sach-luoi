@@ -76,9 +76,18 @@ void _worker(_Setup setup) {
 
 class OnDeviceTtsEngine implements TtsEngine {
   SendPort? _send;
-  Future<void>? _starting;
+
+  /// Lượt mở isolate đang chạy. Giữ chính Completer chứ không giữ Future của nó:
+  /// isolate chết thì phải có đường làm nó vỡ ra thành lỗi — xem [_vo].
+  Completer<void>? _dangMo;
   final _pending = <int, Completer<_Result>>{};
   var _nextId = 0;
+
+  /// Lý do lần mở gần nhất hỏng, để [status] nói ra thay vì báo "Sẵn sàng" suông.
+  String? _loi;
+
+  /// Đang tự tay đóng isolate — xem [dispose].
+  var _dongChuDong = false;
 
   /// Piper nhẹ tới mức một luồng đã nhanh hơn nhiều lần thời gian thực, mở thêm
   /// bản sao mô hình chỉ tốn RAM chứ không rút ngắn được gì đáng kể.
@@ -114,7 +123,11 @@ class OnDeviceTtsEngine implements TtsEngine {
         message: 'Chưa tải gói giọng nào — bấm "Tải về" ở mục Gói giọng',
       );
     }
-    return const EngineStatus(ready: true, message: 'Sẵn sàng', device: 'cpu');
+    // Có gói giọng chưa phải là chạy được: thư viện native có thể không nạp nổi.
+    // Nói thẳng lý do ra chứ đừng báo "Sẵn sàng" rồi im lặng khi người dùng bấm.
+    final loi = _loi;
+    if (loi != null) return EngineStatus(ready: false, message: loi);
+    return const EngineStatus(ready: true, message: 'Sẵn sàng');
   }
 
   @override
@@ -129,9 +142,29 @@ class OnDeviceTtsEngine implements TtsEngine {
         .toList();
   }
 
-  Future<void> _ensure(String voiceId) async {
-    if (_send != null) return;
-    if (_starting != null) return _starting;
+  /// Isolate nền chết thì mọi lời hứa đang chờ phải VỠ RA THÀNH LỖI.
+  ///
+  /// Chính chỗ này đã giấu mất lỗi Piper trên Android: `initBindings()` không
+  /// nạp nổi libsherpa-onnx-c-api.so, isolate chết ngay từ dòng đầu, mà bên này
+  /// chỉ ngồi `await` một Completer không bao giờ có ai gọi. Người dùng thấy
+  /// ứng dụng đứng im, không một dòng lỗi, còn `status()` vẫn báo "Sẵn sàng".
+  void _vo(Object loi) {
+    _loi = '$loi';
+    _send = null;
+    final mo = _dangMo;
+    _dangMo = null;
+    if (mo != null && !mo.isCompleted) mo.completeError(TtsException(_loi!));
+    final cho = _pending.values.toList();
+    _pending.clear();
+    for (final c in cho) {
+      if (!c.isCompleted) c.completeError(TtsException(_loi!));
+    }
+  }
+
+  Future<void> _ensure(String voiceId) {
+    if (_send != null) return Future.value();
+    final dangMo = _dangMo;
+    if (dangMo != null) return dangMo.future;
 
     final packs = installedVoicePacks();
     if (packs.isEmpty) throw TtsException('Chưa tải gói giọng nào');
@@ -140,22 +173,42 @@ class OnDeviceTtsEngine implements TtsEngine {
     if (dir == null) throw TtsException('Không tìm thấy gói giọng ${pack.name}');
 
     final completer = Completer<void>();
-    _starting = completer.future;
+    _dangMo = completer;
 
     final receive = ReceivePort();
     receive.listen((message) {
       if (message is SendPort) {
         _send = message;
+        _loi = null;
+        _dangMo = null;
         if (!completer.isCompleted) completer.complete();
       } else if (message is _Result) {
         _pending.remove(message.id)?.complete(message);
+      } else if (message is List) {
+        // onError của Isolate.spawn gửi [lỗi, stack] dạng chuỗi.
+        _vo(message.isEmpty ? 'Không nạp được engine nhẹ' : '${message.first}');
+      } else if (message == null) {
+        // onExit. Tự mình đóng thì đây là kết thúc bình thường, đừng ghi lỗi.
+        if (!_dongChuDong) _vo('Engine nhẹ dừng đột ngột');
+        receive.close();
       }
     });
 
-    await Isolate.spawn(_worker, _Setup(receive.sendPort, dir.path, pack.modelFile),
-        debugName: 'piper');
-    await completer.future;
-    _starting = null;
+    // onError/onExit là thứ bản trước thiếu — không có chúng thì isolate chết
+    // trong im lặng và mọi lượt gọi sau đó treo mãi mãi.
+    Isolate.spawn(
+      _worker,
+      _Setup(receive.sendPort, dir.path, pack.modelFile),
+      onError: receive.sendPort,
+      onExit: receive.sendPort,
+      debugName: 'piper',
+      errorsAreFatal: true,
+    ).catchError((Object err) {
+      _vo(err);
+      return Isolate.current;
+    });
+
+    return completer.future;
   }
 
   @override
@@ -185,6 +238,9 @@ class OnDeviceTtsEngine implements TtsEngine {
   }
 
   Future<void> dispose() async {
+    // Đóng có chủ ý thì lượt onExit sắp tới KHÔNG phải là sự cố — không có cờ
+    // này thì [_vo] ghi luôn một dòng lỗi vào [status] cho lần mở sau.
+    _dongChuDong = true;
     _send?.send(null);
     _send = null;
   }

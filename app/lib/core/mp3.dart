@@ -162,13 +162,3 @@ Uint8List buildId3({String? title, String? artist, String? album, String? track,
 
   return (BytesBuilder()..add(header)..add(body)).toBytes();
 }
-
-/// Định dạng thời lượng thành chuỗi kiểu 1:23:45 hoặc 4:05.
-String formatDuration(double seconds) {
-  final total = seconds.isFinite && seconds > 0 ? seconds.round() : 0;
-  final h = total ~/ 3600;
-  final m = (total % 3600) ~/ 60;
-  final s = total % 60;
-  final pad = (int n) => n.toString().padLeft(2, '0');
-  return h > 0 ? '$h:${pad(m)}:${pad(s)}' : '$m:${pad(s)}';
-}

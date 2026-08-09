@@ -246,7 +246,6 @@ class NutTron extends StatelessWidget {
   }
 }
 
-
 /// Bọc [Flexible] khi và chỉ khi cần — xem chỗ gọi trong [NutSac].
 class _MaybeFlexible extends StatelessWidget {
   const _MaybeFlexible({required this.flexible, required this.child});

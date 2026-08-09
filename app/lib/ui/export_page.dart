@@ -7,21 +7,21 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
-import 'fast_scrollbar.dart';
 import 'package:path/path.dart' as p;
+import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 
 import '../core/chunker.dart';
 import '../models/book.dart';
+import '../models/export_job.dart';
 import '../models/settings.dart';
 import '../services/audio_encoder.dart';
-import '../models/export_job.dart';
 import '../services/storage.dart';
 import '../services/thu_muc_xuat.dart';
 import 'app_scope.dart';
 import 'chon_giong.dart';
-import 'kinh.dart';
+import 'fast_scrollbar.dart';
 import 'home_shell.dart';
+import 'kinh.dart';
 import 'nut_sac.dart';
 import 'theme.dart';
 
@@ -1071,10 +1071,6 @@ class _XuatPlayer extends ChangeNotifier {
   }
 }
 
-extension _FirstOrNull<T> on Iterable<T> {
-  T? get firstOrNull => isEmpty ? null : first;
-}
-
 /// Chọn một chương trong danh sách dài.
 ///
 /// Thay cho DropdownButton: với 2.466 chương thì menu buông xuống dựng cả 2.466
@@ -1249,7 +1245,6 @@ class _BangChonChuongState extends State<_BangChonChuong> {
     );
   }
 }
-
 
 /// Ô chọn sách để xuất, ngay trong màn hình xuất file.
 ///

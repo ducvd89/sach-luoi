@@ -229,7 +229,3 @@ ParsedBook parseEpub(Uint8List bytes, {void Function(int done, int total)? onCha
     chapters: chapters,
   );
 }
-
-extension _FirstOrNull<T> on Iterable<T> {
-  T? get firstOrNull => isEmpty ? null : first;
-}

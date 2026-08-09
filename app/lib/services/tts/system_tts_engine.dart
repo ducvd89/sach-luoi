@@ -77,7 +77,7 @@ class SystemTtsEngine implements TtsEngine {
             'Ngôn ngữ & nhập liệu → Chuyển văn bản thành giọng nói.',
       );
     }
-    return const EngineStatus(ready: true, message: 'Sẵn sàng', device: 'hệ thống');
+    return const EngineStatus(ready: true, message: 'Sẵn sàng');
   }
 
   @override

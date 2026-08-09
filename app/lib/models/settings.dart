@@ -22,9 +22,6 @@ enum SplitMode {
       SplitMode.values.firstWhere((m) => m.id == id, orElse: () => SplitMode.duration);
 }
 
-/// Địa chỉ máy chạy các dịch vụ giọng nói. Cổng do từng engine tự biết.
-const defaultServiceHost = 'http://127.0.0.1';
-
 /// Engine cũ đã gỡ -> engine thay thế, để cài đặt và các lần xuất file cũ của
 /// người dùng không bị hỏng sau khi cập nhật.
 const _renamedEngines = {'kani': 'vieneu'};
@@ -138,8 +135,6 @@ class AppSettings {
     this.exportTreeUri = '',
     this.nguCanhNghe = NguCanh.tuanTu,
     this.nguCanhXuat = NguCanh.loLon,
-    this.serviceUrl = defaultServiceHost,
-    this.autoStartService = true,
     this.darkMode,
   });
 
@@ -197,11 +192,6 @@ class AppSettings {
   /// file vào Music/Sách lười. Không phải đường dẫn thật, đừng ghép vào File().
   String exportTreeUri;
 
-  /// Địa chỉ dịch vụ giọng nói. Trên điện thoại có thể trỏ sang máy ở nhà.
-  String serviceUrl;
-
-  bool autoStartService;
-
   /// null = theo hệ thống.
   bool? darkMode;
 
@@ -221,8 +211,6 @@ class AppSettings {
         'exportTreeUri': exportTreeUri,
         'nguCanhNghe': nguCanhNghe.id,
         'nguCanhXuat': nguCanhXuat.id,
-        'serviceUrl': serviceUrl,
-        'autoStartService': autoStartService,
         'darkMode': darkMode,
       };
 
@@ -251,13 +239,9 @@ class AppSettings {
         exportTreeUri: json['exportTreeUri'] as String? ?? '',
         nguCanhNghe: NguCanh.fromId(json['nguCanhNghe'] as String? ?? 'tuan-tu'),
         nguCanhXuat: NguCanh.fromId(json['nguCanhXuat'] as String?),
-        serviceUrl: json['serviceUrl'] as String? ?? defaultServiceHost,
-        autoStartService: json['autoStartService'] as bool? ?? true,
         darkMode: json['darkMode'] as bool?,
     );
   }
-
-  AppSettings copy() => AppSettings.fromJson(toJson());
 }
 
 /// Đọc khoảng nghỉ đã lưu, nâng mức mặc định cũ lên mức mới.

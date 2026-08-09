@@ -4,8 +4,8 @@ library;
 import 'package:flutter/material.dart';
 
 import 'app_scope.dart';
-import 'nut_sac.dart';
 import 'home_shell.dart';
+import 'nut_sac.dart';
 import 'theme.dart';
 
 class MiniPlayer extends StatelessWidget {

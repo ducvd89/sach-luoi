@@ -78,23 +78,6 @@ class Storage {
   /// nằm nguyên trong outputDir của job.
   Directory exportPlaybackDir(String jobId) => Directory(p.join(root.path, 'xuat_nghe', jobId));
 
-  /// Thư mục của app trên bộ nhớ ngoài, dùng làm nơi xuất file trên Android.
-  ///
-  /// Từ Android 10, app không ghi thẳng vào Download hay Music bằng dart:io
-  /// được nữa — scoped storage chặn. Nhưng thư mục này thì ghi được mà **không
-  /// cần xin quyền nào**, và người dùng vẫn lấy file ra được: nó hiện trong ứng
-  /// dụng quản lý file và cả khi cắm máy vào máy tính.
-  ///
-  /// Trả về null trên nền không có khái niệm đó (Windows).
-  Future<Directory?> externalRoot() async {
-    if (!Platform.isAndroid) return null;
-    try {
-      return await getExternalStorageDirectory();
-    } catch (_) {
-      return null;
-    }
-  }
-
   /// Thử ghi thật vào [dir] xem có được không.
   ///
   /// Trả về null khi ghi được, hoặc câu giải thích khi không. Kiểm trước khi bắt
@@ -137,15 +120,6 @@ class Storage {
     try {
       if (!await file.exists()) return null;
       return jsonDecode(await file.readAsString(encoding: utf8)) as Map<String, dynamic>;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  static Future<List<dynamic>?> readJsonList(File file) async {
-    try {
-      if (!await file.exists()) return null;
-      return jsonDecode(await file.readAsString(encoding: utf8)) as List<dynamic>;
     } catch (_) {
       return null;
     }

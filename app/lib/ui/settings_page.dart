@@ -83,17 +83,27 @@ class _SettingsPageState extends State<SettingsPage> {
               children: [
                 const Text('Giọng đọc', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 14),
-                for (final engine in state.tts.engines)
-                  RadioListTile<String>(
-                    value: engine.id,
-                    groupValue: settings.engineId,
-                    onChanged: (value) {
-                      if (value != null) AppScope.read(context).setEngine(value);
-                    },
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(engine.displayName, style: const TextStyle(fontSize: 14)),
-                    subtitle: Text(engine.description, style: TextStyle(fontSize: 12.5, color: hint)),
+                RadioGroup<String>(
+                  groupValue: settings.engineId,
+                  onChanged: (value) {
+                    if (value != null) AppScope.read(context).setEngine(value);
+                  },
+                  // Giữ nguyên cách canh của Column bọc ngoài: RadioGroup chỉ
+                  // thay chỗ giữ giá trị đang chọn, không được đổi bố cục.
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (final engine in state.tts.engines)
+                        RadioListTile<String>(
+                          value: engine.id,
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(engine.displayName, style: const TextStyle(fontSize: 14)),
+                          subtitle:
+                              Text(engine.description, style: TextStyle(fontSize: 12.5, color: hint)),
+                        ),
+                    ],
                   ),
+                ),
                 const Divider(height: 26),
                 if (state.voices.isEmpty)
                   Text(
@@ -227,9 +237,6 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
         ),
-        const SizedBox(height: 14),
-
-        // -- Dịch vụ giọng đọc ------------------------------------------------
         const SizedBox(height: 14),
 
         // -- Dữ liệu ----------------------------------------------------------

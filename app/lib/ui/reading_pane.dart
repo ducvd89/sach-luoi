@@ -341,11 +341,6 @@ class _Paragraph extends StatelessWidget {
   }
 }
 
-/// Thanh kéo nhanh cho điện thoại.
-///
-/// Kéo theo chỉ số đoạn chứ không theo pixel: một chương có thể dài vài trăm
-/// đoạn với chiều cao rất khác nhau, tính theo pixel thì thanh nhảy giật cục và
-/// không đoán được mình đang ở đâu.
 /// Nút nhỏ để quay lại đoạn đang đọc ngay, không cần đợi hết 30 giây.
 class _BackToReading extends StatelessWidget {
   const _BackToReading({required this.onTap});

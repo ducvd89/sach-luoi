@@ -15,14 +15,9 @@
 /// vùng riêng của app.
 library;
 
-import 'dart:io';
-
 import 'package:flutter/services.dart';
 
 const _kenh = MethodChannel('sachnoi/ma_hoa');
-
-/// Máy này chọn được thư mục xuất không.
-bool get chonDuocThuMuc => Platform.isAndroid;
 
 /// Mở màn hình chọn thư mục của hệ thống.
 ///

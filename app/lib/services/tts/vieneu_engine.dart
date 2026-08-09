@@ -100,7 +100,7 @@ class OnDeviceVieNeuEngine implements TtsEngine {
   @override
   Future<EngineStatus> status() async {
     if (_native != null) {
-      return const EngineStatus(ready: true, message: 'Sẵn sàng', device: 'cpu');
+      return const EngineStatus(ready: true, message: 'Sẵn sàng');
     }
     if (_error != null) {
       return EngineStatus(ready: false, message: _error!);
@@ -354,9 +354,3 @@ class TtsExceptionMissingModel implements Exception {
   String toString() => 'Chưa tải mô hình giọng đọc';
 }
 
-extension _FirstOrNull<T> on List<T> {
-  T? get firstOrNull => isEmpty ? null : first;
-}
-
-/// Cho phép engine báo lỗi mà không cần import chéo.
-Future<bool> modelInstalled(Directory dir) => dir.exists();

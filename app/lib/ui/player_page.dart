@@ -1,11 +1,11 @@
 /// Màn hình nghe: danh sách chương, nội dung đang đọc và thanh điều khiển.
 library;
 
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/book.dart';
+import '../services/player_controller.dart';
 import 'app_scope.dart';
 import 'chon_giong.dart';
 import 'danh_sach_chuong.dart';
@@ -90,7 +90,7 @@ class _PlayerPageState extends State<PlayerPage> {
     );
   }
 
-  KeyEventResult _handleKey(KeyEvent event, dynamic player) {
+  KeyEventResult _handleKey(KeyEvent event, PlayerController player) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     switch (event.logicalKey) {
       case LogicalKeyboardKey.space:
@@ -387,7 +387,6 @@ class _ChapterBar extends StatelessWidget {
   }
 }
 
-
 /// Chọn giọng và cách nối ngữ cảnh cho việc nghe.
 ///
 /// Đặt ngay trên thanh phát chứ không giấu trong Cài đặt: đây là hai thứ người
@@ -434,7 +433,6 @@ class _ChonGiongNghe extends StatelessWidget {
     );
   }
 }
-
 
 /// Nút tròn bằng kính cho hàng điều khiển.
 ///

@@ -1,8 +1,9 @@
 /// Giao diện chung cho các bộ tổng hợp giọng nói.
 ///
-/// Ứng dụng không quan tâm giọng đến từ đâu — mô hình chạy trên máy hay dịch
-/// vụ trên mạng — miễn là trả về MP3. Nhờ vậy đổi engine chỉ là đổi một dòng
-/// trong Cài đặt, và sau này thêm engine mới không phải sửa phần còn lại.
+/// Ứng dụng không quan tâm giọng đến từ đâu — mô hình đóng gói trong ứng dụng
+/// hay giọng có sẵn của hệ điều hành — miễn là trả về âm thanh kèm thời lượng.
+/// Nhờ vậy đổi engine chỉ là đổi một dòng trong Cài đặt, và sau này thêm engine
+/// mới không phải sửa phần còn lại.
 library;
 
 import 'dart:typed_data';
@@ -58,15 +59,11 @@ class EngineStatus {
   const EngineStatus({
     required this.ready,
     required this.message,
-    this.device = '',
     this.loading = false,
   });
 
   final bool ready;
   final String message;
-
-  /// "cuda:0 (RTX 5080)" hoặc "cpu" — chỉ engine cục bộ mới có.
-  final String device;
 
   /// True khi đang nạp mô hình.
   final bool loading;
@@ -106,7 +103,7 @@ abstract class TtsEngine {
   /// nào cũng y hệt, đọc lại chỉ tốn thời gian vô ích.
   bool get docLaiRaKhac => false;
 
-  /// Tổng hợp một đoạn văn bản thành MP3.
+  /// Tổng hợp một đoạn văn bản thành âm thanh, định dạng theo [audioFormat].
   ///
   /// [speed] là hệ số tốc độ (1.0 là chuẩn).
   /// [nguCanh] là mã đuôi của đoạn đọc ngay trước. Có nó thì giọng không nhảy ở

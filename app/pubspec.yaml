@@ -1,7 +1,7 @@
 name: sach_noi
 description: "Sách lười — chuyển sách EPUB/TXT thành sách nói tiếng Việt"
 publish_to: "none"
-version: 1.5.1+18
+version: 1.5.2+19
 
 environment:
   sdk: ^3.12.2
@@ -9,8 +9,6 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-
-  cupertino_icons: ^1.0.8
 
   # Phát âm thanh: media_kit dùng libmpv, ổn định trên Windows và có sẵn
   # đường lên Android/iOS sau này.
@@ -22,13 +20,11 @@ dependencies:
   archive: ^4.0.7
   file_picker: ^10.3.4
 
-  # Lưu trữ, mã hoá, mạng
+  # Lưu trữ, mã hoá, tải mô hình
   path: ^1.9.1
   path_provider: ^2.1.5
   crypto: ^3.0.6
   http: ^1.5.0
-  web_socket_channel: ^3.0.3
-  intl: ^0.20.2
   ffi: ^2.2.0
   # XInput để đọc tay cầm chơi game trên Windows (xem services/tay_cam_windows.dart)
   win32: ^5.15.0

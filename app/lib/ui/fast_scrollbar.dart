@@ -88,18 +88,16 @@ class _FastScrollBarState extends State<FastScrollBar> {
                     mo: 12,
                     dam: _dragging ? 0.30 : 0.14,
                     child: Center(
-                    child: _dragging
-                        ? Center(
-                            child: Text(
+                      child: _dragging
+                          ? Text(
                               '${widget.firstVisible + 1}',
-                              style: TextStyle(
+                              style: const TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w700,
                                 color: Colors.white,
                               ),
-                            ),
-                          )
-                        : const SizedBox.shrink(),
+                            )
+                          : const SizedBox.shrink(),
                     ),
                   ),
                 ),

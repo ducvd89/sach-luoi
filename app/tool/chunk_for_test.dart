@@ -5,8 +5,8 @@
 // In mỗi đoạn "speech" trên một dòng, ngăn cách bằng dòng "---".
 import 'dart:io';
 
-import '../lib/core/chunker.dart';
-import '../lib/models/book.dart';
+import 'package:sach_noi/core/chunker.dart';
+import 'package:sach_noi/models/book.dart';
 
 void main(List<String> args) {
   final path = args[0];
