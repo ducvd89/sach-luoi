@@ -35,6 +35,9 @@ enum LenhTayCam {
   /// Nút Y — phát/tạm dừng.
   phatDung,
 
+  /// Nút X — mở bảng chọn chương ở màn hình Nghe.
+  moChuong,
+
   /// L1 hoặc L2 — sang tab bên trái.
   tabTruoc,
 
@@ -58,6 +61,7 @@ class TrangThaiTayCam {
     this.chon = false,
     this.quayLai = false,
     this.phatDung = false,
+    this.moChuong = false,
     this.vaiTrai = false,
     this.vaiPhai = false,
   });
@@ -78,6 +82,7 @@ class TrangThaiTayCam {
   final bool chon;
   final bool quayLai;
   final bool phatDung;
+  final bool moChuong;
 
   /// L1 hoặc L2 đang bấm. Hai cái gộp làm một: cả hai đều nghĩa là "sang trái".
   final bool vaiTrai;
@@ -169,6 +174,7 @@ class BoDichTayCam {
     if (nay.chon && !_truoc.chon) ra.add(LenhTayCam.chon);
     if (nay.quayLai && !_truoc.quayLai) ra.add(LenhTayCam.quayLai);
     if (nay.phatDung && !_truoc.phatDung) ra.add(LenhTayCam.phatDung);
+    if (nay.moChuong && !_truoc.moChuong) ra.add(LenhTayCam.moChuong);
     if (nay.vaiTrai && !_truoc.vaiTrai) ra.add(LenhTayCam.tabTruoc);
     if (nay.vaiPhai && !_truoc.vaiPhai) ra.add(LenhTayCam.tabSau);
     _truoc = nay;
@@ -307,6 +313,7 @@ class NguonTayCamAndroid implements NguonTayCam {
   var _chon = false;
   var _quayLai = false;
   var _phatDung = false;
+  var _moChuong = false;
   var _vaiTraiPhim = false;
   var _vaiPhaiPhim = false;
   var _coTrai = false;
@@ -333,6 +340,7 @@ class NguonTayCamAndroid implements NguonTayCam {
         chon: _chon,
         quayLai: _quayLai,
         phatDung: _phatDung,
+        moChuong: _moChuong,
         vaiTrai: _vaiTraiPhim || _coTrai,
         vaiPhai: _vaiPhaiPhim || _coPhai,
       );
@@ -372,6 +380,8 @@ class NguonTayCamAndroid implements NguonTayCam {
             _quayLai = xuong;
           case 'phatDung':
             _phatDung = xuong;
+          case 'moChuong':
+            _moChuong = xuong;
           case 'vaiTrai':
             _vaiTraiPhim = xuong;
           case 'vaiPhai':

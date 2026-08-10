@@ -109,6 +109,18 @@ void main() {
       expect(chay(bo, const [TrangThaiTayCam(quayLai: true)]), [LenhTayCam.quayLai]);
       final bo2 = BoDichTayCam();
       expect(chay(bo2, const [TrangThaiTayCam(phatDung: true)]), [LenhTayCam.phatDung]);
+      final bo3 = BoDichTayCam();
+      expect(chay(bo3, const [TrangThaiTayCam(moChuong: true)]), [LenhTayCam.moChuong]);
+    });
+
+    test('nút X chỉ báo lúc bấm xuống, giữ lâu không bắn ra hàng loạt', () {
+      final bo = BoDichTayCam();
+      final ra = chay(bo, const [
+        TrangThaiTayCam(moChuong: true),
+        TrangThaiTayCam(moChuong: true),
+        TrangThaiTayCam(moChuong: true),
+      ]);
+      expect(ra, [LenhTayCam.moChuong]);
     });
 
     test('bấm nút trong lúc đang giữ cần gạt thì cả hai đều tới', () {
@@ -170,6 +182,7 @@ void main() {
     test('không có nguồn nào thì không hỗ trợ và không nổ', () async {
       final tayCam = TayCam(onLenh: (_) {}, nguon: _NguonRong());
       expect(tayCam.hoTro, isTrue);
+
       await tayCam.batDau();
       await tayCam.dungLai();
     });

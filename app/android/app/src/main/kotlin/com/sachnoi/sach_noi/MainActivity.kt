@@ -180,6 +180,7 @@ class MainActivity : AudioServiceActivity() {
                 KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_DPAD_CENTER -> "chon"
                 KeyEvent.KEYCODE_BUTTON_B -> "quayLai"
                 KeyEvent.KEYCODE_BUTTON_Y -> "phatDung"
+                KeyEvent.KEYCODE_BUTTON_X -> "moChuong"
                 KeyEvent.KEYCODE_DPAD_UP -> "len"
                 KeyEvent.KEYCODE_DPAD_DOWN -> "xuong"
                 KeyEvent.KEYCODE_DPAD_LEFT -> "trai"

@@ -1,15 +1,19 @@
 /// Màn hình nghe: danh sách chương, nội dung đang đọc và thanh điều khiển.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/book.dart';
 import '../models/settings.dart';
 import '../services/player_controller.dart';
+import '../services/tay_cam.dart';
 import 'app_scope.dart';
 import 'chon_giong.dart';
 import 'danh_sach_chuong.dart';
+import 'dieu_khien_tay_cam.dart';
 import 'kinh.dart';
 import 'nut_sac.dart';
 import 'reading_pane.dart';
@@ -23,6 +27,43 @@ class PlayerPage extends StatefulWidget {
 }
 
 class _PlayerPageState extends State<PlayerPage> {
+  /// Nút X mở bảng chọn chương. Nghe thẳng dòng lệnh thay vì chờ tiêu điểm rơi
+  /// vào thanh chương — đang nghe thì tay cầm thường đang trỏ ở đâu đó khác.
+  StreamSubscription<LenhTayCam>? _tayCam;
+
+  /// Bảng đang mở hay không, để bấm X liên tục không chồng nhiều bảng lên nhau.
+  bool _dangMoBang = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _tayCam?.cancel();
+    _tayCam = LenhTayCamScope.cua(context)?.listen(_nhanLenh);
+  }
+
+  @override
+  void dispose() {
+    _tayCam?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _nhanLenh(LenhTayCam lenh) async {
+    if (lenh != LenhTayCam.moChuong || !mounted || _dangMoBang) return;
+    final state = AppScope.read(context);
+    final book = state.currentBook;
+    if (book == null) return;
+    // Bố cục rộng đã có sẵn cột chương bên trái, không cần bảng mở lên.
+    if (manHinhHaiCot(context) || manHinhRong(context)) return;
+
+    _dangMoBang = true;
+    try {
+      // Future này hoàn tất khi bảng đóng lại.
+      await moBangChuong(context, book, state.player.currentChapter);
+    } finally {
+      if (mounted) _dangMoBang = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
@@ -358,32 +399,38 @@ class _ChapterBar extends StatelessWidget {
     );
   }
 
-  void _openChapters(BuildContext context) {
-    final state = AppScope.read(context);
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (sheetContext) => AppScope(
-        state: state,
-        child: FractionallySizedBox(
-          heightFactor: 0.85,
-          // Chọn chương xong thì đóng luôn, khỏi phải bấm thêm lần nữa.
-          child: DanhSachChuong(
-            book: book,
-            currentChapter: chapter,
-            // Mở bảng ra là tay cầm lái được ngay, khỏi phải mò tiêu điểm.
-            tuNhanTieuDiem: true,
-            onChon: (chuong) => state.player.playChunk(
-              chuong.firstChunk,
-              autoplay: state.player.isPlaying,
-            ),
-            onPicked: () => Navigator.of(sheetContext).pop(),
+  void _openChapters(BuildContext context) => moBangChuong(context, book, chapter);
+}
+
+/// Mở bảng chọn chương từ dưới lên.
+///
+/// Tách khỏi [_ChapterBar] vì nút X trên tay cầm cũng gọi tới — xem
+/// [_PlayerPageState._nhanLenh].
+Future<void> moBangChuong(BuildContext context, Book book, Chapter? chapter) {
+  final state = AppScope.read(context);
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (sheetContext) => AppScope(
+      state: state,
+      child: FractionallySizedBox(
+        heightFactor: 0.85,
+        // Chọn chương xong thì đóng luôn, khỏi phải bấm thêm lần nữa.
+        child: DanhSachChuong(
+          book: book,
+          currentChapter: chapter,
+          // Mở bảng ra là tay cầm lái được ngay, khỏi phải mò tiêu điểm.
+          tuNhanTieuDiem: true,
+          onChon: (chuong) => state.player.playChunk(
+            chuong.firstChunk,
+            autoplay: state.player.isPlaying,
           ),
+          onPicked: () => Navigator.of(sheetContext).pop(),
         ),
       ),
-    );
-  }
+    ),
+  );
 }
 
 /// Chọn giọng và cách nối ngữ cảnh cho việc nghe.

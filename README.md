@@ -11,7 +11,7 @@ Chạy **hoàn toàn trên máy**: không cần mạng, không gửi sách đi �
 
 | | |
 |---|---|
-| **Windows** | Chạy `SachLuoi-Setup-1.5.3.exe`. Không cần quyền quản trị, cài vào `%LOCALAPPDATA%`. |
+| **Windows** | Chạy `SachLuoi-Setup-1.5.4.exe`. Không cần quyền quản trị, cài vào `%LOCALAPPDATA%`. |
 | **Android** | Cài `SachLuoi-android-arm64.apk`. Cần Android 7 trở lên, máy 64-bit. |
 
 Sau khi cài, mở *Cài đặt → Giọng đọc* và bấm **Tải mô hình (206 MB)** một lần. Từ đó đọc được cả
@@ -66,8 +66,10 @@ Tua ±15 giây, hẹn giờ tắt, đổi tốc độ 0.4×–2.0× có hiệu l
 `←` `→` tua · `↑` `↓` chuyển đoạn.
 
 **Tay cầm chơi game** — lái được cả ứng dụng không cần chạm màn hình. Cần trái đi giữa các điểm
-chọn, `A` chọn, `B` quay lại, `Y` phát/dừng, `L`/`R` chuyển tab, cần phải cuộn phần chữ. Windows
-đọc qua XInput, Android qua `KeyEvent`/`MotionEvent`.
+chọn, `A` chọn, `B` quay lại, `X` mở bảng chọn chương, `Y` phát/dừng, `L`/`R` chuyển tab, cần phải
+cuộn trang ở mọi màn hình. Trỏ tới mục nằm ngoài màn hình thì trang tự cuộn tới; cuộn xong mà bấm
+hướng thì bắt đầu lại từ mục đầu tiên đang hiện. Windows đọc qua XInput, Android qua
+`KeyEvent`/`MotionEvent`.
 
 **Điều khiển ngoài ứng dụng (Android)** — hiện ở phần "Đang phát" của hệ điều hành: điều khiển từ
 màn hình khoá, khu thông báo và nút tai nghe.

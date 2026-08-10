@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../models/book.dart';
 import '../models/work_progress.dart';
 import 'app_scope.dart';
+import 'cuon_tay_cam.dart';
 import 'home_shell.dart';
 import 'nut_sac.dart';
 import 'theme.dart';
@@ -19,6 +20,7 @@ class LibraryPage extends StatefulWidget {
 }
 
 class _LibraryPageState extends State<LibraryPage> {
+  final _cuon = ScrollController();
   bool _importing = false;
   String? _importMessage;
   bool _importFailed = false;
@@ -69,7 +71,10 @@ class _LibraryPageState extends State<LibraryPage> {
     final state = AppScope.of(context);
     final books = state.books;
 
-    return ListView(
+    return CuonTayCam(
+      controller: _cuon,
+      child: ListView(
+      controller: _cuon,
       padding: const EdgeInsets.fromLTRB(22, 20, 22, 26),
       children: [
         Row(
@@ -143,7 +148,14 @@ class _LibraryPageState extends State<LibraryPage> {
             },
           ),
       ],
+      ),
     );
+  }
+
+  @override
+  void dispose() {
+    _cuon.dispose();
+    super.dispose();
   }
 }
 

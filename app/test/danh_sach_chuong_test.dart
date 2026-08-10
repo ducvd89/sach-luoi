@@ -134,6 +134,7 @@ void main() {
     for (var i = 0; i < 10; i++) {
       await gui(tester, LenhTayCam.xuong);
     }
+    expect(ngoai.hasFocus, isFalse, reason: 'hết sách rồi thì đứng yên, đừng văng ra ngoài');
     await gui(tester, LenhTayCam.chon);
     expect(daChon.single.index, 299, reason: 'dừng ở chương cuối');
   });

@@ -33,6 +33,7 @@ const _nguongCo = 30;
 /// Mặt nạ nút trong `XINPUT_GAMEPAD.wButtons`.
 const _nutA = 0x1000;
 const _nutB = 0x2000;
+const _nutX = 0x4000;
 const _nutY = 0x8000;
 const _dpadLen = 0x0001;
 const _dpadXuong = 0x0002;
@@ -125,6 +126,7 @@ class NguonXInput implements NguonTayCam {
       chon: nut & _nutA != 0,
       quayLai: nut & _nutB != 0,
       phatDung: nut & _nutY != 0,
+      moChuong: nut & _nutX != 0,
       // L1 và L2 làm cùng một việc nên gộp luôn từ đây.
       vaiTrai: nut & _vaiTrai != 0 || pad.bLeftTrigger > _nguongCo,
       vaiPhai: nut & _vaiPhai != 0 || pad.bRightTrigger > _nguongCo,

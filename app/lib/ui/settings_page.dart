@@ -13,6 +13,7 @@ import '../services/storage.dart';
 import '../services/tts/model_store.dart';
 import '../services/tts/voice_pack.dart';
 import 'app_scope.dart';
+import 'cuon_tay_cam.dart';
 import 'nut_sac.dart';
 import 'thanh_keo_tay_cam.dart';
 import 'theme.dart';
@@ -25,7 +26,14 @@ class SettingsPage extends StatefulWidget {
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  final _cuon = ScrollController();
   ({int bytes, int files})? _cache;
+
+  @override
+  void dispose() {
+    _cuon.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -68,7 +76,10 @@ class _SettingsPageState extends State<SettingsPage> {
     final settings = state.settings;
     final hint = Theme.of(context).hintColor;
 
-    return ListView(
+    return CuonTayCam(
+      controller: _cuon,
+      child: ListView(
+      controller: _cuon,
       padding: const EdgeInsets.fromLTRB(22, 20, 22, 26),
       children: [
         Text('Cài đặt', style: Theme.of(context).textTheme.headlineSmall),
@@ -303,6 +314,7 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
         ),
       ],
+      ),
     );
   }
 }

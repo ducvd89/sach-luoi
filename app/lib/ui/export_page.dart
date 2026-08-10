@@ -19,6 +19,7 @@ import '../services/storage.dart';
 import '../services/thu_muc_xuat.dart';
 import 'app_scope.dart';
 import 'chon_giong.dart';
+import 'cuon_tay_cam.dart';
 import 'fast_scrollbar.dart';
 import 'home_shell.dart';
 import 'kinh.dart';
@@ -52,9 +53,11 @@ class _ExportPageState extends State<ExportPage> {
   /// này — tách khỏi PlayerController của cả cuốn sách vì đây chỉ nghe thử
   /// một file lẻ, không dính gì tới tiến trình đang đọc.
   final _xuatPlayer = _XuatPlayer();
+  final _cuon = ScrollController();
 
   @override
   void dispose() {
+    _cuon.dispose();
     _xuatPlayer.dispose();
     super.dispose();
   }
@@ -104,7 +107,10 @@ class _ExportPageState extends State<ExportPage> {
 
     final jobs = state.jobs.where((j) => j.bookId == book.id).toList();
 
-    return ListView(
+    return CuonTayCam(
+      controller: _cuon,
+      child: ListView(
+      controller: _cuon,
       padding: const EdgeInsets.fromLTRB(22, 20, 22, 26),
       children: [
         Text('Xuất ra file âm thanh', style: Theme.of(context).textTheme.headlineSmall),
@@ -346,6 +352,7 @@ class _ExportPageState extends State<ExportPage> {
             ),
           ),
       ],
+      ),
     );
   }
 

@@ -10,7 +10,7 @@
 ; đây, nên thư mục cài chỉ khoảng 120 MB.
 
 #define AppName "Sách lười"
-#define AppVersion "1.5.3"
+#define AppVersion "1.5.4"
 #define AppPublisher "Sách lười"
 #define AppExe "SachLuoi.exe"
 #define SourceDir "dist\SachLuoi"
