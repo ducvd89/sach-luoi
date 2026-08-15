@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 
 import '../models/book.dart';
 import '../models/settings.dart';
+import '../services/khoa_cam_ung.dart';
 import '../services/player_controller.dart';
 import '../services/tay_cam.dart';
 import 'app_scope.dart';
@@ -260,6 +261,9 @@ class _PlayerBar extends StatelessWidget {
               const SizedBox(width: 10),
               _SpeedSelector(),
               _SleepButton(),
+              _SoiAmButton(),
+              _DocTruocButton(),
+              _KhoaCamUngButton(),
             ],
           ),
         ],
@@ -319,6 +323,138 @@ class _SpeedSelector extends StatelessWidget {
       onChanged: (value) {
         if (value != null) AppScope.read(context).setSpeed(value);
       },
+    );
+  }
+}
+
+/// Bật/tắt việc soi âm trước khi phát.
+///
+/// Đặt cạnh nút hẹn giờ chứ không ở bảng chọn giọng: cả hai đều là thứ bật một
+/// cái rồi để đấy mà nghe, không phải thứ chỉnh theo từng đoạn.
+///
+/// Chỉ một cái icon, không kèm chữ: hàng điều khiển đã chật, mà trạng thái thì
+/// đọc được bằng màu. Bản trước dùng `TextButton.icon` — nó luôn tô màu nhấn nên
+/// bật hay tắt trông y hệt nhau, tức là cái nút không nói được điều duy nhất nó
+/// cần nói.
+///
+/// Chỉ hiện với engine đọc lại ra bản khác — engine đọc theo luật (Piper, TTS hệ
+/// thống) thì đọc lại vẫn ra đúng bản cũ, bật lên chỉ tốn thời gian.
+class _SoiAmButton extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    if (!state.tts.engine(state.settings.engineId).docLaiRaKhac) {
+      return const SizedBox.shrink();
+    }
+    final bat = state.settings.soiAmKhiNghe;
+
+    // Dựng đúng kiểu nút "Hẹn giờ" ngay bên cạnh: `TextButton.icon`, và màu lấy
+    // qua `foregroundColor` của nút chứ KHÔNG gán thẳng vào `Icon`.
+    //
+    // Ba bản trước đều dùng `IconButton` với `Icon(color: ...)` và lần nào icon
+    // cũng không vẽ ra gì — chỉ còn cái vòng bấm rỗng, dù tooltip vẫn chạy. Nút
+    // hẹn giờ dùng cách này thì hiện bình thường, nên cứ theo cách đang chạy
+    // được thay vì tiếp tục đoán vì sao cách kia hỏng.
+    //
+    // Nút thể hiện TRẠNG THÁI ĐANG CÓ, không phải việc sẽ làm khi bấm:
+    // vàng là đang bật, trắng là đang tắt.
+    //
+    // Màu trắng lấy từ `onSurface` chứ không gán cứng `Colors.white`: ở chế độ
+    // tối nó ra gần như trắng, mà sang chế độ sáng thì tự thành gần đen — trắng
+    // gán cứng ở đó là mất hút trên nền giấy.
+    final mau = bat ? SacNut.chinh.first : Theme.of(context).colorScheme.onSurface;
+
+    return Tooltip(
+      message: bat
+          ? 'Kiểm tra trước khi phát: ĐANG BẬT — đoạn đọc hỏng sẽ được đọc lại (tối đa 2 lần)'
+          : 'Kiểm tra trước khi phát: đang tắt',
+      child: TextButton.icon(
+        style: TextButton.styleFrom(
+          foregroundColor: mau,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          minimumSize: const Size(0, 40),
+        ),
+        onPressed: () {
+          state.settings.soiAmKhiNghe = !bat;
+          AppScope.read(context).saveSettings();
+        },
+        // MỘT icon cho cả hai trạng thái, chỉ đổi màu.
+        //
+        // Không phải chọn cho gọn: bản đặc (`check_circle`, trước đó là
+        // `verified_rounded`) không vẽ ra gì trên máy này, trong khi bản viền
+        // hiện bình thường — thử ba cặp icon đều đúng như vậy. Giữ một glyph đã
+        // biết chắc vẽ được thì bỏ hẳn được biến gây lỗi ấy.
+        icon: const Icon(Icons.check_circle_outline, size: 20),
+        // Chữ ăn theo `foregroundColor` của nút nên luôn cùng màu với icon,
+        // khỏi phải đặt màu ở hai chỗ rồi có ngày lệch nhau.
+        label: const Text('Kiểm âm'),
+      ),
+    );
+  }
+}
+
+/// Bật/tắt việc đọc trước các đoạn tới.
+///
+/// Bật là thứ giữ cho chỗ chuyển đoạn liền mạch, nhưng cũng là thứ khiến máy
+/// chạy hết công suất gần như liên tục — vừa nghe vừa tổng hợp, không có quãng
+/// nghỉ. Trên điện thoại điều đó thành nóng máy và tụt pin.
+///
+/// Đặt cạnh nút Kiểm âm vì hai nút cùng một loại đánh đổi: đổi thời gian máy
+/// chạy lấy chất lượng nghe.
+class _DocTruocButton extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final bat = state.settings.docTruocKhiNghe;
+
+    return Tooltip(
+      message: bat
+          ? 'Đọc trước: ĐANG BẬT — chuyển đoạn liền mạch, máy chạy liên tục'
+          : 'Đọc trước: đang tắt — máy mát hơn, mỗi lần chuyển đoạn phải chờ',
+      child: TextButton.icon(
+        style: TextButton.styleFrom(
+          foregroundColor:
+              bat ? SacNut.chinh.first : Theme.of(context).colorScheme.onSurface,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          minimumSize: const Size(0, 40),
+        ),
+        onPressed: () {
+          state.settings.docTruocKhiNghe = !bat;
+          AppScope.read(context).saveSettings();
+        },
+        // Dùng bản `_outlined`: mấy bản đặc/rounded từng không vẽ ra gì trên máy
+        // này, còn bản viền thì lần nào cũng hiện.
+        icon: const Icon(Icons.bolt_outlined, size: 20),
+        label: const Text('Đọc trước'),
+      ),
+    );
+  }
+}
+
+/// Khoá cảm ứng — chắn mọi thao tác cho tới khi trượt để mở.
+///
+/// Đỏ để nổi hẳn khỏi hàng: đây là nút duy nhất ở đây làm giao diện ngừng nhận
+/// thao tác, người dùng cần thấy ngay mình sắp bấm cái gì.
+///
+/// Chỉ có trên Android. Trên máy tính thì chạm nhầm không phải vấn đề, mà việc
+/// hạ sáng cũng là API riêng của Android — xem `services/khoa_cam_ung.dart`.
+class _KhoaCamUngButton extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    if (!khoaCamUngDungDuoc) return const SizedBox.shrink();
+
+    return Tooltip(
+      message: 'Khoá cảm ứng — hạ sáng màn hình, trượt để mở lại',
+      child: TextButton.icon(
+        style: TextButton.styleFrom(
+          foregroundColor: SacNut.nguyHiem.first,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          minimumSize: const Size(0, 40),
+        ),
+        onPressed: () => AppScope.read(context).batKhoaCamUng(),
+        icon: const Icon(Icons.lock_outline, size: 20),
+        label: const Text('Khoá'),
+      ),
     );
   }
 }
@@ -450,9 +586,10 @@ class _ChonGiongNghe extends StatelessWidget {
       listenable: state.player,
       builder: (context, _) {
         final dangDoiGiong = state.player.dangTongHopTruocGiong;
-        // Chỉ VieNeu nối được ngữ cảnh giữa các đoạn — engine khác thì ô này
-        // vô nghĩa, khoá lại cho khỏi chọn nhầm.
-        final khongHoTroNguCanh = settings.engineId != 'vieneu';
+        // Hỏi chính engine chứ đừng gán cứng mã: thêm engine mới mà quên sửa
+        // chỗ này là ô hiện sai ngay.
+        final engine = state.tts.engine(settings.engineId);
+        final khongHoTroNguCanh = !engine.noiNguCanh;
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 2, 16, 0),
           child: BangChonGiong(

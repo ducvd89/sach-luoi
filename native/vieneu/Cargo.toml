@@ -33,6 +33,23 @@ lto = true
 codegen-units = 1
 panic = "abort"
 
+# Engine VieNeu v2 (Qwen3 0.3B, trọng số GGUF Q4) chạy qua llama.cpp.
+#
+# Vì sao không dùng ONNX như v3: v2 chỉ phát hành safetensors và GGUF, không có
+# bản ONNX nào. Mà kể cả có thì llama.cpp vẫn hợp hơn cho vòng lặp sinh từng
+# token một — kernel ARM/x86 viết tay cho ma trận đã lượng tử, KV cache lớn dần
+# là ca dùng chính của nó, và trọng số nạp bằng mmap nên nhiều worker lúc xuất
+# file dùng chung một bản trong page cache thay vì mỗi bản một vùng nhớ riêng.
+#
+# Khai cho MỌI nền tảng, kể cả Android: `llama-cpp-sys-2` tự dựng llama.cpp bằng
+# NDK khi target là *-linux-android, miễn là biết NDK nằm đâu. Nó tìm theo thứ
+# tự ANDROID_NDK → ANDROID_NDK_ROOT → NDK_ROOT, rồi suy tiếp từ ANDROID_HOME;
+# mức API lấy từ ANDROID_API_LEVEL hoặc ANDROID_PLATFORM. Đặt sẵn hai biến ấy
+# trong `.cargo/config.toml` nên build thẳng `cargo build --target
+# aarch64-linux-android` là chạy.
+[dependencies.llama-cpp-2]
+version = "0.1.154"
+
 # Bộ mã hoá âm thanh cho việc xuất file — CHỈ cho máy tính.
 #
 # libopus và libmp3lame là mã C. Trên Windows chúng dựng sạch, còn biên dịch

@@ -112,6 +112,10 @@ class OnDeviceTtsEngine implements TtsEngine {
   @override
   bool get docLaiRaKhac => false;
 
+  /// Piper đọc theo luật, mỗi đoạn độc lập — không có gì để nối.
+  @override
+  bool get noiNguCanh => false;
+
   @override
   Future<EngineStatus> status() async {
     if (installedVoicePacks().isEmpty) {

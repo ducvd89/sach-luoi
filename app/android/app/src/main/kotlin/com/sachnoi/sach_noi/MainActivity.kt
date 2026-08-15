@@ -59,6 +59,20 @@ class MainActivity : AudioServiceActivity() {
                     tienDoNenSink = null
                 }
             })
+        MethodChannel(engine.dartExecutor.binaryMessenger, KENH_KHOA_CAM_UNG)
+            .setMethodCallHandler { goi, tra ->
+                when (goi.method) {
+                    "bat" -> {
+                        khoaManHinh(true, (goi.argument<Double>("doSang") ?: 0.1).toFloat())
+                        tra.success(null)
+                    }
+                    "tat" -> {
+                        khoaManHinh(false, 0f)
+                        tra.success(null)
+                    }
+                    else -> tra.notImplemented()
+                }
+            }
         MethodChannel(engine.dartExecutor.binaryMessenger, KENH_MA_HOA)
             .setMethodCallHandler { goi, tra ->
                 // Mở màn hình chọn thư mục phải ở luồng giao diện, và kết quả về
@@ -288,9 +302,40 @@ class MainActivity : AudioServiceActivity() {
     /// Chỗ giữ lời hứa trả kết quả trong lúc màn hình chọn thư mục đang mở.
     private var choThuMuc: MethodChannel.Result? = null
 
+    /// Bật/tắt chế độ khoá cảm ứng: hạ sáng và giữ màn hình không tắt.
+    ///
+    /// Chỉnh độ sáng qua thuộc tính của CỬA SỔ chứ không đụng vào cài đặt hệ
+    /// thống. Hai cái lợi, và đều quan trọng:
+    ///
+    /// * Không cần quyền `WRITE_SETTINGS` — quyền ấy phải để người dùng tự bật
+    ///   trong Cài đặt Android, xin nó cho một nút nhỏ là quá đáng.
+    /// * Android tự trả độ sáng về mức cũ khi ứng dụng rời tiền cảnh. Kể cả app
+    ///   bị buộc dừng lúc đang khoá thì máy cũng không kẹt ở mức tối 10%.
+    ///
+    /// `BRIGHTNESS_OVERRIDE_NONE` (-1) nghĩa là trả quyền quyết định về cho hệ
+    /// thống, tức đúng mức người dùng đang để trước khi khoá — không phải tự
+    /// nhớ rồi đặt lại, nên không có cửa cho việc nhớ sai.
+    private fun khoaManHinh(bat: Boolean, doSang: Float) {
+        runOnUiThread {
+            val lp = window.attributes
+            lp.screenBrightness = if (bat) {
+                doSang.coerceIn(0.01f, 1f)
+            } else {
+                android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+            }
+            window.attributes = lp
+            if (bat) {
+                window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            } else {
+                window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+        }
+    }
+
     private companion object {
         const val MA_XIN_THONG_BAO = 1001
         const val MA_CHON_THU_MUC = 1002
+        const val KENH_KHOA_CAM_UNG = "sachnoi/khoa_cam_ung"
         const val KENH_MA_HOA = "sachnoi/ma_hoa"
         const val KENH_TIEN_DO_NEN = "sachnoi/ma_hoa_tien_do"
         const val KENH_TAY_CAM = "sachnoi/tay_cam"

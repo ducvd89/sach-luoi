@@ -11,6 +11,7 @@ import 'state/app_state.dart';
 import 'ui/app_scope.dart';
 import 'ui/dieu_khien_tay_cam.dart';
 import 'ui/home_shell.dart';
+import 'ui/khoa_man_hinh.dart';
 import 'ui/theme.dart';
 
 Future<void> main() async {
@@ -71,9 +72,14 @@ class _SachLuoiAppState extends State<SachLuoiApp> {
               navigatorKey: _khoaDieuHuong,
               // Bọc ngoài Navigator nên tay cầm lái được cả hộp thoại và bảng
               // mở lên từ dưới, không riêng gì các trang chính.
-              builder: (context, child) => DieuKhienTayCam(
-                khoaDieuHuong: _khoaDieuHuong,
-                child: child ?? const SizedBox.shrink(),
+              //
+              // Khoá cảm ứng bọc NGOÀI CÙNG: nó phải chắn được cả thao tác đi
+              // qua tay cầm lẫn mọi thứ Navigator dựng lên.
+              builder: (context, child) => KhoaManHinh(
+                child: DieuKhienTayCam(
+                  khoaDieuHuong: _khoaDieuHuong,
+                  child: child ?? const SizedBox.shrink(),
+                ),
               ),
               theme: buildTheme(Brightness.light),
               darkTheme: buildTheme(Brightness.dark),

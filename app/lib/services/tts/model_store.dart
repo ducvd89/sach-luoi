@@ -15,6 +15,7 @@ import 'package:path/path.dart' as p;
 import '../../models/work_progress.dart';
 import '../storage.dart';
 import 'vieneu_native.dart';
+import 'vieneu_v2_native.dart';
 
 /// Một file cần có, kèm nơi tải và kích thước để vẽ thanh tiến trình.
 class ModelFile {
@@ -61,14 +62,60 @@ const enrollFiles = <ModelFile>[
       '$_codecRepo/moss_audio_tokenizer_encode.data', 42.4, folder: 'enroll'),
 ];
 
+/// Bộ file của engine VieNeu **v2** — tải riêng, ai không dùng khỏi tốn.
+///
+/// Chỉ ba file, ít hơn hẳn v3: trọng số nằm gọn trong một file GGUF thay vì bị
+/// chẻ ra thành đồ thị ONNX nhiều mảnh, còn bộ giải mã âm là NeuCodec một file.
+///
+/// Nặng hơn v3 (487 MB so với 206 MB) mà chủ yếu là do bộ giải mã: 298 MB cho
+/// riêng nó, trong khi phần mô hình ngôn ngữ Q4 chỉ 189 MB dù gấp ba tham số.
+const v2ModelFiles = <ModelFile>[
+  ModelFile(
+      'VieNeu-TTS-v2-Q4-K-M.gguf',
+      'https://huggingface.co/pnnbao-ump/VieNeu-TTS-v2/resolve/main/VieNeu-TTS-v2-Q4-K-M.gguf',
+      180.3,
+      folder: 'v2'),
+  ModelFile(
+      'neucodec_decoder_int8.onnx',
+      'https://huggingface.co/neuphonic/neucodec-onnx-decoder-int8/resolve/main/model.onnx',
+      297.8,
+      folder: 'v2'),
+  ModelFile('voices.json',
+      'https://huggingface.co/pnnbao-ump/VieNeu-TTS-v2/resolve/main/voices.json', 0.03,
+      folder: 'v2'),
+];
+
+/// Bộ mã hoá NeuCodec — chỉ cần khi THÊM giọng cho v2, nên tải riêng.
+///
+/// Nặng 519 MB, hơn cả mô hình. Đây là bản **distil** của Neuphonic (encoder gốc
+/// còn to hơn), và code nó sinh ra tương thích với bộ giải mã đang dùng — đã
+/// kiểm bằng cách nhân bản rồi đọc lại.
+const _v2EncoderRepo =
+    'https://huggingface.co/KevinAHM/distill-neucodec-onnx/resolve/main/onnx';
+const v2EncoderFiles = <ModelFile>[
+  ModelFile('distill_neucodec_encoder.onnx',
+      '$_v2EncoderRepo/distill_neucodec_encoder.onnx', 277.0,
+      folder: 'v2'),
+  // Trọng số ngoài của đồ thị trên — ONNX Runtime tự tìm nó CẠNH file .onnx
+  // theo đúng tên này, nên hai file phải nằm chung thư mục.
+  ModelFile('distill_neucodec_encoder.onnx.data',
+      '$_v2EncoderRepo/distill_neucodec_encoder.onnx.data', 242.0,
+      folder: 'v2'),
+];
+
 double get totalMegabytes => modelFiles.fold(0.0, (sum, f) => sum + f.megabytes);
+double get v2EncoderMegabytes => v2EncoderFiles.fold(0.0, (sum, f) => sum + f.megabytes);
 double get enrollMegabytes => enrollFiles.fold(0.0, (sum, f) => sum + f.megabytes);
+double get v2Megabytes => v2ModelFiles.fold(0.0, (sum, f) => sum + f.megabytes);
 
 /// Từ điển âm vị đi kèm ứng dụng, chép ra đĩa vì thư viện Rust cần đường dẫn thật.
 ///
 /// Hồ sơ giọng KHÔNG nằm ở đây: nó phải hợp nhất chứ không chép đè, xem
 /// [ModelStore._hopNhatGiong].
 const _bundledAssets = {'assets/sea_g2p.bin': 'sea_g2p.bin'};
+
+/// Như trên nhưng chép vào thư mục của engine v2.
+const _bundledV2Assets = {'assets/giong_v2.json': 'giong_v2.json'};
 
 /// Dấu mà thư viện Rust ghi cho giọng người dùng tự thêm trong ứng dụng.
 ///
@@ -114,9 +161,29 @@ class ModelStore {
   File get speakerEncoder => File(p.join(enrollDir.path, 'speaker_encoder.onnx'));
   File get codecEncoder => File(p.join(enrollDir.path, 'moss_audio_tokenizer_encode.onnx'));
 
+  // -- engine v2 -------------------------------------------------------------
+  // Từ điển âm vị thì dùng chung [dictFile] với v3, không chép hai bản 50 MB.
+
+  Directory get v2Dir => Directory(p.join(root.path, 'v2'));
+  File get v2Gguf => File(p.join(v2Dir.path, 'VieNeu-TTS-v2-Q4-K-M.gguf'));
+  File get v2Codec => File(p.join(v2Dir.path, 'neucodec_decoder_int8.onnx'));
+  File get v2Voices => File(p.join(v2Dir.path, 'voices.json'));
+
+  /// Giọng nhân bản sẵn đi kèm ứng dụng (Latradio, Việt Sử). Chép ra từ assets
+  /// mỗi lần tải vì bản cập nhật có thể thêm giọng mới.
+  File get v2ExtraVoices => File(p.join(v2Dir.path, 'giong_v2.json'));
+
+  /// Giọng người dùng tự thêm — **chỉ file này** được ghi lúc chạy. Hai file
+  /// trên đều bị ghi đè khi tải lại nên không cất gì lâu dài vào đó được.
+  File get v2UserVoices => File(p.join(v2Dir.path, 'giong_v2_nguoi_dung.json'));
+
+  /// Bộ mã hoá NeuCodec — chỉ cần khi thêm giọng, nên tải riêng.
+  File get v2Encoder => File(p.join(v2Dir.path, 'distill_neucodec_encoder.onnx'));
+
   Directory _dirFor(ModelFile file) => switch (file.folder) {
         'codec' => codecDir,
         'enroll' => enrollDir,
+        'v2' => v2Dir,
         _ => modelDir,
       };
   File fileFor(ModelFile file) => File(p.join(_dirFor(file).path, file.name));
@@ -164,6 +231,7 @@ class ModelStore {
       }
       await target.writeAsBytes(data.buffer.asUint8List(), flush: true);
     }
+    await _extractBundledV2();
     await _hopNhatGiong();
   }
 
@@ -229,6 +297,71 @@ class ModelStore {
     http.Client? client,
   }) => _fetch(enrollFiles, enrollMegabytes, onProgress, client);
 
+  /// Chép giọng nhân bản sẵn của v2 ra đĩa, cùng lý do như [_extractBundled].
+  Future<void> _extractBundledV2() async {
+    await v2Dir.create(recursive: true);
+    for (final entry in _bundledV2Assets.entries) {
+      final target = File(p.join(v2Dir.path, entry.value));
+      final data = await rootBundle.load(entry.key);
+      if (await target.exists() && await target.length() == data.lengthInBytes) {
+        continue;
+      }
+      await target.writeAsBytes(data.buffer.asUint8List(), flush: true);
+    }
+  }
+
+  /// Đường dẫn cho engine v2, đã chép sẵn phần đi kèm ứng dụng.
+  Future<VieNeuV2Paths> v2Paths({int threads = 0}) async {
+    await _extractBundled();
+    return VieNeuV2Paths(
+      ggufPath: v2Gguf.path,
+      codecPath: v2Codec.path,
+      voicesPath: v2Voices.path,
+      extraVoicesPath: v2ExtraVoices.path,
+      userVoicesPath: v2UserVoices.path,
+      dictPath: dictFile.path,
+      threads: threads,
+    );
+  }
+
+  /// Đã có bộ mã hoá để thêm giọng cho v2 chưa.
+  Future<bool> canEnrollV2() async =>
+      await v2Encoder.exists() && await v2Encoder.length() > 0;
+
+  /// Tải bộ mã hoá NeuCodec — chỉ cần khi thêm giọng.
+  Future<void> downloadV2Encoder({
+    required void Function(WorkProgress) onProgress,
+    http.Client? client,
+  }) =>
+      _fetch(v2EncoderFiles, v2EncoderMegabytes, onProgress, client);
+
+  /// Đủ file để chạy engine v2 chưa.
+  Future<bool> isV2Installed() async {
+    for (final file in v2ModelFiles) {
+      final target = fileFor(file);
+      if (!await target.exists() || await target.length() == 0) return false;
+    }
+    // Từ điển âm vị dùng chung với v3, nhưng v2 chạy được mà không cần mô hình
+    // v3 — nên vẫn phải kiểm riêng chứ đừng suy từ isInstalled().
+    return await dictFile.exists();
+  }
+
+  /// Tải bộ file của engine v2.
+  Future<void> downloadV2({
+    required void Function(WorkProgress) onProgress,
+    http.Client? client,
+  }) async {
+    await _fetch(v2ModelFiles, v2Megabytes, onProgress, client);
+    onProgress(const WorkProgress('Đang chuẩn bị từ điển…', value: 0.99));
+    await _extractBundled();
+    onProgress(const WorkProgress('Xong', value: 1));
+  }
+
+  /// Xoá bộ file của engine v2, giữ nguyên v3.
+  Future<void> deleteV2() async {
+    if (await v2Dir.exists()) await v2Dir.delete(recursive: true);
+  }
+
   /// Tải toàn bộ mô hình. Bỏ qua file đã có.
   Future<void> download({
     required void Function(WorkProgress) onProgress,
@@ -250,6 +383,7 @@ class ModelStore {
     await modelDir.create(recursive: true);
     await codecDir.create(recursive: true);
     await enrollDir.create(recursive: true);
+    await v2Dir.create(recursive: true);
     var done = 0.0;
 
     for (final file in files) {

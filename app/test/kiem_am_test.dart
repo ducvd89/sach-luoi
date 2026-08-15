@@ -15,7 +15,9 @@ import 'package:sach_noi/core/kiem_am.dart';
 import 'package:sach_noi/core/wav.dart';
 import 'package:sach_noi/services/tts/vieneu_native.dart';
 
-const _lib = r'C:\Software\Ebookreader\native\vieneu\target\release\sachnoi_vieneu.dll';
+import 'duong_dan_repo.dart';
+
+final _lib = vieneuLibPath;
 
 /// Dựng một chuỗi "âm" giả: mỗi âm là một đoạn sóng có thanh (hài của f0) dài
 /// [amMs] mili giây, cách nhau bằng một khoảng lặng ngắn.
@@ -168,8 +170,8 @@ VieNeuPaths? _paths() {
 
   final model = p.join(modelRoot.listSync().whereType<Directory>().first.path, 'onnx_int8');
   final codec = codecRoot.listSync().whereType<Directory>().first.path;
-  final dict = p.join(r'C:\Software\Ebookreader\app\assets', 'sea_g2p.bin');
-  final voices = p.join(r'C:\Software\Ebookreader\app\assets', 'giong.json');
+  final dict = p.join(assetsDir, 'sea_g2p.bin');
+  final voices = p.join(assetsDir, 'giong.json');
   if (!Directory(model).existsSync() || !File(dict).existsSync()) return null;
 
   return VieNeuPaths(

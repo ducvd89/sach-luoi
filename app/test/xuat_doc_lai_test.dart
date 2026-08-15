@@ -64,8 +64,10 @@ class _EngineGia implements TtsEngine {
   @override
   String get description => '';
   @override
-  @override
   bool get docLaiRaKhac => raKhac;
+
+  @override
+  bool get noiNguCanh => false;
 
   @override
   Future<EngineStatus> status() async => const EngineStatus(ready: true, message: 'Sẵn sàng');

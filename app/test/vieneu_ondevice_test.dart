@@ -16,7 +16,9 @@ import 'package:sach_noi/services/tts/vieneu_engine.dart';
 import 'package:sach_noi/services/tts/model_store.dart';
 import 'package:sach_noi/services/tts/vieneu_native.dart';
 
-const _lib = r'C:\Software\Ebookreader\native\vieneu\target\release\sachnoi_vieneu.dll';
+import 'duong_dan_repo.dart';
+
+final _lib = vieneuLibPath;
 
 /// Mô hình đã tải sẵn trong cache của HuggingFace — khỏi tải lại 206 MB.
 VieNeuPaths? _paths() {
@@ -31,8 +33,8 @@ VieNeuPaths? _paths() {
 
   final model = p.join(modelRoot.listSync().whereType<Directory>().first.path, 'onnx_int8');
   final codec = codecRoot.listSync().whereType<Directory>().first.path;
-  final dict = p.join(r'C:\Software\Ebookreader\app\assets', 'sea_g2p.bin');
-  final voices = p.join(r'C:\Software\Ebookreader\app\assets', 'giong.json');
+  final dict = p.join(assetsDir, 'sea_g2p.bin');
+  final voices = p.join(assetsDir, 'giong.json');
 
   if (!Directory(model).existsSync() || !File(dict).existsSync()) return null;
   return VieNeuPaths(
@@ -367,7 +369,7 @@ void _testEnroll() {
         .whereType<Directory>()
         .map((d) => File(p.join(d.path, 'moss_audio_tokenizer_encode.onnx')))
         .firstWhere((f) => f.existsSync(), orElse: () => File(''));
-    final sample = File(r'C:\Software\Ebookreader\tts_service\voices\Latradio.wav');
+    final sample = File(p.join(ttsServiceDir, 'voices', 'Latradio.wav'));
     if (!spk.existsSync() || !codec.existsSync() || !sample.existsSync()) {
       markTestSkipped('Chưa có mô hình phụ để nhân bản giọng — bỏ qua');
       return;

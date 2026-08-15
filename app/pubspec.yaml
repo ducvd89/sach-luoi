@@ -1,7 +1,7 @@
 name: sach_noi
 description: "Sách lười — chuyển sách EPUB/TXT thành sách nói tiếng Việt"
 publish_to: "none"
-version: 1.5.4+21
+version: 1.6.0+22
 
 environment:
   sdk: ^3.12.2
@@ -46,3 +46,6 @@ flutter:
     # không có nguồn tải công khai ổn định; mô hình thì tải riêng lúc chạy.
     - assets/sea_g2p.bin
     - assets/giong.json
+    # Giọng nhân bản sẵn cho engine v2. Tách khỏi giong.json vì hai engine mô tả
+    # giọng theo hai cách khác hẳn nhau — xem services/tts/vieneu_v2_engine.dart.
+    - assets/giong_v2.json

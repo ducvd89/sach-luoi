@@ -57,7 +57,12 @@ class _SettingsPageState extends State<SettingsPage> {
     );
     if (ok != true) return;
     try {
-      await state.removeVoice(name);
+      // Hai engine giữ giọng ở hai chỗ khác nhau nên phải gọi đúng bên.
+      if (state.settings.engineId == 'vieneu_v2') {
+        await state.removeVoiceV2(name);
+      } else {
+        await state.removeVoice(name);
+      }
     } catch (err) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Không xoá được: $err')));
@@ -152,9 +157,17 @@ class _SettingsPageState extends State<SettingsPage> {
                   const SizedBox(height: 4),
                   const _AddVoiceButton(),
                 ],
+                if (settings.engineId == 'vieneu_v2' && state.voices.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  const _AddVoiceV2Button(),
+                ],
                 if (settings.engineId == 'vieneu') ...[
                   const Divider(height: 26),
                   const _ModelSection(),
+                ],
+                if (settings.engineId == 'vieneu_v2') ...[
+                  const Divider(height: 26),
+                  const _ModelV2Section(),
                 ],
                 if (settings.engineId == 'piper') ...[
                   const Divider(height: 26),
@@ -415,6 +428,104 @@ class _ModelSectionState extends State<_ModelSection> {
   }
 }
 
+/// Tải bộ file của engine v2.
+///
+/// Tách khỏi [_ModelSection] vì hai engine tải riêng và nặng khác nhau hẳn: v3
+/// là 206 MB, v2 là 478 MB — mà phần lớn chỗ chênh nằm ở bộ giải mã NeuCodec
+/// (298 MB) chứ không phải ở mô hình ngôn ngữ.
+class _ModelV2Section extends StatefulWidget {
+  const _ModelV2Section();
+
+  @override
+  State<_ModelV2Section> createState() => _ModelV2SectionState();
+}
+
+class _ModelV2SectionState extends State<_ModelV2Section> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      AppScope.read(context).refreshV2Status();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final hint = Theme.of(context).hintColor;
+    final progress = state.modelProgress;
+    final installed = state.v2Installed;
+
+    if (progress != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Đang tải mô hình v2', style: TextStyle(fontSize: 14)),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: LinearProgressIndicator(value: progress.value, minHeight: 5),
+          ),
+          const SizedBox(height: 6),
+          Text('${progress.phase} · ${progress.percent}%',
+              style: TextStyle(fontSize: 12.5, color: hint)),
+        ],
+      );
+    }
+
+    if (installed == true) {
+      return Row(
+        children: [
+          const Icon(Icons.check_circle_outline, size: 18, color: Colors.green),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text('Mô hình v2 đã có trên máy — đọc được khi không có mạng',
+                style: TextStyle(fontSize: 13, color: hint)),
+          ),
+          TextButton(
+            onPressed: () => _confirmDelete(context),
+            child: const Text('Xoá mô hình v2'),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Cần tải mô hình v2 về máy một lần (~${v2Megabytes.round()} MB). Nặng hơn v3 Turbo '
+          'nhưng đọc tự nhiên hơn và xử lý được tiếng Anh xen kẽ.',
+          style: TextStyle(fontSize: 12.5, color: hint),
+        ),
+        const SizedBox(height: 10),
+        NutSac(
+          nhan: 'TẢI MÔ HÌNH V2 (${v2Megabytes.round()} MB)',
+          hinh: Icons.arrow_downward_rounded,
+          onNhan: installed == null ? null : () => AppScope.read(context).downloadV2Model(),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _confirmDelete(BuildContext context) async {
+    final state = AppScope.read(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Xoá mô hình v2?'),
+        content: Text('Giải phóng khoảng ${v2Megabytes.round()} MB. '
+            'Mô hình v3 Turbo không bị ảnh hưởng.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Huỷ')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Xoá')),
+        ],
+      ),
+    );
+    if (ok == true) await state.deleteV2Model();
+  }
+}
+
 /// Gói giọng của engine nhẹ: tải về, xoá đi.
 ///
 /// Khác mục mô hình VieNeu ở chỗ mỗi giọng là một gói riêng, tải cái nào dùng
@@ -577,6 +688,154 @@ class _AddVoiceButton extends StatelessWidget {
     } catch (err) {
       messenger.showSnackBar(SnackBar(content: Text('Không thêm được giọng: $err')));
     }
+  }
+}
+
+/// Thêm giọng cho engine v2 — khác v3 ở chỗ **bắt buộc nhập lời**.
+///
+/// v3 trích được vector đặc trưng người nói từ riêng sóng âm nên chỉ cần file
+/// ghi âm. v2 thì nhận cặp *mã tham chiếu + lời của đúng đoạn ấy*: mô hình đọc
+/// lời để biết đoạn mã kia ứng với những âm nào. Lời sai là nó học nhầm cách
+/// phát âm, chứ không phải chỉ giống giọng ít đi một chút.
+///
+/// Cũng vì thế mà KHÔNG tự cắt đoạn 8 giây sạch tiếng như v3 — cắt audio mà giữ
+/// nguyên lời là hai thứ lệch nhau.
+class _AddVoiceV2Button extends StatelessWidget {
+  const _AddVoiceV2Button();
+
+  @override
+  Widget build(BuildContext context) {
+    final hint = Theme.of(context).hintColor;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        NutSac(
+          nhan: 'THÊM GIỌNG TỪ FILE GHI ÂM',
+          hinh: Icons.person_add_alt_1_rounded,
+          sac: SacNut.them,
+          vienRong: true,
+          onNhan: () => _pick(context),
+        ),
+        const SizedBox(height: 4),
+        Text('File .wav 3–10 giây, một người nói rõ, không nhạc nền. Phải chép đúng lời '
+            'trong đoạn ghi âm — v2 dựa vào lời để bắt giọng.',
+            style: TextStyle(fontSize: 12.5, color: hint)),
+      ],
+    );
+  }
+
+  Future<void> _pick(BuildContext context) async {
+    final state = AppScope.read(context);
+    final messenger = ScaffoldMessenger.of(context);
+
+    // Bộ mã hoá nặng 519 MB và chỉ dùng lúc thêm giọng — ai không thêm khỏi tải.
+    if (!await state.tts.modelStore.canEnrollV2()) {
+      if (!context.mounted) return;
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Cần tải thêm bộ mã hoá'),
+          content: Text('Để nhân bản giọng cho v2 cần tải bộ mã hoá '
+              '${v2EncoderMegabytes.round()} MB. Chỉ tải một lần.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Huỷ')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Tải')),
+          ],
+        ),
+      );
+      if (ok != true) return;
+      try {
+        await state.downloadV2Encoder();
+      } catch (err) {
+        messenger.showSnackBar(SnackBar(content: Text('Không tải được bộ mã hoá: $err')));
+        return;
+      }
+    }
+
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['wav'],
+      dialogTitle: 'Chọn file ghi âm mẫu',
+    );
+    final path = picked?.files.singleOrNull?.path;
+    if (path == null || !context.mounted) return;
+
+    final ketQua = await showDialog<({String name, String text})>(
+      context: context,
+      builder: (context) => _NameAndTextDialog(suggestion: p.basenameWithoutExtension(path)),
+    );
+    if (ketQua == null) return;
+
+    try {
+      await state.addVoiceV2(name: ketQua.name, wavPath: path, text: ketQua.text);
+      messenger.showSnackBar(SnackBar(content: Text('Đã thêm giọng "${ketQua.name}"')));
+    } catch (err) {
+      messenger.showSnackBar(SnackBar(content: Text('Không thêm được giọng: $err')));
+    }
+  }
+}
+
+/// Hỏi tên giọng và lời của đoạn ghi âm.
+class _NameAndTextDialog extends StatefulWidget {
+  const _NameAndTextDialog({required this.suggestion});
+  final String suggestion;
+
+  @override
+  State<_NameAndTextDialog> createState() => _NameAndTextDialogState();
+}
+
+class _NameAndTextDialogState extends State<_NameAndTextDialog> {
+  late final _ten = TextEditingController(text: widget.suggestion);
+  final _loi = TextEditingController();
+
+  @override
+  void dispose() {
+    _ten.dispose();
+    _loi.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hint = Theme.of(context).hintColor;
+    return AlertDialog(
+      title: const Text('Thêm giọng'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: _ten,
+            autofocus: true,
+            decoration: const InputDecoration(labelText: 'Tên giọng'),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: _loi,
+            maxLines: 4,
+            minLines: 3,
+            decoration: const InputDecoration(
+              labelText: 'Lời trong đoạn ghi âm',
+              alignLabelWithHint: true,
+            ),
+            onChanged: (_) => setState(() {}),
+          ),
+          const SizedBox(height: 6),
+          Text('Chép đúng từng chữ nghe thấy trong file. Số thì viết thành chữ '
+              '("8.000" → "tám nghìn").',
+              style: TextStyle(fontSize: 12.5, color: hint)),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Huỷ')),
+        FilledButton(
+          onPressed: _ten.text.trim().isEmpty || _loi.text.trim().isEmpty
+              ? null
+              : () => Navigator.pop(context, (name: _ten.text.trim(), text: _loi.text.trim())),
+          child: const Text('Thêm'),
+        ),
+      ],
+    );
   }
 }
 

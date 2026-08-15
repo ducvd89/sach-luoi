@@ -2,15 +2,27 @@
 #
 # API 24 khớp với minSdk của ứng dụng. NDK phát hành sẵn clang cho từng mức API;
 # chọn đúng mức thì thư viện .so chạy được trên Android 7 trở lên.
+#
+# BUILD ANDROID PHẢI DÙNG CMAKE CỦA ANDROID SDK, không phải bản đi kèm Visual
+# Studio. Đặt `C:\Dev\android-sdk\cmake\3.22.1\bin` lên ĐẦU PATH:
+#
+#     $env:Path = 'C:\Dev\android-sdk\cmake\3.22.1\bin;' + $env:Path
+#     cargo build --release --target aarch64-linux-android
+#
+# Bản cmake ấy đi kèm đúng ninja mà nó cần và biết đường dùng toolchain của NDK;
+# bản của Visual Studio thì không, và llama.cpp (engine v2) sẽ không dựng nổi.
+# Nếu đã lỡ build hỏng một lần thì phải xoá hẳn `target/aarch64-linux-android/`:
+# cmake thấy CMakeCache.txt cũ là giữ nguyên generator sai, `cargo clean` không
+# đủ để gỡ.
 
 [target.aarch64-linux-android]
-linker = "C:/Users/ducvd/AppData/Local/Android/Sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/bin/aarch64-linux-android24-clang.cmd"
+linker = "C:/Dev/android-sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/bin/aarch64-linux-android24-clang.cmd"
 
 [target.armv7-linux-androideabi]
-linker = "C:/Users/ducvd/AppData/Local/Android/Sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/bin/armv7a-linux-androideabi24-clang.cmd"
+linker = "C:/Dev/android-sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/bin/armv7a-linux-androideabi24-clang.cmd"
 
 [target.x86_64-linux-android]
-linker = "C:/Users/ducvd/AppData/Local/Android/Sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/bin/x86_64-linux-android24-clang.cmd"
+linker = "C:/Dev/android-sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/bin/x86_64-linux-android24-clang.cmd"
 
 # Các bộ mã hoá âm thanh (libopus, libmp3lame) là mã C, nên cc-rs cần biết lấy
 # trình biên dịch nào cho từng target. Nó tự đoán ra "aarch64-linux-android-clang"
@@ -19,6 +31,27 @@ linker = "C:/Users/ducvd/AppData/Local/Android/Sdk/ndk/28.2.13676358/toolchains/
 # NDK chỉ phát hành clang.exe kèm cờ --target, không có bản riêng cho mỗi kiến
 # trúc; các file *-clang.cmd là lớp bọc đã cài sẵn cờ đó.
 [env]
-CC_aarch64-linux-android = "C:/Users/ducvd/AppData/Local/Android/Sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/bin/aarch64-linux-android24-clang.cmd"
-AR_aarch64-linux-android = "C:/Users/ducvd/AppData/Local/Android/Sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/bin/llvm-ar.exe"
+CC_aarch64-linux-android = "C:/Dev/android-sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/bin/aarch64-linux-android24-clang.cmd"
+AR_aarch64-linux-android = "C:/Dev/android-sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/bin/llvm-ar.exe"
 CFLAGS_aarch64-linux-android = "-O2 -fPIC"
+
+# llama.cpp là C++, nên phải khai thêm CXX. cc-rs tự đoán ra
+# "aarch64-linux-android-clang++" — cái tên NDK không có, nó chỉ phát hành bản
+# gắn kèm mức API.
+CXX_aarch64-linux-android = "C:/Dev/android-sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/windows-x86_64/bin/aarch64-linux-android24-clang++.cmd"
+CXXFLAGS_aarch64-linux-android = "-O2 -fPIC"
+
+# `llama-cpp-sys-2` (engine v2) tự dựng llama.cpp bằng cmake. Nó tìm NDK theo
+# ANDROID_NDK rồi mới tới các tên khác, và lấy mức API từ ANDROID_PLATFORM —
+# phải khớp API 24 của trình liên kết ở trên, không thì .so đòi symbol mà máy
+# Android 7 không có.
+ANDROID_NDK = "C:/Dev/android-sdk/ndk/28.2.13676358"
+ANDROID_PLATFORM = "android-24"
+
+# Trên máy Windows, cmake mặc định sinh project cho Visual Studio — mà MSBuild
+# không dựng được cho Android, nó dừng ở "MSB1009: Project file does not exist".
+# Phải đổi sang Ninja.
+#
+# Đặt theo TÊN CÓ TARGET (`cmake-rs` tra tên này trước tên trơn) để chỉ áp cho
+# bản Android; build Windows giữ nguyên generator Visual Studio đang chạy tốt.
+CMAKE_GENERATOR_aarch64-linux-android = "Ninja"

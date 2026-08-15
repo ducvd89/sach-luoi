@@ -12,18 +12,18 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sach_noi/services/tts/sea_g2p.dart';
 
+import 'duong_dan_repo.dart';
+
 /// Thư viện Rust vừa build và từ điển đi kèm engine Python.
-String? _libraryPath() {
-  final path = p.join(
-    r'C:\Software\Ebookreader\native\sea-g2p\target\release',
-    'sea_g2p_rs.dll',
-  );
-  return File(path).existsSync() ? path : null;
-}
+String? _libraryPath() => File(seaG2pLibPath).existsSync() ? seaG2pLibPath : null;
 
 String? _dictPath() {
   final path = p.join(
-    r'C:\Software\Ebookreader\tts_service\.venv-vieneu\Lib\site-packages\sea_g2p',
+    ttsServiceDir,
+    '.venv-vieneu',
+    'Lib',
+    'site-packages',
+    'sea_g2p',
     'sea_g2p.bin',
   );
   return File(path).existsSync() ? path : null;
@@ -40,11 +40,7 @@ void main() {
 
     // Kết quả đối chiếu do chính thư viện Python sinh ra, cất sẵn thành file để
     // bài test không phải gọi Python lúc chạy.
-    final expectedFile = File(p.join(
-      r'C:\Software\Ebookreader\tts_service',
-      'test_data',
-      'am_vi_mau.json',
-    ));
+    final expectedFile = File(p.join(ttsServiceDir, 'test_data', 'am_vi_mau.json'));
     if (!expectedFile.existsSync()) {
       markTestSkipped('Chưa có file đối chiếu âm vị — chạy tts_service/sinh_mau_am_vi.py');
       return;

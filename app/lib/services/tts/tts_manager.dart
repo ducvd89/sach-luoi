@@ -14,12 +14,14 @@ import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
 import '../../core/wav.dart';
+import '../../models/settings.dart' show coEngineV2;
 import '../storage.dart';
 import 'model_store.dart';
 import 'ondevice_engine.dart';
 import 'system_tts_engine.dart';
 import 'tts_engine.dart';
 import 'vieneu_engine.dart';
+import 'vieneu_v2_engine.dart';
 
 class CachedAudio {
   const CachedAudio(this.file, this.seconds, this.fromCache, {this.duoi = const []});
@@ -37,11 +39,15 @@ class TtsManager {
   TtsManager({ModelStore? store, List<TtsEngine> themEngine = const []})
       : modelStore = store ?? ModelStore() {
     onDevice = OnDeviceVieNeuEngine(modelStore);
-    // Ba engine, cùng chạy thẳng trên máy: VieNeu cho chất lượng, Piper cho
-    // nhẹ, TTS hệ thống cho máy đã có sẵn giọng mà không muốn tải gì thêm.
-    // Không còn đường nào phải nhờ máy khác đọc hộ.
+    vieneuV2 = VieNeuV2Engine(modelStore);
+    // Bốn engine, tất cả chạy thẳng trên máy: hai bản VieNeu cho chất lượng
+    // (v3 Turbo âm sạch hơn, v2 đọc tự nhiên hơn), Piper cho máy yếu, TTS hệ
+    // thống cho ai không muốn tải gì thêm. Không đường nào nhờ máy khác đọc hộ.
     _engines = {
       onDevice.id: onDevice,
+      // v2 chỉ đăng ký trên nền tảng có thư viện native của nó — xem [coEngineV2].
+      // Hiện một engine bấm vào là sập còn tệ hơn không hiện.
+      if (coEngineV2) vieneuV2.id: vieneuV2,
       piper.id: piper,
       systemTts.id: systemTts,
       for (final e in themEngine) e.id: e,
@@ -50,6 +56,7 @@ class TtsManager {
 
   final ModelStore modelStore;
   late final OnDeviceVieNeuEngine onDevice;
+  late final VieNeuV2Engine vieneuV2;
   final OnDeviceTtsEngine piper = OnDeviceTtsEngine();
   final SystemTtsEngine systemTts = SystemTtsEngine();
   late final Map<String, TtsEngine> _engines;

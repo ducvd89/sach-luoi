@@ -58,6 +58,11 @@ class OnDeviceVieNeuEngine implements TtsEngine {
   }
 
   /// Tổng RAM máy, tính bằng GB. null nếu không hỏi được.
+  ///
+  /// Để `internal` chứ không private: engine v2 chặn số worker theo cùng cách,
+  /// mà chép lại một bản FFI thứ hai chỉ để hỏi đúng con số này thì thừa.
+  static int? tongRamGb() => _tongRamGb();
+
   static int? _tongRamGb() {
     if (!Platform.isWindows) return null;
     try {
@@ -83,11 +88,17 @@ class OnDeviceVieNeuEngine implements TtsEngine {
   @override
   String get id => 'vieneu';
 
+  // Ghi rõ phiên bản mô hình: sau này có thêm engine VieNeu bản khác thì hai mục
+  // trong Cài đặt phải phân biệt được bằng mắt, không chỉ bằng mã `id`.
   @override
-  String get displayName => 'VieNeu-TTS';
+  String get displayName => 'VieNeu-TTS v3 Turbo';
 
   @override
   bool get isLocal => true;
+
+  /// Bản v3 là engine duy nhất nối được ngữ cảnh — nó trả mã đuôi sau mỗi đoạn.
+  @override
+  bool get noiNguCanh => true;
 
   @override
   String get description =>

@@ -96,6 +96,16 @@ abstract class TtsEngine {
   /// Danh sách giọng đọc.
   Future<List<TtsVoice>> voices();
 
+  /// Engine có nối ngữ cảnh giữa các đoạn không (trả mã đuôi dùng được).
+  ///
+  /// Quyết định CÁCH đọc trước, nên sai là nghe giật cục ngay: engine có nối thì
+  /// phải đọc trước lần lượt vì đoạn sau cần đuôi của đoạn trước; engine không
+  /// nối thì các đoạn độc lập, bắn song song được. Trước đây `player_controller`
+  /// suy điều này từ cài đặt `nguCanhNghe` của người dùng — sai với engine không
+  /// hỗ trợ nối, vì nó đi vào nhánh tuần tự rồi dừng ngay ở đoạn đầu tiên do
+  /// không có đuôi, thành ra KHÔNG đọc trước gì cả.
+  bool get noiNguCanh => false;
+
   /// Đọc lại cùng một đoạn có ra âm thanh khác không.
   ///
   /// Mô hình sinh có lấy mẫu ngẫu nhiên thì đổi hạt giống là ra bản đọc khác —

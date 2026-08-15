@@ -12,6 +12,7 @@ import '../models/export_job.dart';
 import '../models/settings.dart';
 import '../models/work_progress.dart';
 import '../services/export_service.dart';
+import '../services/khoa_cam_ung.dart';
 import '../services/library_service.dart';
 import '../services/media_session.dart';
 import '../services/player_controller.dart';
@@ -73,9 +74,104 @@ class AppState extends ChangeNotifier {
   /// Mô hình đã có trên máy chưa (null nghĩa là chưa kiểm tra).
   bool? modelInstalled;
 
+  /// Đang khoá cảm ứng hay không.
+  ///
+  /// KHÔNG lưu xuống đĩa, có chủ ý: mở ứng dụng lên mà thấy màn hình khoá sẵn
+  /// thì người dùng không hiểu chuyện gì, lại còn phải trượt mới dùng được. Khoá
+  /// chỉ sống trong đúng phiên đang nghe.
+  bool khoaCamUng = false;
+
+  Future<void> batKhoaCamUng() async {
+    if (khoaCamUng) return;
+    khoaCamUng = true;
+    notifyListeners();
+    await batKhoaManHinh();
+  }
+
+  Future<void> moKhoaCamUng() async {
+    if (!khoaCamUng) return;
+    khoaCamUng = false;
+    notifyListeners();
+    await tatKhoaManHinh();
+  }
+
+  /// Bộ file của engine v2 đã có chưa (null nghĩa là chưa kiểm tra).
+  ///
+  /// Tách hẳn khỏi [modelInstalled]: hai engine tải riêng, người dùng có thể chỉ
+  /// muốn một trong hai chứ không phải cả 693 MB.
+  bool? v2Installed;
+
   Future<void> refreshModelStatus() async {
     modelInstalled = await tts.modelStore.isInstalled();
     notifyListeners();
+  }
+
+  Future<void> refreshV2Status() async {
+    v2Installed = await tts.modelStore.isV2Installed();
+    notifyListeners();
+  }
+
+  /// Tải bộ file của engine v2 (khoảng 478 MB).
+  Future<void> downloadV2Model() async {
+    if (modelProgress != null) return;
+    modelProgress = const WorkProgress('Đang chuẩn bị…');
+    notifyListeners();
+    try {
+      await tts.modelStore.downloadV2(onProgress: (p) {
+        modelProgress = p;
+        notifyListeners();
+      });
+      v2Installed = true;
+      tts.vieneuV2.unawaitedStart();
+      await refreshEngine();
+    } finally {
+      modelProgress = null;
+      notifyListeners();
+    }
+  }
+
+  /// Tải bộ mã hoá NeuCodec, chỉ cần khi thêm giọng cho v2.
+  Future<void> downloadV2Encoder() async {
+    modelProgress = const WorkProgress('Đang chuẩn bị…');
+    notifyListeners();
+    try {
+      await tts.modelStore.downloadV2Encoder(onProgress: (p) {
+        modelProgress = p;
+        notifyListeners();
+      });
+    } finally {
+      modelProgress = null;
+      notifyListeners();
+    }
+  }
+
+  /// Thêm một giọng cho engine v2 từ file ghi âm kèm lời của đoạn ấy.
+  Future<void> addVoiceV2({
+    required String name,
+    required String wavPath,
+    required String text,
+  }) async {
+    modelProgress = const WorkProgress('Đang phân tích giọng…', value: 0.5);
+    notifyListeners();
+    try {
+      await tts.vieneuV2.addVoice(name: name, wavPath: wavPath, text: text);
+      await refreshEngine();
+    } finally {
+      modelProgress = null;
+      notifyListeners();
+    }
+  }
+
+  Future<void> removeVoiceV2(String name) async {
+    await tts.vieneuV2.removeVoice(name);
+    await refreshEngine();
+  }
+
+  Future<void> deleteV2Model() async {
+    tts.vieneuV2.dispose();
+    await tts.modelStore.deleteV2();
+    await refreshV2Status();
+    await refreshEngine();
   }
 
   /// Tải mô hình về máy. Khoảng 206 MB, chỉ làm một lần.

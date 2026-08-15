@@ -13,6 +13,11 @@
 #[cfg(not(target_os = "android"))]
 pub mod ma_hoa;
 
+// Engine VieNeu v2 (Qwen3 0.3B qua llama.cpp). Có trên mọi nền tảng — llama.cpp
+// là C++ thuần, cross-compile sang arm64 bằng NDK; xem ghi chú ở Cargo.toml.
+pub mod ffi_v2;
+pub mod v2;
+
 pub mod engine;
 pub mod enroll;
 pub mod fbank;

@@ -13,7 +13,9 @@ import 'package:path/path.dart' as p;
 import 'package:sach_noi/services/tts/model_store.dart';
 import 'package:sach_noi/services/tts/vieneu_engine.dart';
 
-const _lib = r'C:\Software\Ebookreader\native\vieneu\target\release\sachnoi_vieneu.dll';
+import 'duong_dan_repo.dart';
+
+final _lib = vieneuLibPath;
 
 String _rss() {
   final mb = ProcessInfo.currentRss / 1024 / 1024;

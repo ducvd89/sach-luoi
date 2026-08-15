@@ -13,7 +13,9 @@ import 'package:path/path.dart' as p;
 import 'package:sach_noi/core/wav.dart';
 import 'package:sach_noi/services/audio_encoder.dart';
 
-const _lib = r'C:\Software\Ebookreader\native\vieneu\target\release\sachnoi_vieneu.dll';
+import 'duong_dan_repo.dart';
+
+final _lib = vieneuLibPath;
 
 /// Một giây sóng sin — đủ để bộ mã hoá có việc thật.
 Uint8List _wavMotGiay() {

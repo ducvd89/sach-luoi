@@ -26,7 +26,18 @@ enum SplitMode {
 /// người dùng không bị hỏng sau khi cập nhật.
 const _renamedEngines = {'kani': 'vieneu'};
 
-String migrateEngineId(String id) => _renamedEngines[id] ?? id;
+/// Engine v2 có trên Windows và Android; iOS thì chưa dựng thư viện native.
+///
+/// Giữ lại cờ này thay vì bỏ hẳn: cài đặt mang từ máy có v2 sang máy không có
+/// thì phải đưa về v3 Turbo, không thì màn hình Cài đặt không có mục nào được
+/// chọn và engine trỏ vào hư không.
+bool get coEngineV2 => !Platform.isIOS;
+
+String migrateEngineId(String id) {
+  final moi = _renamedEngines[id] ?? id;
+  if (moi == 'vieneu_v2' && !coEngineV2) return 'vieneu';
+  return moi;
+}
 
 /// Khoảng nghỉ mặc định giữa hai đoạn (mili giây).
 ///
@@ -143,6 +154,8 @@ class AppSettings {
     this.alignChapter = true,
     this.exportTreeUri = '',
     this.nguCanhNghe = NguCanh.tuanTu,
+    this.soiAmKhiNghe = false,
+    this.docTruocKhiNghe = true,
     this.nguCanhXuat = NguCanh.loLon,
     this.darkMode,
   });
@@ -206,6 +219,28 @@ class AppSettings {
   /// không mất gì, mà được chỗ chuyển đoạn mượt nhất.
   NguCanh nguCanhNghe;
 
+  /// Soi âm ngay lúc nghe: đoạn nào đọc hỏng thì đọc lại rồi phát bản khớp nhất.
+  ///
+  /// Mặc định TẮT vì nó đánh đổi thẳng vào thứ vừa sửa được — việc đọc trước.
+  /// Mỗi lần đọc lại tốn đúng bằng một đoạn mới, nên đoạn hỏng có thể ngốn gấp
+  /// ba thời gian; máy chậm hoặc sách nhiều đoạn hỏng thì lại nghe thấy khựng ở
+  /// chỗ chuyển đoạn. Ai thấy mô hình hay vấp thì bật, đó là đánh đổi có ý thức.
+  ///
+  /// Chỉ có tác dụng với engine [TtsEngine.docLaiRaKhac] — engine đọc theo luật
+  /// thì đọc lại vẫn ra đúng bản cũ.
+  bool soiAmKhiNghe;
+
+  /// Đọc trước vài đoạn tới trong lúc đang nghe đoạn hiện tại.
+  ///
+  /// Mặc định BẬT vì nó là thứ giữ cho chỗ chuyển đoạn liền mạch. Nhưng nó cũng
+  /// là thứ khiến máy chạy hết công suất gần như liên tục: vừa nghe vừa tổng
+  /// hợp, không có quãng nghỉ. Trên điện thoại điều đó thành nóng máy và tụt pin
+  /// nhanh, nên phải cho tắt được.
+  ///
+  /// Tắt thì mỗi đoạn chỉ được tổng hợp đúng lúc cần — máy mát hơn, đổi lại mỗi
+  /// lần chuyển đoạn phải chờ vài giây.
+  bool docTruocKhiNghe;
+
   /// Nối ngữ cảnh khi xuất file. Mặc định theo lô: giữ được tốc độ chạy song
   /// song mà vẫn bỏ được phần lớn chỗ chuyển giọng.
   NguCanh nguCanhXuat;
@@ -234,6 +269,8 @@ class AppSettings {
         'alignChapter': alignChapter,
         'exportTreeUri': exportTreeUri,
         'nguCanhNghe': nguCanhNghe.id,
+        'soiAmKhiNghe': soiAmKhiNghe,
+        'docTruocKhiNghe': docTruocKhiNghe,
         'nguCanhXuat': nguCanhXuat.id,
         'darkMode': darkMode,
       };
@@ -267,6 +304,8 @@ class AppSettings {
         alignChapter: json['alignChapter'] as bool? ?? true,
         exportTreeUri: json['exportTreeUri'] as String? ?? '',
         nguCanhNghe: NguCanh.fromId(json['nguCanhNghe'] as String? ?? 'tuan-tu'),
+        soiAmKhiNghe: json['soiAmKhiNghe'] as bool? ?? false,
+        docTruocKhiNghe: json['docTruocKhiNghe'] as bool? ?? true,
         nguCanhXuat: NguCanh.fromId(json['nguCanhXuat'] as String?),
         darkMode: json['darkMode'] as bool?,
     );

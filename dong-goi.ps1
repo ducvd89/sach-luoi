@@ -8,12 +8,12 @@
 
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
-$flutter = 'C:\Software\flutter\bin\flutter.bat'
+$flutter = 'C:\Dev\flutter\bin\flutter.bat'
 $dist = Join-Path $root 'dist\SachLuoi'
 
 Write-Host ''
 Write-Host '  Dang build ung dung Windows...' -ForegroundColor Cyan
-$env:PUB_CACHE = 'C:\Software\.pub-cache'
+$env:PUB_CACHE = 'C:\Dev\.pub-cache'
 Push-Location (Join-Path $root 'app')
 & $flutter build windows --release
 if ($LASTEXITCODE -ne 0) { Pop-Location; throw 'Build that bai' }

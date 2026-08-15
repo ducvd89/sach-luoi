@@ -13,6 +13,7 @@ import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:path/path.dart' as p;
 
+import '../core/kiem_am.dart';
 import '../core/wav.dart';
 import '../models/book.dart';
 import '../models/settings.dart';
@@ -231,12 +232,11 @@ class PlayerController extends ChangeNotifier {
           target == _doanCoDuoi + 1 &&
           _duoiGiong == _settings.voiceNghe &&
           _duoiEngine == _settings.engineId;
-      final audio = await _tts.audioFor(
+      final audio = await _docCoSoi(
+        chunks[target].speech,
+        noiTiep ? _duoi : null,
         engineId: _settings.engineId,
         voiceId: _settings.voiceNghe,
-        speed: _synthesisSpeed,
-        text: chunks[target].speech,
-        nguCanh: noiTiep ? _duoi : null,
       );
       if (token != _loadToken) return; // người dùng đã nhảy sang đoạn khác
 
@@ -354,21 +354,93 @@ class PlayerController extends ChangeNotifier {
   /// 1,4 giây rồi máy rảnh, thừa sức sẵn sàng trước khi cần tới.
   static const _sauDocTruoc = 1;
 
-  /// Đọc trước mấy đoạn tới cho khỏi khựng ở chỗ chuyển đoạn.
-  void _prefetchAround(int from) {
-    if (_settings.nguCanhNghe == NguCanh.khong) {
-      // Không nối ngữ cảnh thì các đoạn độc lập, bắn hết một lượt cho nhanh.
-      final texts = <String>[];
-      for (var i = from + 1; i <= min(from + 3, chunks.length - 1); i++) {
-        texts.add(chunks[i].speech);
+  /// Đọc lại tối đa mấy lần khi soi âm lúc nghe.
+  ///
+  /// Hai, không phải năm như lúc xuất file. Xuất file chạy nền nên chờ thêm vài
+  /// giây không ai biết; còn lúc nghe thì mỗi lần đọc lại ăn thẳng vào quỹ thời
+  /// gian đọc trước. Ba lượt đọc cho một đoạn đã là gấp ba, mà engine chạy ~3×
+  /// thời gian thực nên đó đúng là mức hoà — quá nữa là nghe thấy khựng.
+  static const _soiNgheDocLai = 2;
+
+  /// Đọc một đoạn, có soi âm nếu người dùng bật.
+  ///
+  /// Tắt (mặc định) thì đi thẳng như cũ, không tốn thêm gì. Bật thì đọc lại tối
+  /// đa [_soiNgheDocLai] lần và phát bản khớp văn bản nhất — cùng cách chấm điểm
+  /// với lúc xuất file (`export_service.dart`), nhưng ít lượt hơn.
+  ///
+  /// Phép soi chạy trên chính file WAV nên các lần nghe lại sau đó không tốn gì
+  /// thêm: mọi bản đọc đều nằm sẵn trong bộ nhớ đệm, chấm lại cho ra đúng lựa
+  /// chọn cũ vì hạt giống suy từ nội dung đoạn.
+  /// [engineId] và [voiceId] truyền vào chứ không đọc từ `_settings`: đổi giọng
+  /// lúc đang nghe không huỷ lượt đọc trước đang chạy, mà đọc thẳng từ cài đặt
+  /// thì giữa chừng có thể nhảy sang giọng mới — ra một đoạn nửa nọ nửa kia.
+  Future<CachedAudio> _docCoSoi(
+    String speech,
+    List<int>? nguCanh, {
+    required String engineId,
+    required String voiceId,
+  }) async {
+    Future<CachedAudio> doc(int lan) => _tts.audioFor(
+          engineId: engineId,
+          voiceId: voiceId,
+          speed: _synthesisSpeed,
+          text: speech,
+          nguCanh: nguCanh,
+          lanThu: lan,
+        );
+
+    if (!_settings.soiAmKhiNghe || !_tts.engine(engineId).docLaiRaKhac) {
+      return doc(0);
+    }
+
+    CachedAudio? tot;
+    double lechTot = double.infinity;
+    for (var lan = 0; lan <= _soiNgheDocLai; lan++) {
+      final audio = await doc(lan);
+      final ket = kiemAm(
+        speech: speech,
+        wav: await audio.file.readAsBytes(),
+        nhip: _synthesisSpeed,
+      );
+      if (ket.dat) return audio;
+      // Lệch bằng nhau thì giữ bản đầu — các lần sau không hơn gì.
+      if (ket.lech < lechTot) {
+        lechTot = ket.lech;
+        tot = audio;
       }
-      if (texts.isNotEmpty) {
-        _tts.prefetch(
+    }
+    return tot!;
+  }
+
+  /// Đọc trước mấy đoạn tới cho khỏi khựng ở chỗ chuyển đoạn.
+  ///
+  /// Chọn nhánh theo ENGINE chứ không chỉ theo cài đặt: engine không nối ngữ
+  /// cảnh (v2, Piper, TTS hệ thống) mà đi vào nhánh tuần tự thì nó dừng ngay ở
+  /// vòng đầu vì không có đuôi để nối — thành ra không đọc trước gì cả và đoạn
+  /// nào cũng phải chờ tổng hợp từ đầu.
+  void _prefetchAround(int from) {
+    // Người dùng tắt hẳn việc đọc trước: chỉ tổng hợp đúng lúc cần. Máy mát hơn
+    // nhiều vì có quãng nghỉ giữa các đoạn, đổi lại mỗi lần chuyển đoạn phải
+    // chờ — xem [AppSettings.docTruocKhiNghe].
+    if (!_settings.docTruocKhiNghe) return;
+
+    final noiDuoc = _tts.engine(_settings.engineId).noiNguCanh;
+    if (_settings.nguCanhNghe == NguCanh.khong || !noiDuoc) {
+      // Không nối ngữ cảnh thì các đoạn độc lập, bắn hết một lượt cho nhanh.
+      //
+      // Đi qua [_docCoSoi] chứ không gọi thẳng `_tts.prefetch`: bật soi âm thì
+      // các bản đọc lại phải được sinh ra Ở ĐÂY, lúc còn rảnh. Để tới lúc phát
+      // mới đọc lại thì đúng bằng không đọc trước gì cả.
+      for (var i = from + 1; i <= min(from + 3, chunks.length - 1); i++) {
+        unawaited(_docCoSoi(
+          chunks[i].speech,
+          null,
           engineId: _settings.engineId,
           voiceId: _settings.voiceNghe,
-          speed: _synthesisSpeed,
-          texts: texts,
-        );
+        ).catchError((Object _) {
+          // Đọc trước hỏng thì thôi; lúc thật sự cần sẽ đọc lại và báo lỗi tử tế.
+          return CachedAudio(File(''), 0, false);
+        }));
       }
       return;
     }
@@ -407,12 +479,11 @@ class PlayerController extends ChangeNotifier {
       // còn nghe nữa.
       if (token != _loadToken || ngu.isEmpty) return;
       try {
-        final audio = await _tts.audioFor(
+        final audio = await _docCoSoi(
+          chunks[i].speech,
+          ngu,
           engineId: engineId,
           voiceId: voiceId,
-          speed: _synthesisSpeed,
-          text: chunks[i].speech,
-          nguCanh: ngu,
         );
         ngu = audio.duoi;
       } catch (_) {

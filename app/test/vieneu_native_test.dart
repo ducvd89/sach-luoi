@@ -10,7 +10,9 @@ import 'dart:io';
 import 'package:ffi/ffi.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-const _libPath = r'C:\Software\Ebookreader\native\vieneu\target\release\sachnoi_vieneu.dll';
+import 'duong_dan_repo.dart';
+
+final _libPath = vieneuLibPath;
 
 void main() {
   test('thư viện native nạp được ONNX Runtime', () {
