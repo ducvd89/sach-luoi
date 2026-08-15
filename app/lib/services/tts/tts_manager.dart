@@ -79,6 +79,27 @@ class TtsManager {
 
   TtsEngine engine(String id) => _engines[id] ?? onDevice;
 
+  /// Số hiệu cách sinh âm của từng engine — **một phần của khoá cache**.
+  ///
+  /// Khoá cache chỉ chống được việc đổi *đầu vào* (giọng, tốc độ, văn bản). Khi
+  /// chính engine đổi cách đọc cùng một đầu vào thì khoá không tự đổi, và người
+  /// đã nghe rồi vẫn nhận lại bản cũ mãi mãi — đúng cái bẫy "lấy nhầm bản cũ"
+  /// ghi ở [_viTri], chỉ khác là thứ thay đổi nằm trong engine chứ không nằm
+  /// trong tham số.
+  ///
+  /// Tăng số ở đây mỗi khi sửa một lỗi làm âm thanh sinh ra khác đi:
+  ///
+  /// | Engine | Số | Vì sao |
+  /// |---|---|---|
+  /// | `system` | 2 | trước đây `flutter_tts` được truyền `setSpeechRate(1.0)`, mà trên Android/iOS mức ấy là **gấp đôi** tốc độ thường — xem `nhipHeThong` |
+  ///
+  /// Bản cũ nằm lại trong thư mục đệm nhưng không ai tra tới; phần dọn theo trần
+  /// dung lượng sẽ xoá dần vì chúng không còn được chạm vào.
+  static int phienBanAm(String engineId) => switch (engineId) {
+        'system' => 2,
+        _ => 1,
+      };
+
   /// Thư mục và tên file cho một đoạn.
   ///
   /// Khoá cache gồm mọi thứ ảnh hưởng tới âm thanh sinh ra — đổi bất kỳ thứ nào
@@ -93,7 +114,8 @@ class TtsManager {
   /// chẳng liên quan gì tới chỗ đang nghe.
   (Directory, String) _viTri(String engineId, String voiceId, double speed, String text) {
     final key = sha1
-        .convert(utf8.encode('$engineId|$voiceId|${speed.toStringAsFixed(2)}|$text'))
+        .convert(utf8
+            .encode('$engineId|${phienBanAm(engineId)}|$voiceId|${speed.toStringAsFixed(2)}|$text'))
         .toString();
     final dir = Directory(p.join(
       Storage.instance.cacheDir.path,
@@ -215,6 +237,12 @@ class TtsManager {
       return const [];
     }
   }
+
+  /// Bỏ mọi lượt đọc đang chạy hoặc đang xếp hàng của engine [engineId].
+  ///
+  /// Gọi khi người dùng tua sang đoạn khác — xem [TtsEngine.huyDangDoc]. Các
+  /// future đang chờ sẽ ném lỗi; đó là chuyện bình thường, không phải hỏng.
+  void huyDocTruoc(String engineId) => engine(engineId).huyDangDoc();
 
   /// Tổng hợp trước vài đoạn để lúc phát không bị khựng giữa chừng.
   void prefetch({

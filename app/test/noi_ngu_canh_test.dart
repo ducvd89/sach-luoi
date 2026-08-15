@@ -31,15 +31,12 @@ void main() {
     }
   });
 
-  test('mặc định: đọc trước BẬT, soi âm TẮT', () {
-    // Hai mặc định này ngược nhau có chủ ý và đáng canh:
-    //
-    // * Đọc trước bật vì không có nó thì mỗi lần chuyển đoạn phải chờ vài giây —
-    //   đó là trải nghiệm mặc định tệ.
-    // * Soi âm tắt vì nó ăn thẳng vào quỹ thời gian đọc trước, mà phần lớn đoạn
-    //   đọc không hỏng.
+  test('soi âm mặc định TẮT', () {
+    // Đọc trước thì luôn bật, không còn là lựa chọn: đo ra chỉ có MỘT worker
+    // lúc nghe nên bắn song song chẳng nhanh hơn, mà bỏ đọc trước thì mỗi lần
+    // chuyển đoạn phải chờ. Soi âm thì vẫn tắt mặc định vì nó ăn thẳng vào quỹ
+    // thời gian đọc trước, mà phần lớn đoạn đọc không hỏng.
     final s = AppSettings(engineId: defaultEngineId);
-    expect(s.docTruocKhiNghe, isTrue);
     expect(s.soiAmKhiNghe, isFalse);
   });
 

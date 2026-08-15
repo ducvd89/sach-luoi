@@ -203,6 +203,9 @@ String normalizeForSpeech(String text, {bool expandNumbers = true}) {
     });
   }
 
+  // 7b. Gắn thẻ tiếng Anh cho từ ghép viết dính.
+  out = danhDauTiengAnh(out);
+
   // 8. Dọn khoảng trắng và dấu câu thừa.
   out = out
       .replaceAll(RegExp(r'[ \t]{2,}'), ' ')
@@ -214,6 +217,46 @@ String normalizeForSpeech(String text, {bool expandNumbers = true}) {
       .trim();
 
   return out;
+}
+
+/// Chữ hoa nằm GIỮA một từ — dấu hiệu của từ ghép kiểu iPhone, YouTube, MacBook.
+///
+/// Tiếng Việt không bao giờ viết hoa giữa từ, nên mẫu này gần như không thể
+/// khớp nhầm vào một từ tiếng Việt thật.
+final _tuGhepDinh = RegExp(r'\b[A-Za-z]*[a-z][A-Z][A-Za-z]*\b');
+
+/// Bọc `<en>` quanh những từ chắc chắn không phải tiếng Việt.
+///
+/// **Chỉ nhắm đúng một lớp từ: từ ghép viết dính.** Đo trước khi viết mới thấy
+/// việc gắn thẻ tràn lan là vô ích — sea-g2p đã tự coi từ không mang dấu tiếng
+/// Việt là tiếng Anh, nên "Windows", "driver", "New York", "Harry Potter" đều
+/// ra âm vị đúng mà không cần thẻ. Thử 20 từ ngoại lai thì chỉ 3 từ đổi kết
+/// quả, và cả ba đều viết dính.
+///
+/// Chỗ thẻ thật sự cứu được là khi g2p tách từ ghép ra làm đôi rồi đọc từng
+/// mảnh, mà mảnh sau có khi rơi thẳng vào tiếng Việt:
+///
+/// | Từ | Không thẻ | Có thẻ |
+/// |---|---|---|
+/// | eBay | `ˈɛ bˈaj` ← "bay" tiếng Việt | `ˈiːbeɪ` |
+/// | iPhone | `ˈaɪ fˈoʊn` | `ˈaɪfoʊn` |
+/// | YouTube | `juː tˈuːb` | `jˈuːtuːb` |
+///
+/// Từ nhập nhằng (`can`, `ban`, `tin`, `sang`…) **cố ý để nguyên tiếng Việt**:
+/// chúng là từ tiếng Việt thật, đoán sai ở đó làm hỏng một từ vốn đang đúng —
+/// đắt hơn nhiều so với cái được.
+String danhDauTiengAnh(String text) {
+  // Đã có thẻ sẵn thì thôi, đừng lồng thẻ trong thẻ.
+  if (text.contains('<en>')) return text;
+
+  return text.replaceAllMapped(_tuGhepDinh, (m) {
+    final tu = m[0]!;
+    // Viết hoa toàn bộ (USB, HTML, NASA) không phải từ ghép dính — mẫu trên đã
+    // đòi có chữ thường trước chữ hoa nên không lọt vào đây, nhưng chặn lại cho
+    // chắc nếu sau này ai nới mẫu.
+    if (tu == tu.toUpperCase()) return tu;
+    return '<en>$tu</en>';
+  });
 }
 
 /// Chuẩn hoá nhẹ để hiển thị trên màn hình đọc: giữ nguyên chữ số và dấu câu.

@@ -36,9 +36,12 @@ typedef _IndexedIntNative = Int32 Function(Pointer<Void>, Int32);
 typedef _IndexedIntDart = int Function(Pointer<Void>, int);
 
 typedef _SynthNative = Pointer<Float> Function(
-    Pointer<Void>, Pointer<Utf8>, Pointer<Utf8>, Uint32, Pointer<Int32>);
+    Pointer<Void>, Pointer<Utf8>, Pointer<Utf8>, Uint32, Uint64, Pointer<Int32>);
 typedef _SynthDart = Pointer<Float> Function(
-    Pointer<Void>, Pointer<Utf8>, Pointer<Utf8>, int, Pointer<Int32>);
+    Pointer<Void>, Pointer<Utf8>, Pointer<Utf8>, int, int, Pointer<Int32>);
+
+typedef _HuyNative = Void Function(Uint64);
+typedef _HuyDart = void Function(int);
 
 typedef _SamplesFreeNative = Void Function(Pointer<Float>, Int32);
 typedef _SamplesFreeDart = void Function(Pointer<Float>, int);
@@ -235,12 +238,12 @@ class _Native {
     return out;
   }
 
-  Float32List synthesize(String text, String voice, int seed) {
+  Float32List synthesize(String text, String voice, int seed, int ma) {
     final textPtr = text.toNativeUtf8();
     final voicePtr = voice.toNativeUtf8();
     final lenPtr = calloc<Int32>();
     try {
-      final data = _synthesize(_handle, textPtr, voicePtr, seed, lenPtr);
+      final data = _synthesize(_handle, textPtr, voicePtr, seed, ma, lenPtr);
       if (data == nullptr) {
         final err = _lastError(_handle);
         final message = err == nullptr ? 'không rõ nguyên nhân' : err.toDartString();
@@ -264,11 +267,14 @@ class _Native {
 // -- giao thức với isolate nền -----------------------------------------------
 
 class _Request {
-  const _Request(this.id, this.text, this.voice, this.seed);
+  const _Request(this.id, this.text, this.voice, this.seed, this.ma);
   final int id;
   final String text;
   final String voice;
   final int seed;
+
+  /// Mã để huỷ — xem [huyDocTruoc].
+  final int ma;
 }
 
 /// Thêm hoặc xoá giọng — làm trong chính isolate đang giữ mô hình để danh sách
@@ -345,7 +351,8 @@ void _worker((SendPort, VieNeuV2Paths) args) {
       return;
     }
     try {
-      reply.send(_Audio(message.id, native.synthesize(message.text, message.voice, message.seed)));
+      reply.send(_Audio(
+          message.id, native.synthesize(message.text, message.voice, message.seed, message.ma)));
     } catch (err) {
       reply.send(_Failure(message.id, '$err'));
     }
@@ -397,13 +404,35 @@ class VieNeuV2Native {
     return ready.future;
   }
 
-  Future<Float32List> synthesize(String text, String voice, {int seed = 0}) {
+  Future<Float32List> synthesize(String text, String voice, {int seed = 0, int ma = 0}) {
     if (_closed) throw const VieNeuV2Exception('Engine đã đóng');
     final id = _nextId++;
     final completer = Completer<Float32List>();
     _pending[id] = completer;
-    _send.send(_Request(id, text, voice, seed));
+    _send.send(_Request(id, text, voice, seed, ma));
     return completer.future;
+  }
+
+  /// Mã cấp cho yêu cầu kế tiếp. Chung cho MỌI worker và mọi isolate: lệnh huỷ
+  /// phải quét được tất cả, không riêng bể của một worker.
+  static var _maKeTiep = 1;
+  static int maMoi() => _maKeTiep++;
+
+  /// Mã lớn nhất đã cấp — huỷ tới đây là dọn sạch mọi việc đang chờ.
+  static int get maHienTai => _maKeTiep - 1;
+
+  /// Bỏ mọi yêu cầu có mã ≤ [denMa], kể cả đang xếp hàng trong isolate.
+  ///
+  /// Gọi thẳng vào thư viện native từ isolate giao diện, KHÔNG đi qua cổng của
+  /// isolate nền — đó là cả điểm mấu chốt: isolate nền lúc này đang kẹt trong
+  /// một lượt đọc, tin nhắn gửi vào chỉ nằm xếp hàng sau đúng cái cần huỷ.
+  static void huyToi(int denMa, {String? libraryPath}) {
+    try {
+      final lib = DynamicLibrary.open(libraryPath ?? _Native._defaultLibraryName);
+      lib.lookupFunction<_HuyNative, _HuyDart>('vieneu_v2_huy')(denMa);
+    } catch (_) {
+      // Chưa nạp được thư viện thì cũng chẳng có gì đang chạy để mà huỷ.
+    }
   }
 
   /// Nhân bản một giọng mới từ file ghi âm kèm lời của đúng đoạn ấy.

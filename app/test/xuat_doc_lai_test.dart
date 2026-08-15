@@ -70,6 +70,9 @@ class _EngineGia implements TtsEngine {
   bool get noiNguCanh => false;
 
   @override
+  void huyDangDoc() {}
+
+  @override
   Future<EngineStatus> status() async => const EngineStatus(ready: true, message: 'Sẵn sàng');
 
   @override

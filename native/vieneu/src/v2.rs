@@ -19,6 +19,7 @@
 
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
 
 use llama_cpp_2::context::params::LlamaContextParams;
@@ -102,6 +103,35 @@ fn backend() -> Result<&'static LlamaBackend, String> {
         .as_ref()
         .map_err(|e| e.clone())
 }
+
+/// Mã yêu cầu lớn nhất đã bị huỷ. Dùng chung cho cả tiến trình.
+///
+/// Sinh ra cho việc TUA. Đọc một đoạn mất 5–7 giây; lúc người dùng nhảy sang chỗ
+/// khác thì mấy đoạn đang đọc trước không còn ai nghe, mà cứ để chúng chạy nốt
+/// là đoạn vừa chọn phải xếp hàng sau — chờ cả chục giây cho một cú tua.
+///
+/// **Huỷ theo MÃ chứ không phải theo cờ bật/tắt**, và đây là điểm mấu chốt: ứng
+/// dụng bắn cùng lúc ba yêu cầu đọc trước, nên lúc tua thì ngoài cái đang chạy
+/// còn hai cái đang xếp hàng. Cờ chỉ giết được cái đang chạy; hai cái kia khởi
+/// động sau lệnh huỷ nên thoát, rồi chạy đủ 5–7 giây mỗi cái.
+///
+/// Mỗi yêu cầu mang một mã tăng dần. Huỷ tới mã N nghĩa là mọi yêu cầu có mã
+/// **≤ N** đều bỏ, dù đang chạy hay còn nằm trong hàng đợi. Yêu cầu mới mang mã
+/// lớn hơn nên không dính.
+static HUY_TOI: AtomicU64 = AtomicU64::new(0);
+
+/// Bỏ mọi yêu cầu có mã ≤ [den_ma], kể cả đang xếp hàng.
+pub fn huy_toi(den_ma: u64) {
+    HUY_TOI.fetch_max(den_ma, Ordering::SeqCst);
+}
+
+/// Yêu cầu mang mã này đã bị huỷ chưa.
+fn da_huy(ma: u64) -> bool {
+    ma != 0 && ma <= HUY_TOI.load(Ordering::SeqCst)
+}
+
+/// Lượt đọc bị huỷ giữa chừng.
+pub const LOI_HUY: &str = "đã huỷ để nhường cho đoạn khác";
 
 pub struct EngineV2 {
     model: LlamaModel,
@@ -318,12 +348,22 @@ impl EngineV2 {
     ///
     /// [seed] suy từ nội dung đoạn ở phía Dart, để đọc lại cùng một đoạn ra cùng
     /// một giọng và bộ nhớ đệm còn ý nghĩa.
+    /// [ma] là mã của yêu cầu, dùng để huỷ — xem [huy_toi]. Truyền 0 nghĩa là
+    /// không huỷ được (dùng cho các bài thử và cho việc xuất file, nơi không có
+    /// ai tua đi đâu cả).
     pub fn synthesize(
         &mut self,
         text_phones: &str,
         voice_name: &str,
         seed: u32,
+        ma: u64,
     ) -> Result<Vec<f32>, String> {
+        // Bỏ ngay từ cửa: yêu cầu này có thể đã nằm trong hàng đợi suốt lúc
+        // người dùng tua, chưa chạy dòng nào đã hết cần tới.
+        if da_huy(ma) {
+            return Err(LOI_HUY.to_string());
+        }
+
         let voice = self
             .voices
             .get(voice_name)
@@ -350,7 +390,7 @@ impl EngineV2 {
                 .map(|c| LlamaToken(self.speech_base + *c)),
         );
 
-        let codes = self.sinh_code(&tokens, seed)?;
+        let codes = self.sinh_code(&tokens, seed, ma)?;
         if codes.len() < 2 {
             return Err("mô hình không sinh ra code nào nghe được".into());
         }
@@ -358,7 +398,12 @@ impl EngineV2 {
     }
 
     /// Chạy vòng lặp sinh, trả về dãy code của NeuCodec.
-    fn sinh_code(&mut self, prompt: &[LlamaToken], seed: u32) -> Result<Vec<i32>, String> {
+    fn sinh_code(
+        &mut self,
+        prompt: &[LlamaToken],
+        seed: u32,
+        ma: u64,
+    ) -> Result<Vec<i32>, String> {
         let ctx_params = LlamaContextParams::default()
             .with_n_ctx(std::num::NonZeroU32::new(CUA_SO))
             .with_n_batch(CUA_SO)
@@ -395,6 +440,12 @@ impl EngineV2 {
         let mut vi_tri = prompt.len() as i32;
 
         for _ in 0..CODE_TOI_DA {
+            // Kiểm mỗi khung, không phải mỗi vài chục khung: một khung chỉ mất
+            // vài mili giây nên đây là chỗ rẻ nhất để cắt, mà cũng là chỗ duy
+            // nhất cắt được — phần nặng nằm gọn trong `ctx.decode`.
+            if da_huy(ma) {
+                return Err(LOI_HUY.to_string());
+            }
             let token = sampler.sample(&ctx, batch.n_tokens() - 1);
             sampler.accept(token);
 

@@ -181,6 +181,9 @@ class VieNeuV2Engine implements TtsEngine {
   static int get _soLuongMoiWorker =>
       (Platform.numberOfProcessors ~/ (2 * _soWorker)).clamp(1, 8);
 
+  @override
+  void huyDangDoc() => VieNeuV2Native.huyToi(VieNeuV2Native.maHienTai);
+
   /// Worker đang rảnh nhất. Lúc nghe chỉ có một nên hàm này trả về luôn nó.
   VieNeuV2Native _leastBusy(VieNeuV2Native primary) {
     var chon = primary;
@@ -273,7 +276,12 @@ class VieNeuV2Engine implements TtsEngine {
     _busy[worker] = (_busy[worker] ?? 0) + 1;
     final Float32List raw;
     try {
-      raw = await worker.synthesize(text, voiceId, seed: seed);
+      raw = await worker.synthesize(
+        text,
+        voiceId,
+        seed: seed,
+        ma: VieNeuV2Native.maMoi(),
+      );
     } finally {
       final con = (_busy[worker] ?? 1) - 1;
       if (con <= 0) {

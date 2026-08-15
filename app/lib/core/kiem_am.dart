@@ -1,10 +1,12 @@
 /// Kiểm lại đoạn âm vừa tổng hợp: nghe ra bao nhiêu âm, có khớp với số từ không.
 ///
-/// Vì sao đếm được: tiếng Việt gần như mỗi từ (chữ cách nhau bằng khoảng trắng)
-/// là một âm tiết riêng, phát ra thành một hạt âm có nhân là nguyên âm. Đếm số
-/// nhân âm nghe thấy trong sóng rồi so với số từ trong văn bản là bắt được đúng
-/// những bệnh mà mô hình tự hồi quy hay mắc: lặp lại vài từ cuối, nuốt mất nửa
-/// câu, hoặc lảm nhảm không dừng.
+/// Vì sao đếm được: mỗi âm tiết phát ra thành một hạt âm có nhân là nguyên âm.
+/// Đếm số nhân âm nghe thấy trong sóng rồi so với số âm tiết mà văn bản đáng lẽ
+/// đọc ra là bắt được đúng những bệnh mà mô hình tự hồi quy hay mắc: lặp lại
+/// vài từ cuối, nuốt mất nửa câu, hoặc lảm nhảm không dừng.
+///
+/// Phía văn bản nằm ở `am_tiet_chu.dart` — không phải cứ đếm từ là xong, vì một
+/// từ tiếng Anh lẫn vào ("Windows", "Harry Potter") đọc ra nhiều âm tiết.
 ///
 /// Cách đếm là đếm nhân âm theo đường cường độ (giống script "syllable nuclei"
 /// quen dùng trong Praat): dựng đường năng lượng theo dB, tìm các đỉnh nổi hẳn
@@ -19,7 +21,7 @@ library;
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'vi_number.dart';
+import 'am_tiet_chu.dart';
 import 'wav.dart';
 
 /// Dải tỉ lệ chấp nhận được giữa số âm nghe thấy và số từ của đoạn.
@@ -37,7 +39,10 @@ const int soTuDungTiLe = 7;
 class KetQuaKiemAm {
   const KetQuaKiemAm({required this.soTu, required this.soAm});
 
-  /// Số từ đọc được trong văn bản của đoạn.
+  /// Số âm tiết mà văn bản của đoạn sẽ đọc ra — xem [demAmChu].
+  ///
+  /// Tên `soTu` là dấu vết của bản đầu (mỗi từ một âm) và được giữ nguyên vì nó
+  /// đã nằm trong `job.json` của những lượt xuất còn dở.
   final int soTu;
 
   /// Số âm nghe thấy. null khi không đo được (âm thanh không phải WAV 16-bit).
@@ -73,42 +78,7 @@ class KetQuaKiemAm {
 ///
 /// [nhip] là hệ số tốc độ đã áp vào âm thanh (1.0 là giọng gốc) — xem [demAmTiet].
 KetQuaKiemAm kiemAm({required String speech, required Uint8List wav, double nhip = 1.0}) =>
-    KetQuaKiemAm(soTu: demTu(speech), soAm: demAmTiet(wav, nhip: nhip));
-
-// -- đếm từ trong văn bản ----------------------------------------------------
-
-final _khoangTrang = RegExp(r'\s+');
-final _coChu = RegExp(r'[A-Za-zÀ-ỹ0-9]');
-final _chuoiSo = RegExp(r'\d+');
-
-/// Số âm sẽ đọc ra từ văn bản đã chuẩn hoá của một đoạn.
-///
-/// Gần như là đếm từ, trừ chữ số: người dùng có thể tắt phần đổi số thành chữ
-/// (xem `text_normalizer.dart`), lúc ấy "1975" vẫn là một từ nhưng đọc ra bảy
-/// âm — không tính đúng chỗ này thì mọi đoạn có số đều bị kết tội oan.
-int demTu(String speech) {
-  var so = 0;
-  for (final tu in speech.split(_khoangTrang)) {
-    if (!_coChu.hasMatch(tu)) continue; // dấu câu đứng riêng, không đọc thành âm
-    so += _amCuaTu(tu);
-  }
-  return so;
-}
-
-int _amCuaTu(String tu) {
-  final so = _chuoiSo.allMatches(tu).toList();
-  if (so.isEmpty) return 1;
-
-  var tong = 0;
-  for (final m in so) {
-    tong += readInteger(m[0]!).split(_khoangTrang).length;
-  }
-  // Phần chữ còn lại quanh các chữ số ("3km" -> "ba" + "km").
-  for (final phan in tu.replaceAll(_chuoiSo, ' ').split(_khoangTrang)) {
-    if (_coChu.hasMatch(phan)) tong++;
-  }
-  return tong;
-}
+    KetQuaKiemAm(soTu: demAmChu(speech), soAm: demAmTiet(wav, nhip: nhip));
 
 // -- đếm âm trong sóng -------------------------------------------------------
 

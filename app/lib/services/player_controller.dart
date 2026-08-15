@@ -19,6 +19,7 @@ import '../models/book.dart';
 import '../models/settings.dart';
 import 'library_service.dart';
 import 'storage.dart';
+import 'tts/tts_engine.dart' show laLoiHuy;
 import 'tts/tts_manager.dart';
 
 /// Tốc độ đọc được áp bằng cách chỉnh tốc độ phát chứ không tổng hợp lại —
@@ -208,11 +209,22 @@ class PlayerController extends ChangeNotifier {
   /// đúng một lần cho lượt tự động sang đoạn kế — xem [_onChunkFinished]. Mọi
   /// lượt gọi khác (bấm nút, tua, tiếp tục nghe) đều là 0: nhảy tới đâu thì
   /// nghe ngay ở đó, không có khoảng nghỉ nào cả.
+  /// [nguoiDungTua] — người dùng chủ động nhảy sang chỗ khác (chạm vào một đoạn,
+  /// bấm đoạn trước/sau, tua ±15 giây).
+  ///
+  /// Chỉ lúc ấy mới cắt việc đang đọc trước và im tiếng ngay. Những đường KHÁC
+  /// tuyệt đối không được coi là tua:
+  ///
+  /// * **Tự sang đoạn kế** khi hết đoạn — cắt ở đây là huỷ đúng đoạn vừa đọc
+  ///   trước xong, tức tự tay vứt bỏ toàn bộ công đọc trước, đoạn nào cũng phải
+  ///   chờ tổng hợp lại từ đầu.
+  /// * **Chọn chương** — nghe tiếp bình thường, không phải nhảy trong lúc nghe.
   Future<void> playChunk(
     int target, {
     bool autoplay = true,
     double offsetSeconds = 0,
     int leadingSilenceMs = 0,
+    bool nguoiDungTua = false,
   }) async {
     final b = book;
     if (b == null || target < 0 || target >= chunks.length) return;
@@ -221,7 +233,31 @@ class PlayerController extends ChangeNotifier {
     index = target;
     isLoading = true;
     error = null;
+
+    if (nguoiDungTua) {
+      // Cắt sạch những đoạn đang đọc trước TRƯỚC KHI xin đoạn mới. Không có
+      // bước này thì yêu cầu vừa xin phải xếp hàng sau chúng — mỗi đoạn 5–7
+      // giây, tua một cái chờ cả chục giây.
+      _tts.huyDocTruoc(_settings.engineId);
+    }
+
     notifyListeners();
+
+    // Im tiếng ngay, đừng để đoạn cũ đọc tiếp trong lúc chờ.
+    //
+    // Đoạn đang phát không còn liên quan gì tới chỗ vừa chọn, mà tổng hợp đoạn
+    // mới có thể mất vài giây — cứ để nó chạy thì người nghe vẫn đang nghe nội
+    // dung cũ sau khi đã bấm đi chỗ khác, rối hơn là im lặng.
+    //
+    // KHÔNG đụng tới luồng giữ nhịp ở đây. Nó là một Player riêng phát im lặng
+    // lặp vòng (xem [_giuThietBiAmThanh]), và quãng chờ tổng hợp vài giây chính
+    // là lúc cần nó nhất: tắt đi thì thiết bị âm thanh kịp ngủ, rồi chữ đầu của
+    // đoạn vừa chọn bị nuốt trong lúc nó thức dậy — đúng triệu chứng mà luồng
+    // ấy sinh ra để chữa.
+    if (nguoiDungTua && _player.state.playing) {
+      await _player.pause();
+      if (token != _loadToken) return;
+    }
 
     try {
       // Ngữ cảnh chỉ dùng khi đọc tiếp đúng đoạn liền sau đoạn vừa nghe, VÀ
@@ -232,12 +268,28 @@ class PlayerController extends ChangeNotifier {
           target == _doanCoDuoi + 1 &&
           _duoiGiong == _settings.voiceNghe &&
           _duoiEngine == _settings.engineId;
-      final audio = await _docCoSoi(
-        chunks[target].speech,
-        noiTiep ? _duoi : null,
-        engineId: _settings.engineId,
-        voiceId: _settings.voiceNghe,
-      );
+      Future<CachedAudio> xin() => _docCoSoi(
+            chunks[target].speech,
+            noiTiep ? _duoi : null,
+            engineId: _settings.engineId,
+            voiceId: _settings.voiceNghe,
+          );
+
+      CachedAudio audio;
+      try {
+        audio = await xin();
+      } catch (err) {
+        // Tua tới ĐÚNG đoạn đang được đọc trước thì lệnh huỷ ở trên giết luôn
+        // nó, mà `TtsManager` gom yêu cầu trùng khoá nên lời xin vừa rồi nhận
+        // lại chính cái future vừa bị giết — đoạn người dùng chọn hỏng, trình
+        // phát nhảy sang đoạn kế.
+        //
+        // Xin lại một lần: lúc này engine đã rảnh và yêu cầu cũ đã rời khỏi
+        // bảng gom, nên lượt mới chạy ngay và mang mã mới nên không dính lệnh
+        // huỷ cũ.
+        if (!laLoiHuy(err) || token != _loadToken) rethrow;
+        audio = await xin();
+      }
       if (token != _loadToken) return; // người dùng đã nhảy sang đoạn khác
 
       _duoi = audio.duoi;
@@ -251,6 +303,14 @@ class PlayerController extends ChangeNotifier {
       _openSilenceMs = lang;
       await _player.open(Media(duongDan), play: autoplay);
       await _player.setRate(_settings.speed);
+
+      // `open(play: true)` KHÔNG đủ khi vừa tạm dừng ở trên: `pause` của mpv là
+      // một thuộc tính của trình phát, không gắn với file đang mở — nạp file mới
+      // không xoá nó. Kết quả là tua xong, đoạn mới tổng hợp xong rồi mà vẫn im,
+      // người dùng phải tự bấm play.
+      if (autoplay && !_player.state.playing) {
+        await _player.play();
+      }
       _dongBoGiuNhip(autoplay);
       if (offsetSeconds > 0.5) {
         // Trừ hao nửa giây để vị trí lưu lần trước không rơi đúng cuối đoạn
@@ -419,32 +479,48 @@ class PlayerController extends ChangeNotifier {
   /// vòng đầu vì không có đuôi để nối — thành ra không đọc trước gì cả và đoạn
   /// nào cũng phải chờ tổng hợp từ đầu.
   void _prefetchAround(int from) {
-    // Người dùng tắt hẳn việc đọc trước: chỉ tổng hợp đúng lúc cần. Máy mát hơn
-    // nhiều vì có quãng nghỉ giữa các đoạn, đổi lại mỗi lần chuyển đoạn phải
-    // chờ — xem [AppSettings.docTruocKhiNghe].
-    if (!_settings.docTruocKhiNghe) return;
-
     final noiDuoc = _tts.engine(_settings.engineId).noiNguCanh;
     if (_settings.nguCanhNghe == NguCanh.khong || !noiDuoc) {
-      // Không nối ngữ cảnh thì các đoạn độc lập, bắn hết một lượt cho nhanh.
-      //
-      // Đi qua [_docCoSoi] chứ không gọi thẳng `_tts.prefetch`: bật soi âm thì
-      // các bản đọc lại phải được sinh ra Ở ĐÂY, lúc còn rảnh. Để tới lúc phát
-      // mới đọc lại thì đúng bằng không đọc trước gì cả.
-      for (var i = from + 1; i <= min(from + 3, chunks.length - 1); i++) {
-        unawaited(_docCoSoi(
-          chunks[i].speech,
-          null,
-          engineId: _settings.engineId,
-          voiceId: _settings.voiceNghe,
-        ).catchError((Object _) {
-          // Đọc trước hỏng thì thôi; lúc thật sự cần sẽ đọc lại và báo lỗi tử tế.
-          return CachedAudio(File(''), 0, false);
-        }));
-      }
+      unawaited(_docTruocLanLuot(from, _loadToken));
       return;
     }
     unawaited(_docTruocTheoChuoi(from, _loadToken));
+  }
+
+  /// Đọc trước bao nhiêu đoạn khi các đoạn độc lập nhau.
+  static const _sauDocTruocDocLap = 3;
+
+  /// Đọc trước lần lượt: đọc xong đoạn này mới bắt đầu đoạn kế.
+  ///
+  /// Mốc để đi tiếp là **đọc xong**, không phải **nghe xong** — nên nó vẫn chạy
+  /// trước người nghe vài đoạn, chỉ khác là không dồn cả ba việc vào engine cùng
+  /// lúc.
+  ///
+  /// Từng có một nút cho người dùng chọn giữa "bắn cả ba" và "lần lượt", nhưng
+  /// đo ra thì nút ấy vô nghĩa: lúc NGHE, engine chỉ mở đúng MỘT worker (bể
+  /// worker chỉ bật khi xuất file, xem `export_service.dart`), nên ba yêu cầu
+  /// gửi cùng lúc vẫn bị xử lý lần lượt. Cùng lượng việc, cùng lượng CPU, chỉ
+  /// khác chỗ hàng đợi nằm ở đâu.
+  ///
+  /// Để hàng đợi ở Dart lại hơn: phần chưa gửi đi thì bỏ ngang không tốn gì khi
+  /// người dùng tua, còn phần đã nằm trong engine thì phải nhờ tới lệnh huỷ.
+  Future<void> _docTruocLanLuot(int from, int token) async {
+    // Nhường một nhịp cho trình phát mở file và chạy êm đã rồi mới nạp CPU.
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+
+    // Chụp giọng/engine ngay từ đầu: đổi giọng giữa chừng không tăng
+    // [_loadToken], nên đọc thẳng từ _settings mỗi vòng thì có thể lỡ nhịp.
+    final engineId = _settings.engineId;
+    final voiceId = _settings.voiceNghe;
+
+    for (var i = from + 1; i <= min(from + _sauDocTruocDocLap, chunks.length - 1); i++) {
+      if (token != _loadToken) return; // người dùng đã nhảy sang chỗ khác
+      try {
+        await _docCoSoi(chunks[i].speech, null, engineId: engineId, voiceId: voiceId);
+      } catch (_) {
+        return; // hỏng hoặc bị huỷ: lúc thật sự cần sẽ đọc lại
+      }
+    }
   }
 
   /// Đọc trước theo chuỗi khi có nối ngữ cảnh.
@@ -511,15 +587,18 @@ class PlayerController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> next() => playChunk(min(index + 1, chunks.length - 1), autoplay: isPlaying);
+  Future<void> next() => playChunk(min(index + 1, chunks.length - 1),
+      autoplay: isPlaying, nguoiDungTua: true);
 
-  Future<void> previous() => playChunk(max(index - 1, 0), autoplay: isPlaying);
+  Future<void> previous() =>
+      playChunk(max(index - 1, 0), autoplay: isPlaying, nguoiDungTua: true);
 
   Future<void> seekRelative(Duration delta) async {
     final target = position + delta;
     if (target.isNegative) {
       if (index > 0) {
-        await playChunk(index - 1, autoplay: isPlaying, offsetSeconds: 9999);
+        await playChunk(index - 1,
+            autoplay: isPlaying, offsetSeconds: 9999, nguoiDungTua: true);
       } else {
         await _player.seek(Duration.zero);
       }
@@ -539,7 +618,10 @@ class PlayerController extends ChangeNotifier {
       accumulated += _chunkSeconds(target);
       target++;
     }
-    await playChunk(target, autoplay: isPlaying, offsetSeconds: max(0, targetSeconds - accumulated));
+    await playChunk(target,
+        autoplay: isPlaying,
+        offsetSeconds: max(0, targetSeconds - accumulated),
+        nguoiDungTua: true);
   }
 
   /// Hết một đoạn thì mở đoạn kế NGAY — không còn đứng im chờ một khoảng

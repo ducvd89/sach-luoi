@@ -575,9 +575,14 @@ mod kiem_thu_ma_hoa {
     use super::*;
 
     fn wav_mot_giay() -> Vec<u8> {
-        let mau: Vec<i16> = (0..48_000)
+        wav_mot_giay_o(48_000)
+    }
+
+    /// Một giây WAV 16-bit mono ở tần số [sr] — v3 ghi ra 48 kHz, v2 ghi 24 kHz.
+    fn wav_mot_giay_o(sr: u32) -> Vec<u8> {
+        let mau: Vec<i16> = (0..sr)
             .map(|i| {
-                let t = i as f32 / 48_000.0;
+                let t = i as f32 / sr as f32;
                 ((t * 330.0 * std::f32::consts::TAU).sin() * 9000.0) as i16
             })
             .collect();
@@ -589,8 +594,8 @@ mod kiem_thu_ma_hoa {
         w.extend_from_slice(&16u32.to_le_bytes());
         w.extend_from_slice(&1u16.to_le_bytes());
         w.extend_from_slice(&1u16.to_le_bytes());
-        w.extend_from_slice(&48_000u32.to_le_bytes());
-        w.extend_from_slice(&96_000u32.to_le_bytes());
+        w.extend_from_slice(&sr.to_le_bytes());
+        w.extend_from_slice(&(sr * 2).to_le_bytes());
         w.extend_from_slice(&2u16.to_le_bytes());
         w.extend_from_slice(&16u16.to_le_bytes());
         w.extend_from_slice(b"data");
@@ -634,6 +639,32 @@ mod kiem_thu_ma_hoa {
             assert!(byte.len() > 1000, "{ten} chỉ có {} byte", byte.len());
             // Không được để lại file tạm.
             assert!(!d.join(format!("{ten}.tmp")).exists(), "còn sót file tạm");
+        }
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    /// Đường đi thật của engine v2: WAV 24 kHz đi qua cổng C ra cả ba định dạng.
+    ///
+    /// Trước đây riêng Opus gãy ở đây với "Opus cần 48 kHz, nhận 24000 Hz", nên
+    /// người dùng v2 xuất bao nhiêu file cũng chỉ nhận lại WAV.
+    #[test]
+    fn nen_duoc_wav_24k_cua_engine_v2() {
+        let d = std::env::temp_dir().join("sachluoi_ffi_24k");
+        std::fs::create_dir_all(&d).unwrap();
+        let vao = d.join("vao24.wav");
+        std::fs::write(&vao, wav_mot_giay_o(24_000)).unwrap();
+
+        for (dd, br, ten, dau) in [
+            (0, 32_000, "ra.opus", &b"OggS"[..]),
+            (1, 128, "ra.mp3", &b"\xff"[..]),
+            (2, 96_000, "ra.aac", &b"\xff"[..]),
+        ] {
+            let ra = d.join(ten);
+            goi(vao.to_str().unwrap(), ra.to_str().unwrap(), dd, br)
+                .unwrap_or_else(|e| panic!("{ten}: {e}"));
+            let byte = std::fs::read(&ra).unwrap();
+            assert!(byte.starts_with(dau), "{ten} sai chữ ký đầu file");
+            assert!(byte.len() > 1000, "{ten} chỉ có {} byte", byte.len());
         }
         std::fs::remove_dir_all(&d).ok();
     }

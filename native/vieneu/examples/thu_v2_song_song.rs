@@ -110,7 +110,7 @@ fn main() {
         for (i, engine) in engines.iter_mut().enumerate() {
             let am_vi = &am_vi;
             tay.push(s.spawn(move || {
-                match engine.synthesize(am_vi, "Ly", 777 + i as u32) {
+                match engine.synthesize(am_vi, "Ly", 777 + i as u32, 0) {
                     Ok(v) => v.len(),
                     Err(e) => {
                         eprintln!("worker {} lỗi đọc: {e}", i + 1);

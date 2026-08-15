@@ -75,7 +75,8 @@ fn main() {
     println!("âm vị      : {am_vi}");
 
     let bat_dau = Instant::now();
-    let samples = match engine.synthesize(&am_vi, &voice, seed) {
+    // Mã 0: bài thử này không có ai tua nên không cần huỷ.
+    let samples = match engine.synthesize(&am_vi, &voice, seed, 0) {
         Ok(s) => s,
         Err(e) => {
             eprintln!("lỗi đọc: {e}");

@@ -275,22 +275,113 @@ final _titleKey = RegExp(r'[^A-Za-zÀ-ỹ0-9]');
 /// Số dòng đầu chương được soi để tìm tiêu đề bị lặp.
 const _titleSearchLines = 4;
 
+/// Đoạn đánh số ở đầu tiêu đề chương: "Chương 01:", "CHƯƠNG MỘT", "Hồi thứ ba".
+///
+/// Nhận cả chữ số, số La Mã lẫn số viết bằng chữ, vì mục lục và thân bài của
+/// cùng một cuốn sách thường không dùng chung kiểu.
+final _soChuong = RegExp(
+  r'^\s*(chương|phần|hồi|quyển|tập|mục|chapter)\b[\s:.\-]*'
+  r'(thứ\b[\s:.\-]*)?'
+  // Số viết bằng chữ phải đứng TRƯỚC số La Mã: chữ "m" và "l" nằm trong tập ký
+  // tự La Mã, nên để [ivxlcdm]+ đi trước thì nó ăn mất chữ đầu của "một",
+  // "mười", "lẻ" và bỏ lại phần đuôi cụt.
+  r'((\d+|một|hai|ba|bốn|tư|năm|lăm|sáu|bảy|tám|chín|mười|mươi'
+  r'|trăm|nghìn|ngàn|linh|lẻ|[ivxlcdm]+)\b[\s:.\-]*)*',
+  caseSensitive: false,
+);
+
 /// Bỏ dòng lặp lại tiêu đề chương trong phần thân, trả về phần thân đã sửa.
 String _dropRepeatedTitle(String body, String title) {
   String key(String s) => s.replaceAll(_titleKey, '').toLowerCase();
+
+  /// Phần tên chương sau khi bỏ đoạn đánh số ở đầu.
+  ///
+  /// Mục lục và thân bài thường đánh số theo hai kiểu khác nhau — mục lục ghi
+  /// "Chương 01:" còn thân bài ghi "CHƯƠNG MỘT" — nên so nguyên văn thì trượt và
+  /// người nghe phải nghe tên chương hai lần. Bỏ phần số đi thì cả hai cùng còn
+  /// lại "ngôi nhà riddle" và khớp.
+  String phanTen(String s) =>
+      key(s.toLowerCase().replaceFirst(_soChuong, ''));
+
   final wanted = key(title);
   if (wanted.isEmpty) return body;
+  final wantedTen = phanTen(title);
 
   final lines = body.split('\n');
   var seen = 0;
   for (var i = 0; i < lines.length && seen < _titleSearchLines; i++) {
     if (lines[i].trim().isEmpty) continue;
     seen++;
-    if (key(lines[i]) != wanted) continue;
+    // Khớp nguyên văn, HOẶC khớp phần tên sau khi bỏ số. Đòi phần tên khác rỗng
+    // ở cả hai phía: "Chương 1" và "Chương 2" đều rút về rỗng, khớp rỗng với
+    // rỗng là xoá nhầm dòng mở đầu của một chương khác.
+    final khop = key(lines[i]) == wanted ||
+        (wantedTen.isNotEmpty && phanTen(lines[i]) == wantedTen);
+    if (!khop) continue;
     lines.removeAt(i);
     return lines.join('\n').replaceAll(RegExp(r'^\s*\n'), '').trimLeft();
   }
   return body;
+}
+
+/// Một từ trong văn bản, gồm cả chữ có dấu tiếng Việt.
+final _tuTrongSach = RegExp(r'[A-Za-zÀ-ỹ]{2,}');
+
+/// Từ này viết hoa toàn bộ (và có chữ cái để mà xét).
+bool _hoaToanBo(String tu) => tu == tu.toUpperCase() && tu != tu.toLowerCase();
+
+/// Dựng bảng "dạng viết hoa toàn bộ → dạng thường gặp trong chính cuốn sách".
+///
+/// Sinh ra để chữa một lỗi rất khó chịu: sea-g2p coi **một từ viết hoa toàn bộ
+/// đứng giữa chữ thường là từ viết tắt** và đánh vần từng chữ cái. Với "USB" hay
+/// "HTML" thì đúng, nhưng sách convert từ web hay viết hoa cả tiêu đề, nên
+/// "Ngôi nhà RIDDLE." bị đọc thành "Ngôi nhà R-I-D-D-L-E".
+///
+/// Không có cách nào phân biệt "USB" với "RIDDLE" nếu chỉ nhìn một từ. Nhưng
+/// nhìn cả cuốn sách thì có: **RIDDLE cũng xuất hiện ở dạng "Riddle"**, còn USB
+/// thì không bao giờ viết thành "Usb". Nên bảng này chỉ chứa những từ có bằng
+/// chứng trong chính văn bản, và từ viết tắt thật không lọt vào.
+///
+/// Lấy dạng gặp NHIỀU NHẤT chứ không phải dạng gặp đầu tiên: một chỗ lỡ viết
+/// "riddle" thường không thắng được hàng trăm chỗ viết "Riddle".
+Map<String, String> bangChuHoaTenRieng(List<RawChapter> chapters) {
+  final dem = <String, Map<String, int>>{};
+  for (final ch in chapters) {
+    for (final nguon in [ch.title, ch.text]) {
+      for (final m in _tuTrongSach.allMatches(nguon)) {
+        final tu = m[0]!;
+        if (_hoaToanBo(tu)) continue;
+        (dem[tu.toLowerCase()] ??= {}).update(tu, (n) => n + 1, ifAbsent: () => 1);
+      }
+    }
+  }
+
+  final bang = <String, String>{};
+  dem.forEach((thuong, cacDang) {
+    var tot = '';
+    var nhieuNhat = 0;
+    cacDang.forEach((dang, n) {
+      if (n > nhieuNhat) {
+        nhieuNhat = n;
+        tot = dang;
+      }
+    });
+    if (tot.isNotEmpty) bang[thuong] = tot;
+  });
+  return bang;
+}
+
+/// Đổi những từ viết hoa toàn bộ về dạng thường gặp, theo [bang].
+///
+/// Chỉ dùng cho văn bản ĐỌC LÊN. Màn hình đọc vẫn hiện đúng chữ trong sách —
+/// người ta viết hoa để nhấn mạnh, xoá đi là sửa sách của người khác.
+String suaChuHoaTenRieng(String text, Map<String, String> bang) {
+  if (bang.isEmpty) return text;
+  return text.replaceAllMapped(_tuTrongSach, (m) {
+    final tu = m[0]!;
+    if (!_hoaToanBo(tu)) return tu;
+    return bang[tu.toLowerCase()] ?? tu;
+  });
 }
 
 /// Kết quả cắt sách: danh sách đoạn và thông tin từng chương.
@@ -319,6 +410,10 @@ ChunkResult buildChunks(
   final chunks = <Chunk>[];
   final chapters = <Chapter>[];
 
+  // Quét cả sách một lượt trước khi cắt: cần biết từ nào từng xuất hiện ở dạng
+  // viết thường thì mới phân biệt được tên riêng viết hoa với từ viết tắt thật.
+  final bangChuHoa = bangChuHoaTenRieng(rawChapters);
+
   for (var chapterIndex = 0; chapterIndex < rawChapters.length; chapterIndex++) {
     onChapter?.call(chapterIndex + 1, rawChapters.length);
     final raw = rawChapters[chapterIndex];
@@ -327,7 +422,13 @@ ChunkResult buildChunks(
 
     void push(String rawDisplay, bool heading) {
       final display = _ensureTerminal(rawDisplay);
-      final speech = normalizeForSpeech(display, expandNumbers: expandNumbers);
+      // Sửa chữ hoa TRƯỚC khi chuẩn hoá, để bước gắn thẻ tiếng Anh nhìn thấy
+      // đúng dạng chữ. Chỉ đụng vào phần đọc lên; [display] giữ nguyên chữ
+      // trong sách.
+      final speech = normalizeForSpeech(
+        suaChuHoaTenRieng(display, bangChuHoa),
+        expandNumbers: expandNumbers,
+      );
       if (!_hasContent.hasMatch(speech)) return; // không còn gì để đọc
 
       // Trần ở trên áp cho phần HIỂN THỊ, nhưng thứ mô hình phải đọc là phần

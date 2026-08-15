@@ -100,6 +100,15 @@ class OnDeviceVieNeuEngine implements TtsEngine {
   @override
   bool get noiNguCanh => true;
 
+  /// v3 chưa cắt được giữa chừng.
+  ///
+  /// Vòng lặp sinh nằm trong `native/vieneu/src/engine.rs` và chưa có chỗ nhận
+  /// lệnh huỷ như bản v2 (`vieneu_v2_huy`). Ảnh hưởng cũng nhẹ hơn: v3 nối ngữ
+  /// cảnh nên chỉ đọc trước MỘT đoạn, tua đi thì cùng lắm chờ nốt một đoạn ấy —
+  /// không phải ba như v2.
+  @override
+  void huyDangDoc() {}
+
   @override
   String get description =>
       'Mô hình chạy thẳng trên máy, không cần mạng. Đọc nhanh hơn tốc độ nghe.';

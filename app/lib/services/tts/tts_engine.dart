@@ -55,6 +55,18 @@ class TtsResult {
   final List<int> duoi;
 }
 
+/// Dấu nhận biết một lượt đọc bị huỷ giữa chừng.
+///
+/// Phải khớp với `LOI_HUY` trong `native/vieneu/src/v2.rs` — chuỗi đi từ Rust
+/// sang nên không có kiểu lỗi riêng để mà bắt.
+const loiHuyDoc = 'đã huỷ để nhường cho đoạn khác';
+
+/// Lỗi này là do bị huỷ, không phải hỏng.
+///
+/// Bên gọi cần phân biệt: đọc trước bị huỷ thì bỏ qua, còn đoạn người dùng vừa
+/// chọn bị huỷ thì phải xin lại — xem `player_controller.playChunk`.
+bool laLoiHuy(Object err) => err.toString().contains(loiHuyDoc);
+
 class TtsException implements Exception {
   TtsException(this.message);
   final String message;
@@ -128,6 +140,16 @@ abstract class TtsEngine {
     List<int>? nguCanh,
     int lanThu = 0,
   });
+
+  /// Bỏ mọi lượt đọc đang chạy hoặc đang xếp hàng.
+  ///
+  /// Gọi khi người dùng TUA: những đoạn đang đọc trước không còn ai nghe, mà cứ
+  /// để chúng chạy nốt thì đoạn vừa được chọn phải xếp hàng sau — mỗi đoạn 5–7
+  /// giây, tua một cái chờ cả chục giây.
+  ///
+  /// Engine nào đọc nhanh tới mức không đáng cắt (Piper, TTS hệ thống) thì bỏ
+  /// qua. Lượt đọc bị huỷ ném lỗi, và bên gọi coi đó là chuyện bình thường.
+  void huyDangDoc() {}
 
   /// Báo cho engine biết sắp có nhiều đoạn cần tổng hợp liên tiếp (xuất file).
   ///

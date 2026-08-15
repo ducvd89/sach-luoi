@@ -160,6 +160,8 @@ pub extern "C" fn vieneu_v2_synthesize(
     text: *const c_char,
     voice: *const c_char,
     seed: u32,
+    // Mã yêu cầu, để `vieneu_v2_huy` cắt được. 0 nghĩa là không huỷ được.
+    ma: u64,
     out_len: *mut c_int,
 ) -> *mut c_float {
     if handle.is_null() {
@@ -187,7 +189,7 @@ pub extern "C" fn vieneu_v2_synthesize(
         fail!("không tạo được âm vị nào từ văn bản");
     }
 
-    let mut samples = match h.engine.synthesize(&phonemes, voice_name, seed) {
+    let mut samples = match h.engine.synthesize(&phonemes, voice_name, seed, ma) {
         Ok(s) => s,
         Err(e) => fail!(e),
     };
@@ -299,6 +301,21 @@ pub extern "C" fn vieneu_v2_remove_voice(
             1
         }
     }
+}
+
+/// Bỏ mọi yêu cầu đọc có mã ≤ [den_ma], để nhường máy cho đoạn vừa được chọn
+/// (người dùng tua).
+///
+/// **Không nhận handle, có chủ ý.** Cờ nằm ở phạm vi tiến trình nên gọi được từ
+/// bất kỳ isolate nào, kể cả lúc isolate giữ engine đang kẹt trong `synthesize`.
+/// Nếu phải đi qua handle thì lời gọi sẽ xếp hàng sau đúng cái lượt đọc mà nó
+/// muốn huỷ — vô nghĩa.
+///
+/// Lượt đọc bị huỷ trả về lỗi; bên gọi coi đó là chuyện bình thường chứ không
+/// phải hỏng.
+#[unsafe(no_mangle)]
+pub extern "C" fn vieneu_v2_huy(den_ma: u64) {
+    crate::v2::huy_toi(den_ma);
 }
 
 /// Thông báo lỗi của lần gọi gần nhất, null nếu không có.

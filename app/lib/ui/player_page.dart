@@ -84,7 +84,9 @@ class _PlayerPageState extends State<PlayerPage> {
           chapter: chapter,
           currentIndex: player.index,
           chunks: player.chunks,
-          onTapChunk: (i) => player.playChunk(i, autoplay: player.isPlaying),
+          // Chạm vào một đoạn LÀ tua: cắt việc đang đọc trước và im tiếng ngay.
+          onTapChunk: (i) =>
+              player.playChunk(i, autoplay: player.isPlaying, nguoiDungTua: true),
         );
 
         return Focus(
@@ -262,7 +264,6 @@ class _PlayerBar extends StatelessWidget {
               _SpeedSelector(),
               _SleepButton(),
               _SoiAmButton(),
-              _DocTruocButton(),
               _KhoaCamUngButton(),
             ],
           ),
@@ -388,44 +389,6 @@ class _SoiAmButton extends StatelessWidget {
         // Chữ ăn theo `foregroundColor` của nút nên luôn cùng màu với icon,
         // khỏi phải đặt màu ở hai chỗ rồi có ngày lệch nhau.
         label: const Text('Kiểm âm'),
-      ),
-    );
-  }
-}
-
-/// Bật/tắt việc đọc trước các đoạn tới.
-///
-/// Bật là thứ giữ cho chỗ chuyển đoạn liền mạch, nhưng cũng là thứ khiến máy
-/// chạy hết công suất gần như liên tục — vừa nghe vừa tổng hợp, không có quãng
-/// nghỉ. Trên điện thoại điều đó thành nóng máy và tụt pin.
-///
-/// Đặt cạnh nút Kiểm âm vì hai nút cùng một loại đánh đổi: đổi thời gian máy
-/// chạy lấy chất lượng nghe.
-class _DocTruocButton extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final state = AppScope.of(context);
-    final bat = state.settings.docTruocKhiNghe;
-
-    return Tooltip(
-      message: bat
-          ? 'Đọc trước: ĐANG BẬT — chuyển đoạn liền mạch, máy chạy liên tục'
-          : 'Đọc trước: đang tắt — máy mát hơn, mỗi lần chuyển đoạn phải chờ',
-      child: TextButton.icon(
-        style: TextButton.styleFrom(
-          foregroundColor:
-              bat ? SacNut.chinh.first : Theme.of(context).colorScheme.onSurface,
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          minimumSize: const Size(0, 40),
-        ),
-        onPressed: () {
-          state.settings.docTruocKhiNghe = !bat;
-          AppScope.read(context).saveSettings();
-        },
-        // Dùng bản `_outlined`: mấy bản đặc/rounded từng không vẽ ra gì trên máy
-        // này, còn bản viền thì lần nào cũng hiện.
-        icon: const Icon(Icons.bolt_outlined, size: 20),
-        label: const Text('Đọc trước'),
       ),
     );
   }

@@ -11,12 +11,17 @@ use std::io::Cursor;
 use mp3lame_encoder::{Bitrate, Builder, FlushNoGap, MonoPcm};
 use ogg::{PacketWriteEndInfo, PacketWriter};
 
-/// Opus chỉ nhận khung có độ dài cố định. 20 ms ở 48 kHz là 960 mẫu — mức mà
-/// mọi bộ giải mã đều hiểu và cũng là mức cân bằng nhất giữa độ trễ và hiệu quả.
-const KHUNG_20MS: usize = 960;
+/// Đồng hồ của Ogg/Opus: granule position và pre-skip LUÔN đếm theo mẫu 48 kHz
+/// dù âm thanh vào ở tần số nào (RFC 7845 mục 4). Đây không phải tần số của
+/// tín hiệu — xem [wav_sang_opus].
+const OPUS_DONG_HO: u32 = 48_000;
 
-/// Opus luôn chạy nội bộ ở 48 kHz, đúng bằng tần số mô hình sinh ra.
-const OPUS_SR: u32 = 48_000;
+/// Opus chỉ nhận khung có độ dài cố định. Lấy 20 ms — mức mà mọi bộ giải mã đều
+/// hiểu và cũng là mức cân bằng nhất giữa độ trễ và hiệu quả. Ở 48 kHz là 960
+/// mẫu, ở 24 kHz là 480.
+fn khung_20ms(sr: u32) -> usize {
+    (sr / 50) as usize
+}
 
 /// Đọc mẫu PCM 16-bit mono từ một file WAV do chính ứng dụng ghi ra.
 ///
@@ -136,47 +141,77 @@ fn bitrate_lame(kbps: u32) -> Bitrate {
 /// Opus chỉ sinh ra từng khung nén, không tự dựng file; phần đóng gói Ogg phải
 /// làm tay: hai trang đầu là OpusHead và OpusTags theo đặc tả RFC 7845, rồi mỗi
 /// khung âm thanh một packet với granule position tính theo mẫu 48 kHz.
+///
+/// ## Tần số vào: nhận thẳng cả năm mức của libopus
+///
+/// Trước đây hàm này đòi đúng 48 kHz, nên **engine VieNeu v2 không xuất được
+/// Opus**: NeuCodec dựng ra 24 kHz (xem `v2.rs`) nên mọi file cuối đều rơi về
+/// WAV kèm dòng "Opus cần 48 kHz, nhận 24000 Hz". Đòi hỏi ấy sai: libopus nhận
+/// thẳng 8/12/16/24/48 kHz, chỉ những tần số NGOÀI năm mức đó mới phải lấy mẫu
+/// lại. Đọc 24 kHz thẳng còn hơn nâng lên 48 kHz rồi mới nén — khỏi nội suy,
+/// khỏi tốn gấp đôi công.
+///
+/// Cạm bẫy: **đồng hồ của Ogg không đổi theo tần số vào.** `pre_skip` và
+/// granule position luôn đếm bằng mẫu 48 kHz, nên phải nhân với
+/// [OPUS_DONG_HO]`/sr` (24 kHz thì gấp đôi). Quên chỗ này thì file vẫn phát
+/// được nhưng mọi trình phát báo độ dài chỉ bằng một nửa, và tua thì nhảy sai
+/// chỗ — hỏng lặng lẽ, không có lỗi nào bật ra.
 pub fn wav_sang_opus(pcm: &[i16], sr: u32, bitrate_bps: i32) -> Result<Vec<u8>, String> {
-    if sr != OPUS_SR {
-        return Err(format!("Opus cần 48 kHz, nhận {sr} Hz"));
-    }
     use audiopus::{coder::Encoder, Application, Bitrate as OpusBitrate, Channels, SampleRate};
 
-    let mut enc = Encoder::new(SampleRate::Hz48000, Channels::Mono, Application::Audio)
+    let sr_vao = match sr {
+        8_000 => SampleRate::Hz8000,
+        12_000 => SampleRate::Hz12000,
+        16_000 => SampleRate::Hz16000,
+        24_000 => SampleRate::Hz24000,
+        48_000 => SampleRate::Hz48000,
+        _ => return Err(format!("Opus nhận 8/12/16/24/48 kHz, không nhận {sr} Hz")),
+    };
+    // Chia hết với cả năm mức trên, nên không mất mẫu nào vì làm tròn.
+    let nhip = (OPUS_DONG_HO / sr) as u64;
+    let khung = khung_20ms(sr);
+
+    let mut enc = Encoder::new(sr_vao, Channels::Mono, Application::Audio)
         .map_err(|e| format!("Opus new: {e}"))?;
     enc.set_bitrate(OpusBitrate::BitsPerSecond(bitrate_bps))
         .map_err(|e| format!("Opus bitrate: {e}"))?;
 
     // Bộ mã hoá cần một quãng "chạy đà" ở đầu; số mẫu đó phải khai trong
-    // OpusHead để bộ giải mã bỏ đi, không thì file bị lệch đầu.
-    let pre_skip: u16 = enc.lookahead().map(|v| v as u16).unwrap_or(312);
+    // OpusHead để bộ giải mã bỏ đi, không thì file bị lệch đầu. libopus trả về
+    // theo tần số VÀO, còn OpusHead khai theo đồng hồ 48 kHz.
+    let pre_skip: u16 = enc
+        .lookahead()
+        .map(|v| (v as u64 * nhip) as u16)
+        .unwrap_or(312);
 
     let mut ra = Vec::new();
     let serial: u32 = 0x5361_6368; // "Sach" — chỉ cần khác nhau giữa các luồng
     {
         let mut w = PacketWriter::new(Cursor::new(&mut ra));
 
-        w.write_packet(opus_head(1, pre_skip, OPUS_SR), serial, PacketWriteEndInfo::EndPage, 0)
+        w.write_packet(opus_head(1, pre_skip, sr), serial, PacketWriteEndInfo::EndPage, 0)
             .map_err(|e| format!("Ogg OpusHead: {e}"))?;
         w.write_packet(opus_tags(), serial, PacketWriteEndInfo::EndPage, 0)
             .map_err(|e| format!("Ogg OpusTags: {e}"))?;
 
         let mut dem_mau = pre_skip as u64;
-        let so_khung = (pcm.len() + KHUNG_20MS - 1) / KHUNG_20MS;
+        let so_khung = pcm.len().div_ceil(khung);
         let mut dem = [0u8; 4000];
+        // Dựng một lần rồi dùng lại: một part 30 phút là gần 90 nghìn khung.
+        let mut vao = vec![0i16; khung];
 
         for k in 0..so_khung {
-            let dau = k * KHUNG_20MS;
-            let het = (dau + KHUNG_20MS).min(pcm.len());
+            let dau = k * khung;
+            let het = (dau + khung).min(pcm.len());
             // Khung cuối thường thiếu mẫu: đệm số 0 cho đủ, vì Opus không nhận
             // khung ngắn hơn mức đã khai.
-            let mut khung = [0i16; KHUNG_20MS];
-            khung[..het - dau].copy_from_slice(&pcm[dau..het]);
+            vao[..het - dau].copy_from_slice(&pcm[dau..het]);
+            vao[het - dau..].fill(0);
 
             let n = enc
-                .encode(&khung, &mut dem)
+                .encode(&vao, &mut dem)
                 .map_err(|e| format!("Opus encode khung {k}: {e}"))?;
-            dem_mau += KHUNG_20MS as u64;
+            dem_mau += khung as u64 * nhip;
 
             let cuoi = k + 1 == so_khung;
             w.write_packet(
@@ -219,25 +254,123 @@ fn opus_tags() -> Vec<u8> {
 mod kiem_thu {
     use super::*;
 
-    /// Một giây sóng sin 440 Hz — đủ để bộ mã hoá có việc thật mà làm.
-    fn sin_mot_giay() -> Vec<i16> {
-        (0..OPUS_SR as usize)
+    /// Một giây sóng sin 440 Hz ở tần số [sr] — đủ để bộ mã hoá có việc thật.
+    fn sin_mot_giay_o(sr: u32) -> Vec<i16> {
+        (0..sr as usize)
             .map(|i| {
-                let t = i as f32 / OPUS_SR as f32;
+                let t = i as f32 / sr as f32;
                 ((t * 440.0 * std::f32::consts::TAU).sin() * 12000.0) as i16
             })
             .collect()
     }
 
+    fn sin_mot_giay() -> Vec<i16> {
+        sin_mot_giay_o(48_000)
+    }
+
     #[test]
     fn opus_ra_file_ogg_hop_le() {
-        let ra = wav_sang_opus(&sin_mot_giay(), OPUS_SR, 32_000).unwrap();
+        let ra = wav_sang_opus(&sin_mot_giay(), 48_000, 32_000).unwrap();
         assert_eq!(&ra[0..4], b"OggS", "phải bắt đầu bằng chữ ký Ogg");
         // Trang đầu chứa OpusHead, trang thứ hai chứa OpusTags.
         assert!(ra.windows(8).any(|w| w == b"OpusHead"));
         assert!(ra.windows(8).any(|w| w == b"OpusTags"));
         // Một giây ở 32 kbps là khoảng 4 KB; nới rộng biên cho chắc.
         assert!(ra.len() > 1500 && ra.len() < 12_000, "dài {} byte", ra.len());
+    }
+
+    /// Đúng đường đi của engine VieNeu v2: NeuCodec dựng 24 kHz.
+    ///
+    /// Trước đây hàm nén trả lỗi "Opus cần 48 kHz" nên v2 không xuất được Opus
+    /// bao giờ, mọi file cuối đều rơi về WAV.
+    #[test]
+    fn opus_nhan_ca_nam_tan_so_cua_libopus() {
+        for sr in [8_000u32, 12_000, 16_000, 24_000, 48_000] {
+            let ra = wav_sang_opus(&sin_mot_giay_o(sr), sr, 32_000)
+                .unwrap_or_else(|e| panic!("{sr} Hz: {e}"));
+            assert_eq!(&ra[0..4], b"OggS", "{sr} Hz phải ra Ogg");
+            assert!(ra.windows(8).any(|w| w == b"OpusHead"), "{sr} Hz thiếu OpusHead");
+
+            // OpusHead khai lại đúng tần số vào (RFC 7845 mục 5.1, byte 12..16).
+            let dau = ra.windows(8).position(|w| w == b"OpusHead").unwrap();
+            let khai = u32::from_le_bytes(ra[dau + 12..dau + 16].try_into().unwrap());
+            assert_eq!(khai, sr, "OpusHead phải ghi tần số vào thật");
+
+            // Một giây ở 32 kbps là khoảng 4 KB, không phụ thuộc tần số vào.
+            assert!(ra.len() > 1500 && ra.len() < 12_000, "{sr} Hz dài {} byte", ra.len());
+        }
+    }
+
+    /// Nén rồi giải nén lại: âm thanh 24 kHz phải ra đúng âm thanh 24 kHz.
+    ///
+    /// Bài trên chỉ soi vỏ Ogg, bài này soi ruột. Khai sai tần số cho bộ mã hoá
+    /// thì file vẫn đủ trang đủ mục, chỉ có tiếng là nhanh gấp đôi hoặc chậm một
+    /// nửa — thứ mà chỉ mở ra nghe mới biết.
+    #[test]
+    fn nen_roi_giai_lai_ra_dung_do_dai_va_dung_muc_am() {
+        use audiopus::{coder::Decoder, Channels, SampleRate};
+        use ogg::PacketReader;
+
+        const SR: u32 = 24_000;
+        let goc = sin_mot_giay_o(SR);
+        let nen = wav_sang_opus(&goc, SR, 48_000).unwrap();
+
+        let mut doc = PacketReader::new(Cursor::new(&nen));
+        let mut dec = Decoder::new(SampleRate::Hz24000, Channels::Mono).unwrap();
+        let mut ra: Vec<i16> = Vec::new();
+        let mut bo_qua_header = 2; // OpusHead và OpusTags không phải âm thanh
+        while let Ok(Some(goi)) = doc.read_packet() {
+            if bo_qua_header > 0 {
+                bo_qua_header -= 1;
+                continue;
+            }
+            let mut khung = vec![0i16; khung_20ms(SR)];
+            let n = dec.decode(Some(&goi.data), &mut khung[..], false).unwrap();
+            ra.extend_from_slice(&khung[..n]);
+        }
+
+        // Một giây vào thì một giây ra, sai lệch chỉ ở phần chạy đà và khung
+        // cuối được đệm — không được là nửa hay gấp đôi.
+        let lech = (ra.len() as i64 - goc.len() as i64).abs();
+        assert!(
+            lech < SR as i64 / 10,
+            "giải ra {} mẫu, vào {} mẫu — lệch quá xa",
+            ra.len(),
+            goc.len()
+        );
+
+        // Còn ra tiếng thật chứ không phải im lặng hay nhiễu: mức hiệu dụng
+        // phải xấp xỉ bản gốc (sin biên độ 12000 -> RMS ~8500).
+        let rms = |v: &[i16]| (v.iter().map(|&s| (s as f64).powi(2)).sum::<f64>() / v.len() as f64).sqrt();
+        let (a, b) = (rms(&goc), rms(&ra));
+        assert!(b > a * 0.7 && b < a * 1.3, "mức âm gốc {a:.0}, giải ra {b:.0}");
+    }
+
+    /// Đồng hồ của Ogg luôn là 48 kHz dù âm thanh vào ở tần số nào.
+    ///
+    /// Đây là chỗ hỏng lặng lẽ nhất: quên nhân nhịp thì file 24 kHz vẫn phát
+    /// được, chỉ là trình phát báo độ dài bằng nửa thật và tua thì nhảy sai.
+    #[test]
+    fn granule_dem_theo_dong_ho_48k_chu_khong_theo_tan_so_vao() {
+        let mot_giay = |sr: u32| -> u64 {
+            let ra = wav_sang_opus(&sin_mot_giay_o(sr), sr, 32_000).unwrap();
+            // Granule của trang cuối = tổng số mẫu 48 kHz, nằm ở byte 6..14 của
+            // trang Ogg cuối cùng.
+            let cuoi = (0..ra.len() - 4)
+                .rev()
+                .find(|&i| &ra[i..i + 4] == b"OggS")
+                .expect("phải có trang Ogg");
+            u64::from_le_bytes(ra[cuoi + 6..cuoi + 14].try_into().unwrap())
+        };
+        // Một giây âm thanh là ~48 000 mẫu ở đồng hồ 48 kHz, dù vào ở tần số
+        // nào — cộng thêm pre-skip và phần đệm của khung cuối.
+        for sr in [16_000u32, 24_000, 48_000] {
+            let g = mot_giay(sr);
+            assert!(
+                (48_000..49_500).contains(&g),
+                "{sr} Hz cho granule {g}, đáng lẽ quanh 48 000"
+            );
+        }
     }
 
     #[test]
@@ -291,7 +424,8 @@ mod kiem_thu {
     #[test]
     fn bao_loi_ro_chu_khong_sap() {
         assert!(doc_wav_mono(b"khong phai wav").is_err());
-        // Opus chỉ chạy ở 48 kHz; sai tần số thì phải nói ra.
+        // 22 050 Hz (giọng Piper) không nằm trong năm mức libopus nhận, mà ở
+        // đây chưa có bộ lấy mẫu lại — phải nói ra chứ đừng ghi file hỏng.
         assert!(wav_sang_opus(&[0i16; 960], 22_050, 32_000).is_err());
     }
 }

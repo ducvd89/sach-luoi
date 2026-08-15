@@ -155,7 +155,6 @@ class AppSettings {
     this.exportTreeUri = '',
     this.nguCanhNghe = NguCanh.tuanTu,
     this.soiAmKhiNghe = false,
-    this.docTruocKhiNghe = true,
     this.nguCanhXuat = NguCanh.loLon,
     this.darkMode,
   });
@@ -230,17 +229,6 @@ class AppSettings {
   /// thì đọc lại vẫn ra đúng bản cũ.
   bool soiAmKhiNghe;
 
-  /// Đọc trước vài đoạn tới trong lúc đang nghe đoạn hiện tại.
-  ///
-  /// Mặc định BẬT vì nó là thứ giữ cho chỗ chuyển đoạn liền mạch. Nhưng nó cũng
-  /// là thứ khiến máy chạy hết công suất gần như liên tục: vừa nghe vừa tổng
-  /// hợp, không có quãng nghỉ. Trên điện thoại điều đó thành nóng máy và tụt pin
-  /// nhanh, nên phải cho tắt được.
-  ///
-  /// Tắt thì mỗi đoạn chỉ được tổng hợp đúng lúc cần — máy mát hơn, đổi lại mỗi
-  /// lần chuyển đoạn phải chờ vài giây.
-  bool docTruocKhiNghe;
-
   /// Nối ngữ cảnh khi xuất file. Mặc định theo lô: giữ được tốc độ chạy song
   /// song mà vẫn bỏ được phần lớn chỗ chuyển giọng.
   NguCanh nguCanhXuat;
@@ -270,7 +258,6 @@ class AppSettings {
         'exportTreeUri': exportTreeUri,
         'nguCanhNghe': nguCanhNghe.id,
         'soiAmKhiNghe': soiAmKhiNghe,
-        'docTruocKhiNghe': docTruocKhiNghe,
         'nguCanhXuat': nguCanhXuat.id,
         'darkMode': darkMode,
       };
@@ -305,7 +292,6 @@ class AppSettings {
         exportTreeUri: json['exportTreeUri'] as String? ?? '',
         nguCanhNghe: NguCanh.fromId(json['nguCanhNghe'] as String? ?? 'tuan-tu'),
         soiAmKhiNghe: json['soiAmKhiNghe'] as bool? ?? false,
-        docTruocKhiNghe: json['docTruocKhiNghe'] as bool? ?? true,
         nguCanhXuat: NguCanh.fromId(json['nguCanhXuat'] as String?),
         darkMode: json['darkMode'] as bool?,
     );

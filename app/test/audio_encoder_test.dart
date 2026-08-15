@@ -18,12 +18,12 @@ import 'duong_dan_repo.dart';
 final _lib = vieneuLibPath;
 
 /// Một giây sóng sin — đủ để bộ mã hoá có việc thật.
-Uint8List _wavMotGiay() {
-  final samples = Float32List(48000);
+Uint8List _wavMotGiay([int rate = 48000]) {
+  final samples = Float32List(rate);
   for (var i = 0; i < samples.length; i++) {
-    samples[i] = 0.3 * math.sin(i / 48000 * 330 * 2 * math.pi);
+    samples[i] = 0.3 * math.sin(i / rate * 330 * 2 * math.pi);
   }
-  return buildWav(samples, 48000);
+  return buildWav(samples, rate);
 }
 
 /// Có thư viện native đã dựng để mà gọi không.
@@ -71,6 +71,32 @@ void main() {
       }
       // Không được để lại file tạm.
       expect(File('${ra.path}.tmp').existsSync(), isFalse);
+    }
+  }, timeout: const Timeout(Duration(minutes: 3)));
+
+  test('nén được WAV 24 kHz của engine VieNeu v2', () async {
+    if (!_coThuVien()) {
+      markTestSkipped('Chưa dựng thư viện native — bỏ qua');
+      return;
+    }
+    // NeuCodec của v2 dựng ra 24 kHz chứ không phải 48 kHz như v3. Bộ nén từng
+    // đòi đúng 48 kHz nên mọi file cuối của v2 đều rơi về WAV kèm dòng "Opus
+    // cần 48 kHz, nhận 24000 Hz" — libopus vốn nhận thẳng 24 kHz.
+    final wav = File(p.join(dir.path, 'v2.wav'))..writeAsBytesSync(_wavMotGiay(24000));
+
+    for (final (format, bitrate, ten) in [
+      (EncodeFormat.opus, 32000, 'v2.opus'),
+      (EncodeFormat.mp3, 128, 'v2.mp3'),
+      (EncodeFormat.aac, 64000, 'v2.aac'),
+    ]) {
+      final ra = File(p.join(dir.path, ten));
+      await encodeAudioFile(
+          wavPath: wav.path, outBase: p.withoutExtension(ra.path), format: format, bitrate: bitrate);
+      expect(ra.existsSync(), isTrue, reason: '$ten phải được tạo');
+      expect(ra.lengthSync(), greaterThan(1000), reason: '$ten quá ngắn');
+      if (format == EncodeFormat.opus) {
+        expect(String.fromCharCodes(ra.readAsBytesSync().take(4)), 'OggS');
+      }
     }
   }, timeout: const Timeout(Duration(minutes: 3)));
 

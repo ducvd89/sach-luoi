@@ -60,21 +60,8 @@ Float32List _doiToc(Float32List input, double speed) {
 }
 
 void main() {
-  group('Đếm từ trong văn bản', () {
-    test('mỗi từ một âm, dấu câu không tính', () {
-      expect(demTu('Xin chào, đây là bản đọc thử.'), 7);
-      expect(demTu('Ông ấy đi — rồi về .'), 5);
-      expect(demTu(''), 0);
-      expect(demTu('   '), 0);
-    });
-
-    test('chữ số đọc thành nhiều âm', () {
-      // "1975" -> một nghìn chín trăm bảy mươi lăm (7 âm) + "Năm" = 8.
-      expect(demTu('Năm 1975.'), 8);
-      expect(demTu('3km'), 2); // "ba" + "km"
-      expect(demTu('Chương 12'), 3); // "Chương" + "mười" + "hai"
-    });
-  });
+  // Phần đếm âm từ VĂN BẢN đã dọn sang `am_tiet_chu_test.dart` — nó không chỉ
+  // đếm từ nữa mà phải đoán được cả từ tiếng Anh lẫn vào.
 
   group('Ngưỡng đạt', () {
     test('đoạn dưới 7 từ dùng sai số ±1 âm', () {
