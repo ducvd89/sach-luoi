@@ -10,7 +10,7 @@
 ; đây, nên thư mục cài chỉ khoảng 120 MB.
 
 #define AppName "Sách lười"
-#define AppVersion "1.6.2"
+#define AppVersion "1.6.3"
 #define AppPublisher "Sách lười"
 #define AppExe "SachLuoi.exe"
 #define SourceDir "dist\SachLuoi"
@@ -87,7 +87,7 @@ WizardInstalling=Đang cài đặt
 InstallingLabel=Đang chép file vào máy, chờ một chút.
 StatusExtractFiles=Đang giải nén...
 FinishedHeadingLabel=Đã cài xong [name]
-FinishedLabel=Ứng dụng đã được cài vào máy.%n%nMở lên, vào Cài đặt và bấm "Tải mô hình" một lần (khoảng 206 MB). Sau đó đọc sách được hoàn toàn không cần mạng.
+FinishedLabel=Ứng dụng đã được cài vào máy.%n%nMở lên, vào Cài đặt và bấm "Tải mô hình" một lần (khoảng 145 MB). Sau đó đọc sách được hoàn toàn không cần mạng.
 FinishedLabelNoIcons=Đã cài xong [name].
 ClickFinish=Bấm Finish để đóng.
 ConfirmUninstall=Gỡ %1 khỏi máy?

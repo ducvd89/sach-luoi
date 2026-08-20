@@ -23,7 +23,7 @@ class Storage {
   ///
   /// Trên Windows, path_provider lấy đường dẫn từ ProductName ghi trong file
   /// exe. Đổi tên ứng dụng là đổi luôn thư mục — nếu không dời dữ liệu sang thì
-  /// người dùng mở lên thấy thư viện trống trơn và phải tải lại mô hình 206 MB.
+  /// người dùng mở lên thấy thư viện trống trơn và phải tải lại mô hình 145 MB.
   static const _legacyDirNames = ['Sach noi tieng Viet'];
 
   /// [overrideRoot] chỉ dùng khi kiểm thử, để không đụng vào dữ liệu thật.

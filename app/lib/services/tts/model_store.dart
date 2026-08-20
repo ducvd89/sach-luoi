@@ -1,6 +1,6 @@
 /// Quản lý bộ file mô hình trên máy: kiểm tra, tải về, xoá đi.
 ///
-/// Mô hình nặng khoảng 206 MB nên không nhét vào bản cài; ứng dụng tải một lần
+/// Mô hình nặng khoảng 145 MB nên không nhét vào bản cài; ứng dụng tải một lần
 /// rồi dùng offline mãi. Từ điển âm vị thì đi kèm sẵn trong ứng dụng vì không
 /// có nguồn tải công khai nào ổn định.
 library;
@@ -64,7 +64,7 @@ class ModelPack {
 const goiV3 = ModelPack(
   ten: 'mô hình v3 Turbo',
   tep: 'vieneu-v3.zip',
-  megabytes: 200.3,
+  megabytes: 145.4,
   canCo: [
     'model/vieneu_prefill.onnx',
     'model/vieneu_decode_step.onnx',
@@ -127,6 +127,16 @@ const goiV2Encoder = ModelPack(
     'distill_neucodec_encoder.onnx.data',
   ],
 );
+
+/// Tên một mục trong gói nén, đã chuẩn hoá về dấu phân cách "/".
+///
+/// Đặc tả zip bắt dùng "/" (APPNOTE mục 4.4.17.1) nhưng vài công cụ nén trên
+/// Windows vẫn ghi dấu gạch ngược. Khi ấy Android coi cả cụm
+/// `model\config.json` là TÊN FILE nằm ở thư mục gốc: bung xong không lỗi gì,
+/// chỉ có phép kiểm đủ file trượt với "vẫn thiếu file". Windows không lộ ra vì
+/// dấu gạch ngược ở đó cũng là dấu phân cách — nên lỗi này chỉ hiện trên điện
+/// thoại, và chỉ với gói có thư mục con (gói v2 phẳng nên thoát).
+String tenTrongGoi(String ten) => ten.replaceAll(r'\', '/');
 
 double get totalMegabytes => goiV3.megabytes;
 double get v2EncoderMegabytes => goiV2Encoder.megabytes;
@@ -463,10 +473,11 @@ class ModelStore {
     try {
       for (final muc in ZipDecoder().decodeStream(nguon)) {
         if (!muc.isFile) continue;
+        final ten = tenTrongGoi(muc.name);
         // Chặn đường dẫn leo ra ngoài thư mục đích ("zip slip"). Gói là của
         // mình nên không chờ đợi chuyện này, nhưng một dòng kiểm thì rẻ mà bỏ
         // được cả một lớp rủi ro.
-        final ra = File(p.normalize(p.join(dich.path, muc.name)));
+        final ra = File(p.normalize(p.join(dich.path, ten)));
         if (!p.isWithin(dich.path, ra.path)) continue;
 
         await ra.parent.create(recursive: true);

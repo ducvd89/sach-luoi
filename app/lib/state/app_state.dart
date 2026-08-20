@@ -174,7 +174,7 @@ class AppState extends ChangeNotifier {
     await refreshEngine();
   }
 
-  /// Tải mô hình về máy. Khoảng 206 MB, chỉ làm một lần.
+  /// Tải mô hình về máy. Khoảng 145 MB, chỉ làm một lần.
   Future<void> downloadModel() async {
     if (modelProgress != null) return;
     modelProgress = const WorkProgress('Đang chuẩn bị…');

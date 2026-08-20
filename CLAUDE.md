@@ -218,7 +218,7 @@ thanh trượt), `saveSettings()` mới ghi xuống đĩa.
 | Nối ngữ cảnh | có (`duoi`) | không — bám giọng bằng mã tham chiếu cố định |
 | Nhân bản giọng | có | **chưa** — cần bộ mã hoá NeuCodec, repo công khai chỉ có bộ giải mã |
 
-Tải riêng: v3 là 206 MB, v2 là 478 MB (riêng bộ giải mã NeuCodec đã 298 MB). Người dùng
+Tải riêng: v3 là 145 MB, v2 là 478 MB (riêng bộ giải mã NeuCodec đã 298 MB). Người dùng
 chọn engine nào thì Cài đặt hiện đúng mục tải của engine ấy. Nhân bản giọng cho v2 cần
 thêm bộ **mã hoá** NeuCodec 519 MB, chỉ tải khi bấm thêm giọng lần đầu.
 

@@ -352,7 +352,7 @@ Future<void> _chayVaBaoLoi(BuildContext context, Future<void> Function() viec) a
 
 /// Tải mô hình giọng đọc về máy — mục cài đặt duy nhất mà máy nào cũng cần.
 ///
-/// Mô hình khoảng 206 MB nên không nhét vào bản cài; tải một lần rồi dùng
+/// Mô hình khoảng 145 MB nên không nhét vào bản cài; tải một lần rồi dùng
 /// offline mãi. Từ điển âm vị thì đã đi kèm sẵn trong ứng dụng.
 class _ModelSection extends StatefulWidget {
   const _ModelSection();
@@ -437,7 +437,7 @@ class _ModelSectionState extends State<_ModelSection> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Xoá mô hình?'),
-        content: const Text('Giải phóng khoảng 206 MB. Muốn nghe offline lại thì phải tải lại.'),
+        content: const Text('Giải phóng khoảng 145 MB. Muốn nghe offline lại thì phải tải lại.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Huỷ')),
           FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Xoá')),
@@ -451,7 +451,7 @@ class _ModelSectionState extends State<_ModelSection> {
 /// Tải bộ file của engine v2.
 ///
 /// Tách khỏi [_ModelSection] vì hai engine tải riêng và nặng khác nhau hẳn: v3
-/// là 206 MB, v2 là 478 MB — mà phần lớn chỗ chênh nằm ở bộ giải mã NeuCodec
+/// là 145 MB, v2 là 478 MB — mà phần lớn chỗ chênh nằm ở bộ giải mã NeuCodec
 /// (298 MB) chứ không phải ở mô hình ngôn ngữ.
 class _ModelV2Section extends StatefulWidget {
   const _ModelV2Section();

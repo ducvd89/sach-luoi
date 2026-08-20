@@ -2,17 +2,19 @@
 ///
 /// Piper là mô hình VITS nhỏ (21-64 MB), chạy được cả trên máy yếu lẫn điện
 /// thoại. Nó không hay bằng VieNeu nhưng nhẹ hơn mười lần và không cần tải mô
-/// hình 206 MB, nên vẫn đáng giữ làm lựa chọn.
+/// hình 145 MB, nên vẫn đáng giữ làm lựa chọn.
 library;
 
 import 'dart:io';
+import 'dart:isolate';
 
-import 'package:archive/archive.dart';
+import 'package:archive/archive_io.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 
 import '../../models/work_progress.dart';
 import '../storage.dart';
+import 'model_store.dart' show tenTrongGoi;
 
 /// Một gói giọng tải về được.
 class VoicePack {
@@ -111,28 +113,79 @@ Future<void> downloadVoicePack(
   }
 
   final expected = response.contentLength ?? pack.megabytes * 1024 * 1024;
-  final bytes = <int>[];
-  await for (final chunk in response.stream) {
-    bytes.addAll(chunk);
-    onProgress(WorkProgress(
-      'Đang tải ${(bytes.length / 1024 / 1024).toStringAsFixed(0)}/${pack.megabytes} MB',
-      // Chừa 10% cuối cho việc giải nén.
-      value: (bytes.length / expected) * 0.9,
-    ));
+  final nen = File(p.join(voicePackDir.path, '${pack.folder}.tar.bz2.part'));
+  final tar = File(p.join(voicePackDir.path, '${pack.folder}.tar.part'));
+
+  try {
+    final sink = nen.openWrite();
+    var received = 0;
+    try {
+      await for (final chunk in response.stream) {
+        sink.add(chunk);
+        received += chunk.length;
+        onProgress(WorkProgress(
+          'Đang tải ${(received / 1024 / 1024).toStringAsFixed(0)}/${pack.megabytes} MB',
+          // Chừa 10% cuối cho việc giải nén.
+          value: expected == 0 ? 0 : (received / expected) * 0.9,
+        ));
+      }
+    } finally {
+      await sink.flush();
+      await sink.close();
+    }
+
+    onProgress(const WorkProgress('Đang giải nén…', value: 0.92));
+    // Rút sẵn ra chuỗi: isolate mới không có `Storage.instance` nên gọi
+    // `voicePackDir` bên trong nó là ném lỗi, mà File cũng không gửi qua được.
+    final duongNen = nen.path, duongTar = tar.path, duongDich = voicePackDir.path;
+    await Isolate.run(() => _giaiNen(duongNen, duongTar, duongDich));
+  } finally {
+    if (await nen.exists()) await nen.delete();
+    if (await tar.exists()) await tar.delete();
+    if (client == null) web.close();
   }
 
-  onProgress(const WorkProgress('Đang giải nén…', value: 0.92));
-  // Gói của sherpa-onnx là .tar.bz2: bung bz2 rồi mới đọc tar.
-  final tar = BZip2Decoder().decodeBytes(bytes);
-  final archive = TarDecoder().decodeBytes(tar);
-
-  for (final entry in archive) {
-    if (!entry.isFile) continue;
-    final target = File(p.join(voicePackDir.path, entry.name));
-    await target.parent.create(recursive: true);
-    await target.writeAsBytes(entry.content as List<int>, flush: true);
+  if (findVoicePack(pack.folder) == null) {
+    throw Exception('Giải nén ${pack.name} xong nhưng không thấy file mô hình');
   }
-
   onProgress(const WorkProgress('Xong', value: 1));
-  if (client == null) web.close();
+}
+
+/// Bung `.tar.bz2` từ file ra file, không qua bộ nhớ.
+///
+/// Chạy trong isolate riêng vì hai lẽ. Một: bản cài đặt bz2 của gói `archive`
+/// viết bằng Dart thuần và chậm — để trên isolate giao diện thì màn hình đứng
+/// vài giây và Android kêu ANR. Hai: bản cũ gom cả gói vào `List<int>` rồi mới
+/// giải, mà list growable của Dart giữ mỗi phần tử 8 byte, nên gói 64 MB ngốn
+/// ~512 MB (chưa kể lúc nhân đôi để mở rộng, và bản tar giải ra sau đó) —
+/// Android giết luôn tiến trình, người dùng chỉ thấy ứng dụng biến mất.
+void _giaiNen(String nen, String tar, String dich) {
+  var vao = InputFileStream(nen);
+  var ra = OutputFileStream(tar);
+  try {
+    BZip2Decoder().decodeStream(vao, ra);
+  } finally {
+    ra.closeSync();
+    vao.closeSync();
+  }
+
+  vao = InputFileStream(tar);
+  try {
+    for (final muc in TarDecoder().decodeStream(vao)) {
+      if (!muc.isFile) continue;
+      // Chuẩn hoá dấu phân cách rồi chặn đường dẫn leo ra ngoài thư mục đích.
+      final duong = File(p.normalize(p.join(dich, tenTrongGoi(muc.name))));
+      if (!p.isWithin(dich, duong.path)) continue;
+
+      duong.parent.createSync(recursive: true);
+      final o = OutputFileStream(duong.path);
+      try {
+        muc.writeContent(o);
+      } finally {
+        o.closeSync();
+      }
+    }
+  } finally {
+    vao.closeSync();
+  }
 }

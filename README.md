@@ -11,10 +11,10 @@ Chạy **hoàn toàn trên máy**: không cần mạng, không gửi sách đi �
 
 | | |
 |---|---|
-| **Windows** | Chạy `SachLuoi-Setup-1.6.2.exe`. Không cần quyền quản trị, cài vào `%LOCALAPPDATA%`. |
+| **Windows** | Chạy `SachLuoi-Setup-1.6.3.exe`. Không cần quyền quản trị, cài vào `%LOCALAPPDATA%`. |
 | **Android** | Cài `SachLuoi-android-arm64.apk`. Cần Android 7 trở lên, máy 64-bit. |
 
-Sau khi cài, mở *Cài đặt → Giọng đọc* và bấm **Tải mô hình (206 MB)** một lần. Từ đó đọc được cả
+Sau khi cài, mở *Cài đặt → Giọng đọc* và bấm **Tải mô hình (145 MB)** một lần. Từ đó đọc được cả
 khi không có mạng.
 
 ---
@@ -30,7 +30,7 @@ Bốn engine, đổi trong **Cài đặt**:
 | Âm thanh | 48 kHz, trong nhất | 24 kHz | khá, hơi máy | tuỳ máy |
 | Đọc | chuẩn | tự nhiên hơn, biết cả tiếng Anh xen kẽ | hơi máy | tuỳ máy |
 | Tốc độ | ~2,9× thời gian thực | ~2,8× | nhanh hơn nhiều | nhanh |
-| Dung lượng tải | 206 MB | 478 MB | 21–64 MB mỗi gói | không phải tải |
+| Dung lượng tải | 145 MB | 478 MB | 32–64 MB mỗi gói | không phải tải |
 | Nền tảng | Windows, Android | Windows, Android | Windows, Android | Android |
 
 **Chọn cái nào:** v3 Turbo cho gần như mọi trường hợp — nó chở gấp 2,5 lần lượng thông tin âm cho
