@@ -332,6 +332,24 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 }
 
+/// Chạy một việc tải và BÁO LỖI nếu hỏng.
+///
+/// Trước đây hai nút tải gọi thẳng `downloadModel()` mà không chờ, không bắt
+/// lỗi. Máy chủ trả 401 (nguồn mô hình bị khoá) thì ngoại lệ rơi vào hư không:
+/// thanh tiến trình biến mất giữa chừng và người dùng chỉ thấy "đứng ở 40%",
+/// không có một chữ nào giải thích.
+Future<void> _chayVaBaoLoi(BuildContext context, Future<void> Function() viec) async {
+  final messenger = ScaffoldMessenger.of(context);
+  try {
+    await viec();
+  } catch (err) {
+    messenger.showSnackBar(SnackBar(
+      content: Text('Tải không xong: $err'),
+      duration: const Duration(seconds: 8),
+    ));
+  }
+}
+
 /// Tải mô hình giọng đọc về máy — mục cài đặt duy nhất mà máy nào cũng cần.
 ///
 /// Mô hình khoảng 206 MB nên không nhét vào bản cài; tải một lần rồi dùng
@@ -405,7 +423,9 @@ class _ModelSectionState extends State<_ModelSection> {
         NutSac(
           nhan: 'TẢI MÔ HÌNH (${totalMegabytes.round()} MB)',
           hinh: Icons.arrow_downward_rounded,
-          onNhan: installed == null ? null : () => AppScope.read(context).downloadModel(),
+          onNhan: installed == null
+              ? null
+              : () => _chayVaBaoLoi(context, AppScope.read(context).downloadModel),
         ),
       ],
     );
@@ -502,7 +522,9 @@ class _ModelV2SectionState extends State<_ModelV2Section> {
         NutSac(
           nhan: 'TẢI MÔ HÌNH V2 (${v2Megabytes.round()} MB)',
           hinh: Icons.arrow_downward_rounded,
-          onNhan: installed == null ? null : () => AppScope.read(context).downloadV2Model(),
+          onNhan: installed == null
+              ? null
+              : () => _chayVaBaoLoi(context, AppScope.read(context).downloadV2Model),
         ),
       ],
     );

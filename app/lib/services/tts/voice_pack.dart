@@ -38,7 +38,12 @@ class VoicePack {
   final String modelFile;
 }
 
-const _base = 'https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models';
+/// Nơi tải gói giọng: bản sao do chính dự án giữ.
+///
+/// Cùng lý do như mô hình VieNeu (xem `model_store.dart`): nguồn của bên thứ ba
+/// có thể bị khoá hoặc gỡ bất cứ lúc nào, mà lúc ấy thì không ai sửa được gì.
+/// Các gói ở đây là bản sao nguyên vẹn từ sherpa-onnx của k2-fsa.
+const _base = 'https://github.com/ducvd89/sach-luoi-models/releases/download/v1';
 
 /// Ba giọng tiếng Việt của Piper, cân giữa dung lượng và chất lượng.
 const availableVoicePacks = <VoicePack>[
@@ -55,8 +60,8 @@ const availableVoicePacks = <VoicePack>[
     folder: 'vits-piper-vi_VN-25hours_single-low',
     name: 'Hai Lăm Giờ',
     gender: 'Nữ',
-    description: 'Nhẹ hơn, giọng hơi máy',
-    megabytes: 29,
+    description: 'Mô hình mức thấp, giọng hơi máy',
+    megabytes: 64,
     url: '$_base/vits-piper-vi_VN-25hours_single-low.tar.bz2',
     modelFile: 'vi_VN-25hours_single-low.onnx',
   ),
@@ -65,7 +70,7 @@ const availableVoicePacks = <VoicePack>[
     name: 'Vivos',
     gender: 'Nam',
     description: 'Nhỏ nhất, dành cho máy yếu',
-    megabytes: 21,
+    megabytes: 32,
     url: '$_base/vits-piper-vi_VN-vivos-x_low.tar.bz2',
     modelFile: 'vi_VN-vivos-x_low.onnx',
   ),

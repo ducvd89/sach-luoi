@@ -8,6 +8,7 @@ library;
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:archive/archive_io.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
@@ -17,96 +18,120 @@ import '../storage.dart';
 import 'vieneu_native.dart';
 import 'vieneu_v2_native.dart';
 
-/// Một file cần có, kèm nơi tải và kích thước để vẽ thanh tiến trình.
-class ModelFile {
-  const ModelFile(this.name, this.url, this.megabytes, {this.folder = 'model'});
-  final String name;
-  final String url;
+/// Nơi tải mô hình: bản sao do chính dự án giữ, không phải nguồn gốc.
+///
+/// Trước đây tải thẳng từ HuggingFace và đã trả giá: repo
+/// `neuphonic/neucodec-onnx-decoder-int8` chuyển sang chế độ hạn chế truy cập,
+/// máy chủ trả 401, và **mọi người dùng mất khả năng tải engine v2** — không ai
+/// sửa được gì vì đó là quyết định của bên thứ ba.
+///
+/// Các file ở kho này là bản sao nguyên vẹn, giấy phép và ghi công đầy đủ trong
+/// README của nó. Toàn bộ nguồn gốc đều là Apache-2.0, cho phép phân phối lại.
+const _khoMoHinh = 'https://github.com/ducvd89/sach-luoi-models/releases/download/v1';
+
+/// Một gói mô hình: tải đúng MỘT file nén rồi bung ra.
+///
+/// Trước đây tải rời từng file (v3 có tới 9 file). Gộp thành một gói vừa ít
+/// lượt kết nối hơn, vừa bỏ được cả một lớp lỗi: tải rời mà đứt ở file thứ bảy
+/// thì thư mục còn lại một mớ dở dang mà `isInstalled` vẫn có thể nhìn nhầm
+/// thành đủ.
+class ModelPack {
+  const ModelPack({
+    required this.ten,
+    required this.tep,
+    required this.megabytes,
+    required this.canCo,
+  });
+
+  /// Tên hiển thị lúc tải.
+  final String ten;
+
+  /// Tên file trong kho phát hành.
+  final String tep;
+
   final double megabytes;
 
-  /// 'model' cho mạng chính, 'codec' cho bộ giải mã âm.
-  final String folder;
+  /// Các file phải có sau khi bung, tính từ thư mục đích. Dùng để biết gói đã
+  /// cài xong chưa — bung dở thì thiếu file và lần sau tải lại.
+  final List<String> canCo;
+
+  String get url => '$_khoMoHinh/$tep';
 }
 
-const _modelRepo = 'https://huggingface.co/pnnbao-ump/VieNeu-TTS-v3-Turbo/resolve/main/onnx_int8';
-const _codecRepo =
-    'https://huggingface.co/OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano-ONNX/resolve/main';
+/// Mô hình chính của v3 Turbo: mạng sinh âm + bộ giải mã âm.
+///
+/// Bung vào thư mục gốc, bên trong gói đã chia sẵn `model/` và `codec/`.
+const goiV3 = ModelPack(
+  ten: 'mô hình v3 Turbo',
+  tep: 'vieneu-v3.zip',
+  megabytes: 200.3,
+  canCo: [
+    'model/vieneu_prefill.onnx',
+    'model/vieneu_decode_step.onnx',
+    'model/vieneu_acoustic_cached.onnx',
+    'model/vieneu_backbone_shared.data',
+    'model/vieneu_v3_heads.npz',
+    'model/config.json',
+    'model/tokenizer.json',
+    // Bản `_step` giải mã theo cửa sổ cuốn chiếu chứ không nuốt cả đoạn một
+    // lượt: ra đúng từng mẫu như bản `_full` nhưng thời gian tuyến tính và bộ
+    // nhớ có trần (xem KHUNG_MOI_LUOT trong native/vieneu/src/engine.rs).
+    'codec/moss_audio_tokenizer_decode_step.onnx',
+    'codec/moss_audio_tokenizer_decode_shared.data',
+  ],
+);
 
-/// Đúng những file mà đường chạy ONNX cần — không tải bản fp32 hay bộ mã hoá.
-const modelFiles = <ModelFile>[
-  ModelFile('vieneu_prefill.onnx', '$_modelRepo/vieneu_prefill.onnx', 1.0),
-  ModelFile('vieneu_decode_step.onnx', '$_modelRepo/vieneu_decode_step.onnx', 1.0),
-  ModelFile('vieneu_acoustic_cached.onnx', '$_modelRepo/vieneu_acoustic_cached.onnx', 6.9),
-  ModelFile('vieneu_backbone_shared.data', '$_modelRepo/vieneu_backbone_shared.data', 99.1),
-  ModelFile('vieneu_v3_heads.npz', '$_modelRepo/vieneu_v3_heads.npz', 49.8),
-  ModelFile('config.json', '$_modelRepo/config.json', 0.01),
-  ModelFile('tokenizer.json', '$_modelRepo/tokenizer.json', 0.05),
-  // Bản `_step` giải mã theo cửa sổ cuốn chiếu chứ không nuốt cả đoạn một lượt:
-  // ra đúng từng mẫu như bản `_full` nhưng thời gian tuyến tính và bộ nhớ có
-  // trần (xem KHUNG_MOI_LUOT trong native/vieneu/src/engine.rs). Hai bản dùng
-  // chung file trọng số bên dưới nên đổi sang đây không tốn thêm gì đáng kể.
-  ModelFile('moss_audio_tokenizer_decode_step.onnx',
-      '$_codecRepo/moss_audio_tokenizer_decode_step.onnx', 0.4, folder: 'codec'),
-  ModelFile('moss_audio_tokenizer_decode_shared.data',
-      '$_codecRepo/moss_audio_tokenizer_decode_shared.data', 43.0, folder: 'codec'),
-];
+/// Chỉ cần khi thêm giọng cho v3 — ai không dùng khỏi tốn.
+const goiV3Enroll = ModelPack(
+  ten: 'bộ thêm giọng v3',
+  tep: 'vieneu-v3-enroll.zip',
+  megabytes: 70.2,
+  canCo: [
+    'speaker_encoder.onnx',
+    'moss_audio_tokenizer_encode.onnx',
+    'moss_audio_tokenizer_encode.data',
+  ],
+);
 
-/// Chỉ cần khi thêm giọng mới, nên tải riêng — ai không dùng khỏi tốn 70 MB.
-const enrollFiles = <ModelFile>[
-  ModelFile('speaker_encoder.onnx',
-      'https://huggingface.co/pnnbao-ump/VieNeu-TTS-v3-Turbo/resolve/main/speaker_encoder.onnx',
-      27.0, folder: 'enroll'),
-  ModelFile('moss_audio_tokenizer_encode.onnx',
-      '$_codecRepo/moss_audio_tokenizer_encode.onnx', 0.8, folder: 'enroll'),
-  ModelFile('moss_audio_tokenizer_encode.data',
-      '$_codecRepo/moss_audio_tokenizer_encode.data', 42.4, folder: 'enroll'),
-];
-
-/// Bộ file của engine VieNeu **v2** — tải riêng, ai không dùng khỏi tốn.
+/// Mô hình của engine VieNeu **v2**.
 ///
 /// Chỉ ba file, ít hơn hẳn v3: trọng số nằm gọn trong một file GGUF thay vì bị
 /// chẻ ra thành đồ thị ONNX nhiều mảnh, còn bộ giải mã âm là NeuCodec một file.
 ///
-/// Nặng hơn v3 (487 MB so với 206 MB) mà chủ yếu là do bộ giải mã: 298 MB cho
-/// riêng nó, trong khi phần mô hình ngôn ngữ Q4 chỉ 189 MB dù gấp ba tham số.
-const v2ModelFiles = <ModelFile>[
-  ModelFile(
-      'VieNeu-TTS-v2-Q4-K-M.gguf',
-      'https://huggingface.co/pnnbao-ump/VieNeu-TTS-v2/resolve/main/VieNeu-TTS-v2-Q4-K-M.gguf',
-      180.3,
-      folder: 'v2'),
-  ModelFile(
-      'neucodec_decoder_int8.onnx',
-      'https://huggingface.co/neuphonic/neucodec-onnx-decoder-int8/resolve/main/model.onnx',
-      297.8,
-      folder: 'v2'),
-  ModelFile('voices.json',
-      'https://huggingface.co/pnnbao-ump/VieNeu-TTS-v2/resolve/main/voices.json', 0.03,
-      folder: 'v2'),
-];
+/// Nặng hơn v3 mà chủ yếu do bộ giải mã: 298 MB cho riêng nó, trong khi phần mô
+/// hình ngôn ngữ Q4 chỉ 189 MB dù gấp ba tham số.
+const goiV2 = ModelPack(
+  ten: 'mô hình v2',
+  tep: 'vieneu-v2.zip',
+  megabytes: 478.2,
+  canCo: [
+    'VieNeu-TTS-v2-Q4-K-M.gguf',
+    'neucodec_decoder_int8.onnx',
+    'voices.json',
+  ],
+);
 
-/// Bộ mã hoá NeuCodec — chỉ cần khi THÊM giọng cho v2, nên tải riêng.
+/// Bộ mã hoá NeuCodec — chỉ cần khi THÊM giọng cho v2.
 ///
-/// Nặng 519 MB, hơn cả mô hình. Đây là bản **distil** của Neuphonic (encoder gốc
-/// còn to hơn), và code nó sinh ra tương thích với bộ giải mã đang dùng — đã
-/// kiểm bằng cách nhân bản rồi đọc lại.
-const _v2EncoderRepo =
-    'https://huggingface.co/KevinAHM/distill-neucodec-onnx/resolve/main/onnx';
-const v2EncoderFiles = <ModelFile>[
-  ModelFile('distill_neucodec_encoder.onnx',
-      '$_v2EncoderRepo/distill_neucodec_encoder.onnx', 277.0,
-      folder: 'v2'),
-  // Trọng số ngoài của đồ thị trên — ONNX Runtime tự tìm nó CẠNH file .onnx
-  // theo đúng tên này, nên hai file phải nằm chung thư mục.
-  ModelFile('distill_neucodec_encoder.onnx.data',
-      '$_v2EncoderRepo/distill_neucodec_encoder.onnx.data', 242.0,
-      folder: 'v2'),
-];
+/// Nặng hơn cả mô hình. Đây là bản **distil** của Neuphonic (encoder gốc còn to
+/// hơn), và code nó sinh ra tương thích với bộ giải mã đang dùng — đã kiểm bằng
+/// cách nhân bản rồi đọc lại.
+const goiV2Encoder = ModelPack(
+  ten: 'bộ mã hoá giọng v2',
+  tep: 'vieneu-v2-encoder.zip',
+  megabytes: 494.6,
+  canCo: [
+    'distill_neucodec_encoder.onnx',
+    // Trọng số ngoài của đồ thị trên — ONNX Runtime tự tìm nó CẠNH file .onnx
+    // theo đúng tên này, nên hai file phải nằm chung thư mục.
+    'distill_neucodec_encoder.onnx.data',
+  ],
+);
 
-double get totalMegabytes => modelFiles.fold(0.0, (sum, f) => sum + f.megabytes);
-double get v2EncoderMegabytes => v2EncoderFiles.fold(0.0, (sum, f) => sum + f.megabytes);
-double get enrollMegabytes => enrollFiles.fold(0.0, (sum, f) => sum + f.megabytes);
-double get v2Megabytes => v2ModelFiles.fold(0.0, (sum, f) => sum + f.megabytes);
+double get totalMegabytes => goiV3.megabytes;
+double get v2EncoderMegabytes => goiV2Encoder.megabytes;
+double get enrollMegabytes => goiV3Enroll.megabytes;
+double get v2Megabytes => goiV2.megabytes;
 
 /// Từ điển âm vị đi kèm ứng dụng, chép ra đĩa vì thư viện Rust cần đường dẫn thật.
 ///
@@ -180,13 +205,20 @@ class ModelStore {
   /// Bộ mã hoá NeuCodec — chỉ cần khi thêm giọng, nên tải riêng.
   File get v2Encoder => File(p.join(v2Dir.path, 'distill_neucodec_encoder.onnx'));
 
-  Directory _dirFor(ModelFile file) => switch (file.folder) {
-        'codec' => codecDir,
-        'enroll' => enrollDir,
-        'v2' => v2Dir,
-        _ => modelDir,
-      };
-  File fileFor(ModelFile file) => File(p.join(_dirFor(file).path, file.name));
+  /// Gói đã bung đủ file vào [dich] chưa.
+  ///
+  /// Chỉ xét có file và file khác rỗng. Gói tải dở luôn mang đuôi .part và chỉ
+  /// được bung khi đã tải trọn, nên sự tồn tại của các file thật là bằng chứng
+  /// đủ. (Đừng so với kích thước khai báo: config.json thật chỉ vài KB trong
+  /// khi số khai báo làm tròn thành 0,01 MB — bản trước vì thế mà lần nào mở
+  /// app cũng bảo là chưa tải.)
+  Future<bool> _duFile(ModelPack goi, Directory dich) async {
+    for (final ten in goi.canCo) {
+      final f = File(p.join(dich.path, ten));
+      if (!await f.exists() || await f.length() == 0) return false;
+    }
+    return true;
+  }
 
   /// Đủ file để chạy chưa.
   ///
@@ -196,11 +228,7 @@ class ModelStore {
   /// thước ước lượng, mà config.json thật chỉ vài KB trong khi ước lượng làm
   /// tròn thành 0,01 MB — thành ra lần nào mở app cũng bảo là chưa tải.)
   Future<bool> isInstalled() async {
-    for (final file in modelFiles) {
-      final target = fileFor(file);
-      if (!await target.exists()) return false;
-      if (await target.length() == 0) return false;
-    }
+    if (!await _duFile(goiV3, root)) return false;
     return await dictFile.exists() && await voicesFile.exists();
   }
 
@@ -283,19 +311,13 @@ class ModelStore {
   }
 
   /// Đã có đủ hai mô hình phụ để nhân bản giọng chưa.
-  Future<bool> canEnroll() async {
-    for (final file in enrollFiles) {
-      final target = fileFor(file);
-      if (!await target.exists() || await target.length() == 0) return false;
-    }
-    return true;
-  }
+  Future<bool> canEnroll() => _duFile(goiV3Enroll, enrollDir);
 
   /// Tải hai mô hình chỉ dùng cho việc thêm giọng.
   Future<void> downloadEnrollModels({
     required void Function(WorkProgress) onProgress,
     http.Client? client,
-  }) => _fetch(enrollFiles, enrollMegabytes, onProgress, client);
+  }) => _taiGoi(goiV3Enroll, enrollDir, onProgress, client);
 
   /// Chép giọng nhân bản sẵn của v2 ra đĩa, cùng lý do như [_extractBundled].
   Future<void> _extractBundledV2() async {
@@ -333,14 +355,11 @@ class ModelStore {
     required void Function(WorkProgress) onProgress,
     http.Client? client,
   }) =>
-      _fetch(v2EncoderFiles, v2EncoderMegabytes, onProgress, client);
+      _taiGoi(goiV2Encoder, v2Dir, onProgress, client);
 
   /// Đủ file để chạy engine v2 chưa.
   Future<bool> isV2Installed() async {
-    for (final file in v2ModelFiles) {
-      final target = fileFor(file);
-      if (!await target.exists() || await target.length() == 0) return false;
-    }
+    if (!await _duFile(goiV2, v2Dir)) return false;
     // Từ điển âm vị dùng chung với v3, nhưng v2 chạy được mà không cần mô hình
     // v3 — nên vẫn phải kiểm riêng chứ đừng suy từ isInstalled().
     return await dictFile.exists();
@@ -351,7 +370,7 @@ class ModelStore {
     required void Function(WorkProgress) onProgress,
     http.Client? client,
   }) async {
-    await _fetch(v2ModelFiles, v2Megabytes, onProgress, client);
+    await _taiGoi(goiV2, v2Dir, onProgress, client);
     onProgress(const WorkProgress('Đang chuẩn bị từ điển…', value: 0.99));
     await _extractBundled();
     onProgress(const WorkProgress('Xong', value: 1));
@@ -367,70 +386,100 @@ class ModelStore {
     required void Function(WorkProgress) onProgress,
     http.Client? client,
   }) async {
-    await _fetch(modelFiles, totalMegabytes, onProgress, client);
+    await _taiGoi(goiV3, root, onProgress, client);
     onProgress(const WorkProgress('Đang chuẩn bị từ điển…', value: 0.99));
     await _extractBundled();
     onProgress(const WorkProgress('Xong', value: 1));
   }
 
-  Future<void> _fetch(
-    List<ModelFile> files,
-    double total,
+  /// Tải một gói rồi bung vào [dich].
+  ///
+  /// Ghi ra file `.part` trước, bung xong mới xoá: đứt mạng giữa chừng thì
+  /// không để lại thư mục nửa vời mà lần sau tưởng là đã cài.
+  ///
+  /// **Bung theo luồng, không nạp cả gói vào RAM.** Gói v2 nặng 478 MB — đọc
+  /// hết vào một `List<int>` rồi mới giải nén là chắc chắn hết bộ nhớ trên điện
+  /// thoại.
+  Future<void> _taiGoi(
+    ModelPack goi,
+    Directory dich,
     void Function(WorkProgress) onProgress,
     http.Client? client,
   ) async {
+    if (await _duFile(goi, dich)) return;
+
     final web = client ?? http.Client();
-    await modelDir.create(recursive: true);
-    await codecDir.create(recursive: true);
-    await enrollDir.create(recursive: true);
-    await v2Dir.create(recursive: true);
-    var done = 0.0;
+    await dich.create(recursive: true);
+    final tam = File(p.join(dich.path, '${goi.tep}.part'));
 
-    for (final file in files) {
-      final target = fileFor(file);
-      // Cùng lý do như isInstalled: có tên thật nghĩa là đã tải xong.
-      if (await target.exists() && await target.length() > 0) {
-        done += file.megabytes;
-        continue;
-      }
-
-      onProgress(WorkProgress('Đang tải ${file.name}', value: done / total));
-
-      // Ghi ra file tạm rồi đổi tên: đứt mạng giữa chừng không để lại file hỏng.
-      final temp = File('${target.path}.part');
-      final request = http.Request('GET', Uri.parse(file.url));
-      final response = await web.send(request);
+    try {
+      onProgress(WorkProgress('Đang tải ${goi.ten}', value: 0));
+      final response = await web.send(http.Request('GET', Uri.parse(goi.url)));
       if (response.statusCode != 200) {
-        throw Exception('Tải ${file.name} lỗi ${response.statusCode}');
+        throw Exception('Tải ${goi.ten} lỗi ${response.statusCode}');
       }
 
-      final expected = response.contentLength ?? (file.megabytes * 1024 * 1024).round();
-      final sink = temp.openWrite();
+      final expected =
+          response.contentLength ?? (goi.megabytes * 1024 * 1024).round();
+      final sink = tam.openWrite();
       var received = 0;
-      await for (final chunk in response.stream) {
-        sink.add(chunk);
-        received += chunk.length;
-        final share = expected == 0 ? 0.0 : received / expected;
-        onProgress(WorkProgress(
-          'Đang tải ${file.name} — ${(received / 1024 / 1024).toStringAsFixed(0)}'
-          '/${file.megabytes.toStringAsFixed(0)} MB',
-          value: (done + file.megabytes * share) / total,
-        ));
+      try {
+        await for (final chunk in response.stream) {
+          sink.add(chunk);
+          received += chunk.length;
+          onProgress(WorkProgress(
+            'Đang tải ${goi.ten} — ${(received / 1024 / 1024).toStringAsFixed(0)}'
+            '/${goi.megabytes.toStringAsFixed(0)} MB',
+            // Chừa 8% cuối cho việc bung gói.
+            value: expected == 0 ? 0 : (received / expected) * 0.92,
+          ));
+        }
+      } finally {
+        await sink.flush();
+        await sink.close();
       }
-      await sink.flush();
-      await sink.close();
 
-      if (await target.exists()) await target.delete();
-      await temp.rename(target.path);
-      done += file.megabytes;
+      onProgress(WorkProgress('Đang bung ${goi.ten}…', value: 0.93));
+      await _bungGoi(tam, dich);
+
+      if (!await _duFile(goi, dich)) {
+        throw Exception('Bung ${goi.ten} xong nhưng vẫn thiếu file');
+      }
+    } finally {
+      if (await tam.exists()) await tam.delete();
+      if (client == null) web.close();
     }
-
-    if (client == null) web.close();
   }
 
+  /// Xoá mô hình v3, giữ nguyên v2 và từ điển.
   Future<void> delete() async {
     if (await modelDir.exists()) await modelDir.delete(recursive: true);
     if (await codecDir.exists()) await codecDir.delete(recursive: true);
+  }
+
+  /// Bung một file zip vào [dich], đọc và ghi theo luồng.
+  Future<void> _bungGoi(File zip, Directory dich) async {
+    final nguon = InputFileStream(zip.path);
+    try {
+      for (final muc in ZipDecoder().decodeStream(nguon)) {
+        if (!muc.isFile) continue;
+        // Chặn đường dẫn leo ra ngoài thư mục đích ("zip slip"). Gói là của
+        // mình nên không chờ đợi chuyện này, nhưng một dòng kiểm thì rẻ mà bỏ
+        // được cả một lớp rủi ro.
+        final ra = File(p.normalize(p.join(dich.path, muc.name)));
+        if (!p.isWithin(dich.path, ra.path)) continue;
+
+        await ra.parent.create(recursive: true);
+        final oStream = OutputFileStream(ra.path);
+        try {
+          muc.writeContent(oStream);
+        } finally {
+          await oStream.close();
+        }
+      }
+    } finally {
+      await nguon.close();
+    }
   }
 
   /// Thông tin hiển thị của từng giọng, đọc từ file hồ sơ.

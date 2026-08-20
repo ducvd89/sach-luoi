@@ -249,14 +249,15 @@ void _testModelStore() {
     tearDown(() => root.deleteSync(recursive: true));
 
     /// Dựng đủ bộ file như sau một lần tải thành công.
+    File tepCua(String ten) => File(p.join(store.root.path, ten));
+
     void writeAll({int smallBytes = 2000}) {
-      store.modelDir.createSync(recursive: true);
-      store.codecDir.createSync(recursive: true);
-      for (final file in modelFiles) {
+      for (final ten in goiV3.canCo) {
+        final f = tepCua(ten);
+        f.parent.createSync(recursive: true);
         // File nhỏ (config.json, tokenizer.json) viết đúng kích thước thật của
-        // chúng, không theo con số ước lượng để vẽ thanh tiến trình.
-        final size = file.megabytes >= 1.0 ? 4096 : smallBytes;
-        store.fileFor(file).writeAsBytesSync(List.filled(size, 1));
+        // chúng — phép kiểm chỉ được xét "có và khác rỗng", không so kích thước.
+        f.writeAsBytesSync(List.filled(ten.endsWith('.json') ? smallBytes : 4096, 1));
       }
       store.dictFile.writeAsBytesSync(List.filled(64, 1));
       store.voicesFile.writeAsStringSync('{"presets":{}}');
@@ -271,13 +272,13 @@ void _testModelStore() {
 
     test('thiếu một file thì báo chưa tải', () async {
       writeAll();
-      store.fileFor(modelFiles.first).deleteSync();
+      tepCua(goiV3.canCo.first).deleteSync();
       expect(await store.isInstalled(), isFalse);
     });
 
     test('file rỗng thì báo chưa tải', () async {
       writeAll();
-      store.fileFor(modelFiles.last).writeAsBytesSync(<int>[]);
+      tepCua(goiV3.canCo.last).writeAsBytesSync(<int>[]);
       expect(await store.isInstalled(), isFalse);
     });
 

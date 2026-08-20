@@ -11,7 +11,7 @@ Chạy **hoàn toàn trên máy**: không cần mạng, không gửi sách đi �
 
 | | |
 |---|---|
-| **Windows** | Chạy `SachLuoi-Setup-1.6.0.exe`. Không cần quyền quản trị, cài vào `%LOCALAPPDATA%`. |
+| **Windows** | Chạy `SachLuoi-Setup-1.6.2.exe`. Không cần quyền quản trị, cài vào `%LOCALAPPDATA%`. |
 | **Android** | Cài `SachLuoi-android-arm64.apk`. Cần Android 7 trở lên, máy 64-bit. |
 
 Sau khi cài, mở *Cài đặt → Giọng đọc* và bấm **Tải mô hình (206 MB)** một lần. Từ đó đọc được cả
