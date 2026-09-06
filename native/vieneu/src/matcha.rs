@@ -84,8 +84,37 @@ const NHIET: f32 = 0.9;
 /// xạ biên chứ không phải tiếng thật — nghe ra tiếng "xịt" ở cuối câu.
 const CAT_DUOI: usize = 512;
 
-/// Vuốt nhỏ dần ở hai đầu để hết tiếng "bụp" lúc ghép đoạn (mili giây).
-const VUOT_MS: usize = 20;
+/// Vuốt nhỏ dần ở ĐẦU đoạn để hết tiếng "bụp" (mili giây).
+///
+/// Rộng tay được vì mô hình tự chừa sẵn khoảng lặng dài ở đầu: đo 8 câu thì
+/// tiếng bắt đầu ở 130–180 ms (trung bình 162). Vuốt 20 ms rơi trọn vào vùng
+/// lặng ấy, không đụng vào âm nào.
+const VUOT_DAU_MS: usize = 20;
+
+/// Vuốt nhỏ dần ở CUỐI đoạn. Ngắn hơn hẳn đầu, có lý do đo được.
+///
+/// Đuôi thì ngược hẳn với đầu: mô hình chừa trung bình **7,7 ms**, có câu chừa
+/// **0 ms**. Bản trước vuốt 20 ms ở cả hai đầu nên ở đuôi nó ăn thẳng vào
+/// 22–43 ms tiếng thật — cả 8/8 câu đo đều dính. Ở đây chỉ cần đủ để chỗ nối
+/// vào phần đệm không kêu "bụp", nên 5 ms là vừa.
+const VUOT_CUOI_MS: usize = 5;
+
+/// Đệm thêm bấy nhiêu mili giây im lặng vào đuôi mỗi đoạn.
+///
+/// **Đây là phần chữa lỗi mất tiếng cuối câu trên Android.** Nguyên nhân đã ghi
+/// sẵn ở `_nhipXaDem` trong `player_controller.dart`: mở file đoạn kế trong lúc
+/// bộ đệm phần cứng còn đang xả thì nó cắt mất một âm ở cuối đoạn vừa đọc. Bên
+/// đó chữa bằng cách chờ 400 ms, nhưng con số ấy chỉnh với VieNeu — engine ấy
+/// chừa sẵn khoảng lặng ở đuôi nên phần bị cắt rơi vào chỗ im.
+///
+/// Matcha chừa 0–21 ms, tức là gần như không có biên nào. Bất kỳ phần đuôi nào
+/// bị nuốt cũng rơi thẳng vào từ cuối. Windows không lộ ra vì bộ đệm ở đó mỏng
+/// hơn nhiều.
+///
+/// Lấy 150 ms cho xấp xỉ bằng khoảng lặng mà chính mô hình chừa ở ĐẦU đoạn
+/// (162 ms) — đó là mức mà mô hình tự coi là đủ để một câu đứng riêng, chứ
+/// không phải con số bịa ra.
+const DEM_CUOI_MS: usize = 150;
 
 /// Yêu cầu có mã ≤ số này thì bỏ. Cùng cách làm với v2 — xem `v2::huy_toi`.
 static HUY_TOI: AtomicU64 = AtomicU64::new(0);
@@ -261,8 +290,7 @@ impl EngineMatcha {
         if wav.len() > CAT_DUOI + 1000 {
             wav.truncate(wav.len() - CAT_DUOI);
         }
-        vuot_hai_dau(&mut wav);
-        Ok(wav)
+        Ok(vuot_va_dem(wav))
     }
 
     /// Văn bản đã dọn → dãy số hiệu, xen số 0 giữa mọi ký tự.
@@ -320,18 +348,28 @@ fn chuan(rng: &mut StdRng) -> f32 {
     (-2.0 * u1.ln()).sqrt() * (std::f32::consts::TAU * u2).cos()
 }
 
-/// Vuốt nhỏ dần [VUOT_MS] mili giây ở hai đầu theo đường cos².
-fn vuot_hai_dau(wav: &mut [f32]) {
-    let n = VUOT_MS * SAMPLE_RATE_MATCHA as usize / 1000;
-    if wav.len() < 2 * n || n == 0 {
-        return;
+/// Vuốt hai đầu theo đường cos² rồi đệm im lặng vào đuôi.
+///
+/// Ba việc phải làm đúng thứ tự: vuốt đầu, vuốt đuôi, RỒI mới đệm. Đệm trước
+/// thì phép vuốt đuôi rơi vào vùng im, chỗ nối vẫn còn bậc nhảy và vẫn kêu.
+fn vuot_va_dem(mut wav: Vec<f32>) -> Vec<f32> {
+    let dau = VUOT_DAU_MS * SAMPLE_RATE_MATCHA as usize / 1000;
+    let cuoi = VUOT_CUOI_MS * SAMPLE_RATE_MATCHA as usize / 1000;
+    // Đoạn quá ngắn để vuốt cả hai đầu mà không chồng lên nhau thì bỏ qua phần
+    // vuốt, nhưng vẫn đệm — chính đoạn ngắn mới hay bị nuốt đuôi nhất.
+    if wav.len() > dau + cuoi {
+        let het = wav.len();
+        for i in 0..dau {
+            let goc = (i as f32 / dau as f32) * std::f32::consts::FRAC_PI_2;
+            wav[i] *= goc.sin() * goc.sin();
+        }
+        for i in 0..cuoi {
+            let goc = (i as f32 / cuoi as f32) * std::f32::consts::FRAC_PI_2;
+            wav[het - cuoi + i] *= goc.cos() * goc.cos();
+        }
     }
-    let cuoi = wav.len();
-    for i in 0..n {
-        let goc = (i as f32 / n as f32) * std::f32::consts::FRAC_PI_2;
-        wav[i] *= goc.sin() * goc.sin();
-        wav[cuoi - n + i] *= goc.cos() * goc.cos();
-    }
+    wav.resize(wav.len() + DEM_CUOI_MS * SAMPLE_RATE_MATCHA as usize / 1000, 0.0);
+    wav
 }
 
 /// Đọc `symbols.json` thành bảng ký tự → số hiệu.

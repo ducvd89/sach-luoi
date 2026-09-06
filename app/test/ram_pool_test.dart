@@ -6,6 +6,7 @@
 // ignore_for_file: avoid_print — bài này in số đo ra để đọc bằng mắt
 library;
 
+import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -34,6 +35,12 @@ Directory? _modelRoot() {
 }
 
 void main() {
+  // `_ensure` của engine gọi `ModelStore.paths()`, mà hàm ấy chép từ điển âm vị
+  // từ assets ra đĩa qua `rootBundle` — cần binding sẵn sàng trước. Thiếu dòng
+  // này thì bài chết ở "Binding has not yet been initialized" ngay khi máy có
+  // mô hình thật, tức là đúng lúc nó bắt đầu kiểm được thứ gì đó.
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   test('RAM khi bật rồi tắt chế độ xuất song song nhiều lần', () async {
     final root = _modelRoot();
     if (root == null || !File(_lib).existsSync() ||
@@ -49,6 +56,17 @@ void main() {
     // "Chưa tải mô hình giọng đọc" thay vì được bỏ qua.
     if (!await store.isInstalled()) {
       markTestSkipped('Chưa tải mô hình giọng đọc — bỏ qua');
+      return;
+    }
+    // [OnDeviceVieNeuEngine] nạp thư viện theo TÊN TRẦN chứ không nhận đường dẫn
+    // truyền vào, mà tên trần thì `flutter test` không tìm ra — thư viện nằm
+    // trong native/vieneu/target/release, không phải cạnh file chạy. Bài chỉ
+    // chạy được khi thư mục ấy đã nằm trong PATH; không thì bỏ qua chứ đừng đỏ.
+    try {
+      DynamicLibrary.open(p.basename(_lib));
+    } catch (_) {
+      markTestSkipped('Thư viện native không nằm trong PATH — bỏ qua '
+          '(thêm ${p.dirname(_lib)} vào PATH rồi chạy lại)');
       return;
     }
     final engine = OnDeviceVieNeuEngine(store);

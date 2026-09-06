@@ -98,11 +98,13 @@ class TtsManager {
   /// | Engine | Số | Vì sao |
   /// |---|---|---|
   /// | `system` | 2 | trước đây `flutter_tts` được truyền `setSpeechRate(1.0)`, mà trên Android/iOS mức ấy là **gấp đôi** tốc độ thường — xem `nhipHeThong` |
+  /// | `matcha` | 2 | bản đầu vuốt nhỏ dần 20 ms ở đuôi và không đệm im lặng, nên đoạn kết thúc đúng ngay mẫu tiếng cuối; trên Android bộ đệm phần cứng nuốt nốt phần ấy và mất hẳn tiếng cuối câu — xem `DEM_CUOI_MS` trong `native/vieneu/src/matcha.rs` |
   ///
   /// Bản cũ nằm lại trong thư mục đệm nhưng không ai tra tới; phần dọn theo trần
   /// dung lượng sẽ xoá dần vì chúng không còn được chạm vào.
   static int phienBanAm(String engineId) => switch (engineId) {
         'system' => 2,
+        'matcha' => 2,
         _ => 1,
       };
 

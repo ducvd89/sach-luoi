@@ -60,10 +60,18 @@ void main() {
       expect(TtsManager.phienBanAm('system'), 2);
     });
 
+    test('engine matcha mang số hiệu mới', () {
+      // Bản đầu kết thúc đoạn đúng ngay mẫu tiếng cuối cùng (vuốt 20 ms ở đuôi,
+      // không đệm im lặng). Trên Android bộ đệm phần cứng nuốt nốt phần ấy nên
+      // mất hẳn tiếng cuối câu. Không tăng số hiệu thì ai đã nghe rồi vẫn nhận
+      // lại đúng bản cụt trong bộ nhớ đệm.
+      expect(TtsManager.phienBanAm('matcha'), 2);
+    });
+
     test('các engine khác không bị đụng tới', () {
       // Tăng nhầm là ném đi toàn bộ cache của engine chạy mô hình, mỗi đoạn
       // tổng hợp lại mất 5-7 giây.
-      for (final id in ['vieneu', 'vieneu_v2', 'matcha', 'piper']) {
+      for (final id in ['vieneu', 'vieneu_v2', 'piper']) {
         expect(TtsManager.phienBanAm(id), 1, reason: id);
       }
     });
