@@ -43,6 +43,14 @@ void main() {
     }
 
     final store = ModelStore(root: root);
+    // Thư mục có sẵn KHÔNG đồng nghĩa với mô hình đã tải: ứng dụng dựng nó ngay
+    // lần chạy đầu để chép từ điển âm vị ra đĩa. Máy nào đã mở ứng dụng nhưng
+    // chưa bấm tải mô hình thì lưới chặn ở trên lọt, rồi bài này chết ở
+    // "Chưa tải mô hình giọng đọc" thay vì được bỏ qua.
+    if (!await store.isInstalled()) {
+      markTestSkipped('Chưa tải mô hình giọng đọc — bỏ qua');
+      return;
+    }
     final engine = OnDeviceVieNeuEngine(store);
     addTearDown(engine.dispose);
 

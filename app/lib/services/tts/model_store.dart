@@ -15,6 +15,7 @@ import 'package:path/path.dart' as p;
 
 import '../../models/work_progress.dart';
 import '../storage.dart';
+import 'matcha_native.dart';
 import 'vieneu_native.dart';
 import 'vieneu_v2_native.dart';
 
@@ -128,6 +129,36 @@ const goiV2Encoder = ModelPack(
   ],
 );
 
+/// Bộ file của engine Matcha.
+///
+/// Lấy bản **int8** chứ không phải fp32/fp16 dù kho gốc có cả ba: int8 nhỏ hơn
+/// bốn lần và chạy nhanh hơn hẳn trên CPU, mà CPU là chỗ duy nhất engine này
+/// chạy (xem "Không dùng GPU" ở README). Chưa đo chênh lệch chất lượng giữa hai
+/// bản — nếu sau này có người nghe ra bản int8 rè hơn thì phải đóng gói lại từ
+/// thư mục `fp32/` của kho gốc (nặng 261 MB) rồi sửa lại con số ở đây.
+///
+/// Nguồn gốc: `Cong123779/matcha-tts-vietnamese-onnx-int8` trên HuggingFace,
+/// giấy phép **MIT** nên phân phối lại hợp lệ. Vẫn đi qua bản sao của dự án chứ
+/// không tải thẳng từ đó, đúng quy tắc ghi ở [_khoMoHinh] — repo đã trả giá một
+/// lần khi `neucodec-onnx-decoder-int8` chuyển sang hạn chế truy cập và mọi
+/// người dùng mất khả năng tải engine v2.
+const goiMatcha = ModelPack(
+  ten: 'mô hình Matcha',
+  tep: 'matcha.zip',
+  megabytes: 59.1,
+  canCo: [
+    'matcha_encoder.onnx',
+    'matcha_decoder.onnx',
+    'vocos.onnx',
+    // Bảng ký tự của mô hình, KHÔNG phải từ điển âm vị: Matcha đọc thẳng mặt
+    // chữ nên không đi qua sea-g2p.
+    'symbols.json',
+  ],
+);
+
+/// Dung lượng phải tải về (gói nén). Bung ra chiếm 65 MB trên đĩa.
+double get matchaMegabytes => goiMatcha.megabytes;
+
 /// Tên một mục trong gói nén, đã chuẩn hoá về dấu phân cách "/".
 ///
 /// Đặc tả zip bắt dùng "/" (APPNOTE mục 4.4.17.1) nhưng vài công cụ nén trên
@@ -214,6 +245,17 @@ class ModelStore {
 
   /// Bộ mã hoá NeuCodec — chỉ cần khi thêm giọng, nên tải riêng.
   File get v2Encoder => File(p.join(v2Dir.path, 'distill_neucodec_encoder.onnx'));
+
+  // -- engine Matcha ---------------------------------------------------------
+  // KHÔNG dùng chung [dictFile] với hai engine kia: Matcha đọc thẳng mặt chữ
+  // nên không đi qua sea-g2p, bảng nó cần là bảng ký tự (symbols.json) chứ
+  // không phải từ điển âm vị. Ai chỉ cài Matcha thì khỏi tốn 50 MB từ điển.
+
+  Directory get matchaDir => Directory(p.join(root.path, 'matcha'));
+  File get matchaEncoder => File(p.join(matchaDir.path, 'matcha_encoder.onnx'));
+  File get matchaDecoder => File(p.join(matchaDir.path, 'matcha_decoder.onnx'));
+  File get matchaVocoder => File(p.join(matchaDir.path, 'vocos.onnx'));
+  File get matchaSymbols => File(p.join(matchaDir.path, 'symbols.json'));
 
   /// Gói đã bung đủ file vào [dich] chưa.
   ///
@@ -389,6 +431,38 @@ class ModelStore {
   /// Xoá bộ file của engine v2, giữ nguyên v3.
   Future<void> deleteV2() async {
     if (await v2Dir.exists()) await v2Dir.delete(recursive: true);
+  }
+
+  /// Đủ file để chạy engine Matcha chưa.
+  ///
+  /// Không hỏi tới [dictFile]: engine này không dùng từ điển âm vị.
+  Future<bool> isMatchaInstalled() => _duFile(goiMatcha, matchaDir);
+
+  /// Đường dẫn cho engine Matcha. Không chép gì từ ứng dụng ra: cả bốn file đều
+  /// nằm trong gói tải về, không có phần nào đi kèm bản cài.
+  Future<MatchaPaths> matchaPaths({int threads = 0}) async {
+    await matchaDir.create(recursive: true);
+    return MatchaPaths(
+      encoderPath: matchaEncoder.path,
+      decoderPath: matchaDecoder.path,
+      vocoderPath: matchaVocoder.path,
+      symbolsPath: matchaSymbols.path,
+      threads: threads,
+    );
+  }
+
+  /// Tải bộ file của engine Matcha.
+  Future<void> downloadMatcha({
+    required void Function(WorkProgress) onProgress,
+    http.Client? client,
+  }) async {
+    await _taiGoi(goiMatcha, matchaDir, onProgress, client);
+    onProgress(const WorkProgress('Xong', value: 1));
+  }
+
+  /// Xoá bộ file của engine Matcha, giữ nguyên hai engine kia.
+  Future<void> deleteMatcha() async {
+    if (await matchaDir.exists()) await matchaDir.delete(recursive: true);
   }
 
   /// Tải toàn bộ mô hình. Bỏ qua file đã có.

@@ -206,7 +206,11 @@ pub fn speaker_fbank(wav: &[f32]) -> Vec<f32> {
 pub const MEL_BINS: usize = N_MELS;
 
 /// Hàm Bessel biến dạng loại 1 bậc 0 — cần cho cửa sổ Kaiser.
-fn bessel_i0(x: f64) -> f64 {
+///
+/// `pub(crate)` vì `ma_hoa.rs` dựng bảng hệ số lấy mẫu lại bằng đúng cửa sổ
+/// này. Chép sang bên ấy thì hai bản dễ trôi khỏi nhau, mà cửa sổ lệch nhau
+/// một chút là đáp ứng tần số khác đi.
+pub(crate) fn bessel_i0(x: f64) -> f64 {
     let mut sum = 1.0;
     let mut term = 1.0;
     let half = x / 2.0;

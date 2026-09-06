@@ -100,6 +100,49 @@ void main() {
     }
   }, timeout: const Timeout(Duration(minutes: 3)));
 
+  test('nén được WAV 22,05 kHz của Matcha và Giọng nhẹ', () async {
+    if (!_coThuVien()) {
+      markTestSkipped('Chưa dựng thư viện native — bỏ qua');
+      return;
+    }
+    // 22 050 Hz không nằm trong năm mức libopus nhận, nên bộ nén phải tự nâng
+    // lên 48 kHz. Trước đây nó trả lỗi, mà Opus 32 kbps là định dạng xuất mặc
+    // định — nên ai chọn Matcha hoặc Giọng nhẹ rồi xuất file đều nhận lại WAV
+    // kèm dòng "giữ nguyên WAV", nặng gấp khoảng 30 lần.
+    final wav = File(p.join(dir.path, '22k.wav'))..writeAsBytesSync(_wavMotGiay(22050));
+    final wavBytes = wav.lengthSync();
+
+    for (final (format, bitrate, ten) in [
+      (EncodeFormat.opus, 32000, '22k.opus'),
+      (EncodeFormat.mp3, 128, '22k.mp3'),
+      (EncodeFormat.aac, 64000, '22k.aac'),
+    ]) {
+      final ra = File(p.join(dir.path, ten));
+      await encodeAudioFile(
+          wavPath: wav.path, outBase: p.withoutExtension(ra.path), format: format, bitrate: bitrate);
+      expect(ra.existsSync(), isTrue, reason: '$ten phải được tạo');
+
+      // Điều thật sự cần canh: đây là file NÉN chứ không phải WAV giữ nguyên —
+      // đúng cái mà `export_service` trả về khi bộ nén báo lỗi. Nhìn vào đầu
+      // file là biết chắc, không cần đoán qua kích thước.
+      expect(String.fromCharCodes(ra.readAsBytesSync().take(4)), isNot('RIFF'),
+          reason: '$ten vẫn là WAV — bộ nén đã bỏ cuộc');
+
+      // Trần suy từ chính bitrate, KHÔNG suy từ kích thước WAV. Một giây ở
+      // bitrate B tốn khoảng B/8 byte dù tần số vào là bao nhiêu, trong khi WAV
+      // 22,05 kHz chỉ nặng 44.144 byte — nên mốc "nhỏ hơn một phần ba WAV" mà
+      // bản trước dùng đòi MP3 128 kbps xuống dưới 14.714 byte, chuyện không
+      // thể xảy ra (nó luôn tốn 16.000). Mốc ấy chỉ đúng với WAV 48 kHz.
+      final bitPerGiay = format == EncodeFormat.mp3 ? bitrate * 1000 : bitrate;
+      final tran = (bitPerGiay / 8 * 1.6).round() + 2048; // chừa chỗ cho phần đầu file
+      expect(ra.lengthSync(), lessThan(tran), reason: '$ten to hơn mức bitrate cho phép');
+      expect(ra.lengthSync(), lessThan(wavBytes), reason: '$ten phải nhỏ hơn WAV');
+      if (format == EncodeFormat.opus) {
+        expect(String.fromCharCodes(ra.readAsBytesSync().take(4)), 'OggS');
+      }
+    }
+  }, timeout: const Timeout(Duration(minutes: 3)));
+
   test('bitrate cao hơn thì file to hơn', () async {
     if (!_coThuVien()) {
       markTestSkipped('Chưa dựng thư viện native — bỏ qua');

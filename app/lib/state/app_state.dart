@@ -174,6 +174,42 @@ class AppState extends ChangeNotifier {
     await refreshEngine();
   }
 
+  /// Bộ file của engine Matcha đã có chưa (null nghĩa là chưa kiểm tra).
+  ///
+  /// Tách hẳn khỏi hai cờ trên, cùng lý do: ba engine tải riêng và gỡ riêng.
+  bool? matchaInstalled;
+
+  Future<void> refreshMatchaStatus() async {
+    matchaInstalled = await tts.modelStore.isMatchaInstalled();
+    notifyListeners();
+  }
+
+  /// Tải bộ file của engine Matcha (gói nén khoảng 59 MB).
+  Future<void> downloadMatchaModel() async {
+    if (modelProgress != null) return;
+    modelProgress = const WorkProgress('Đang chuẩn bị…');
+    notifyListeners();
+    try {
+      await tts.modelStore.downloadMatcha(onProgress: (p) {
+        modelProgress = p;
+        notifyListeners();
+      });
+      matchaInstalled = true;
+      tts.matcha.unawaitedStart();
+      await refreshEngine();
+    } finally {
+      modelProgress = null;
+      notifyListeners();
+    }
+  }
+
+  Future<void> deleteMatchaModel() async {
+    tts.matcha.dispose();
+    await tts.modelStore.deleteMatcha();
+    await refreshMatchaStatus();
+    await refreshEngine();
+  }
+
   /// Tải mô hình về máy. Khoảng 145 MB, chỉ làm một lần.
   Future<void> downloadModel() async {
     if (modelProgress != null) return;

@@ -11,7 +11,7 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sach_noi/models/settings.dart'
-    show AppSettings, coEngineV2, defaultEngineId;
+    show AppSettings, coEngineMatcha, coEngineV2, defaultEngineId;
 import 'package:sach_noi/services/tts/tts_manager.dart';
 
 void main() {
@@ -25,8 +25,14 @@ void main() {
     expect(tts.engine('vieneu').noiNguCanh, isTrue);
 
     // Các engine còn lại đều đọc từng đoạn độc lập. Chúng PHẢI khai false, không
-    // thì mất hết việc đọc trước. (v2 chỉ có trên máy tính — xem [coEngineV2].)
-    for (final id in [if (coEngineV2) 'vieneu_v2', 'piper', 'system']) {
+    // thì mất hết việc đọc trước. (v2 và Matcha chỉ có trên máy tính và Android
+    // — xem [coEngineV2], [coEngineMatcha].)
+    for (final id in [
+      if (coEngineV2) 'vieneu_v2',
+      if (coEngineMatcha) 'matcha',
+      'piper',
+      'system',
+    ]) {
       expect(tts.engine(id).noiNguCanh, isFalse, reason: 'engine $id');
     }
   });

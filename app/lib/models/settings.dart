@@ -33,9 +33,16 @@ const _renamedEngines = {'kani': 'vieneu'};
 /// chọn và engine trỏ vào hư không.
 bool get coEngineV2 => !Platform.isIOS;
 
+/// Engine Matcha nằm trong cùng thư viện native với hai bản VieNeu, nên có ở
+/// đúng những nền tảng ấy. Giữ cờ riêng thay vì dùng chung [coEngineV2]: hai
+/// engine tải riêng và có thể gỡ riêng, gộp cờ là lần sau sửa một cái hỏng cái
+/// kia.
+bool get coEngineMatcha => !Platform.isIOS;
+
 String migrateEngineId(String id) {
   final moi = _renamedEngines[id] ?? id;
   if (moi == 'vieneu_v2' && !coEngineV2) return 'vieneu';
+  if (moi == 'matcha' && !coEngineMatcha) return 'vieneu';
   return moi;
 }
 

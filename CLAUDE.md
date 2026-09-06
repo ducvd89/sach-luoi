@@ -195,13 +195,13 @@ thanh trượt), `saveSettings()` mới ghi xuống đĩa.
 
 ### Tầng TTS
 
-`services/tts/tts_engine.dart` là giao diện chung; bốn bản cài đặt:
+`services/tts/tts_engine.dart` là giao diện chung; năm bản cài đặt:
 
 | Engine | id | File | Ghi chú |
 |---|---|---|---|
 | VieNeu v3 Turbo (mặc định) | `vieneu` | `vieneu_engine.dart` → `vieneu_native.dart` | ONNX, 48 kHz |
 | VieNeu v2 | `vieneu_v2` | `vieneu_v2_engine.dart` → `vieneu_v2_native.dart` | llama.cpp, 24 kHz |
-
+| Matcha-TTS | `matcha` | `matcha_engine.dart` → `matcha_native.dart` | ONNX, 22,05 kHz, một giọng |
 | Piper (Giọng nhẹ) | `piper` | `ondevice_engine.dart` qua `sherpa_onnx` | nhanh, nhẹ |
 | TTS hệ thống | `system` | `system_tts_engine.dart` qua `flutter_tts` | chủ yếu Android |
 
@@ -239,6 +239,54 @@ Vì thế `_soWorker` của v2 chặn ở **2**. Lý do là chính điều làm 
 ở băng thông bộ nhớ, nên các worker giành nhau. Và đừng tin lời hứa "mmap nên worker phụ
 gần như miễn phí" — đo thật thì mỗi worker tốn ~750 MB.
 
+#### Matcha-TTS: nhanh nhất, nhẹ nhất, và **không sinh token**
+
+Bản thứ ba chạy mô hình trên máy, nhưng cơ chế khác hẳn hai bản VieNeu — đừng chép giả
+định của chúng sang. Hai bản kia sinh từng khung âm một trong một vòng lặp; Matcha đoán độ
+dài của cả đoạn rồi giải một phương trình vi phân đúng 10 bước trên toàn bộ khung mel, sau
+đó Vocos dựng sóng. Hệ quả kéo theo cả một chùm:
+
+| | Matcha | v3 Turbo | v2 |
+|---|---|---|---|
+| Tải về | **59 MB** | 145 MB | 478 MB |
+| Thông lượng 1 worker | **19,4×** thời gian thực | 2,87× | 2,83× |
+| Trần worker lúc xuất | 2 (25,0×) | 3 (6,85×) | 2 (3,57×) |
+| RAM mỗi worker | ~270 MB | ~2 GB | ~750 MB |
+| Tần số | 22 050 Hz | 48 kHz | 24 kHz |
+| Số giọng | **1, cố định** | 9 | 9 |
+| Nhân bản giọng | **không bao giờ** | có | có |
+| Đọc lại ra khác | **không** | có | có |
+| Dùng sea-g2p | **không** | có | có |
+
+Ba chỗ dễ sai nhất, đều đã đo:
+
+- **Không nối ngữ cảnh, và không phải vì thiếu công cụ.** Kho mô hình có
+  `prompt_encoder.onnx` để bơm đuôi mel câu trước vào `mu`, bản C++ gốc dùng nó. Đo trên 8
+  đoạn liền nhau thì lệch chuẩn cao độ giữa các đoạn là 4,13 Hz khi KHÔNG nối và 4,64 Hz
+  khi có nối — nối không giúp gì. Lý do: mô hình một người nói, cao độ nằm trong trọng số
+  nên không có gì để trôi. (VieNeu thì có: 9,2 Hz khi không nối, 4,8 Hz khi nối.) Nên bỏ
+  hẳn file ấy — các đoạn độc lập, đọc trước song song được.
+- **`docLaiRaKhac` là `false`.** Đổi hạt giống chỉ đổi nhiễu khởi tạo của bộ giải ODE; độ
+  dài đoạn do bộ đoán độ dài quyết định và nó tất định. Đo năm hạt giống trên cùng một câu:
+  thời lượng giống hệt nhau tới từng mẫu (6,478 s). Nghĩa là `core/kiem_am.dart` đếm ra
+  đúng chừng ấy nhân âm ở mọi lần đọc lại — bật cờ lên là đọc lại năm lần rồi hỏng y hệt.
+- **Tốc độ đi vào mô hình, không phải vào phép lấy mẫu lại.** `length_scale = 1/tốc độ`
+  nên xuất file ở 1,25× thì cao độ giữ nguyên, khác hai engine kia. Đo được đúng tuyến
+  tính: 0,8× ra 5,178 s, 1,0× ra 6,478 s, 1,25× ra 8,104 s.
+
+Hai chuyện về văn bản, vì Matcha **đọc thẳng mặt chữ** chứ không qua âm vị:
+
+- Bảng ký tự là `symbols.json` của mô hình, không phải `sea_g2p.bin`. Ai chỉ cài Matcha thì
+  khỏi tốn 50 MB từ điển âm vị — nên `matchaPaths` không đụng tới `dictFile`.
+- Thẻ `<en>…</en>` mà `text_normalizer.dart` gắn cho từ ghép viết dính là quy ước của
+  sea-g2p; chỉ đường VieNeu mới có người bóc. Matcha phải tự gỡ bằng `boTheEn`, không thì
+  nó đọc thành tiếng "en" trước mỗi từ ngoại lai. **Piper và TTS hệ thống hiện vẫn dính lỗi
+  này** — sửa được nhưng phải tăng `phienBanAm` của chúng, tức là vứt cache của chúng.
+
+Mô hình đi qua kho `sach-luoi-models` như hai engine kia (`matcha.zip`, 59 MB), **không**
+tải thẳng từ HuggingFace — giấy phép MIT cho phép phân phối lại, và repo đã trả giá một lần
+khi `neucodec-onnx-decoder-int8` chuyển sang hạn chế truy cập rồi trả 401.
+
 Mọi engine **phải trả WAV**. Lý do ghi ở đầu `tts_engine.dart`: Android không có bộ mã hoá
 MP3 nào dùng được, nên việc nén dời hẳn sang bước xuất file (`services/audio_encoder.dart`).
 
@@ -254,8 +302,31 @@ mục 4), nên `pre_skip` và granule position phải nhân với `48000/sr`. Qu
 lặng lẽ, không lỗi nào bật ra. `granule_dem_theo_dong_ho_48k...` trong `src/ma_hoa.rs` canh
 chỗ này, kèm một bài nén-rồi-giải-lại để chắc là ruột file cũng đúng chứ không chỉ cái vỏ.
 
-Tần số ngoài năm mức của libopus (giọng Piper 22 050 Hz) vẫn báo lỗi rồi giữ WAV — muốn
-chữa thì phải thêm bước lấy mẫu lại.
+Tần số ngoài năm mức ấy thì `wav_sang_opus` **tự nâng lên 48 kHz** rồi mới nén, thay vì trả
+lỗi như trước. Hai engine cần tới đường này: Piper và Matcha, cả hai đều 22 050 Hz — mà Opus
+32 kbps lại là định dạng xuất mặc định, nên trước đây ai chọn một trong hai rồi xuất file
+đều nhận lại WAV kèm dòng "giữ nguyên WAV", nặng gấp khoảng 30 lần.
+
+Bộ lấy mẫu lại là windowed-sinc viết riêng trong `ma_hoa.rs`, **không dùng lại
+`fbank::resample_to_16k`** dù cùng một phép toán và cùng cửa sổ Kaiser beta 14,7697. Lý do
+là quy mô: bản fbank gọt một đoạn ghi âm vài giây lúc thêm giọng nên nó tính lại cửa sổ
+Kaiser (chuỗi Bessel tới 50 số hạng) cho từng hệ số của từng mẫu ra — một part 30 phút ở
+22 050 Hz là 86,4 triệu mẫu ra × 135 hệ số, gần 12 tỉ lượt Bessel. Tỉ số hai tần số luôn là
+số hữu tỉ (22 050/48 000 rút gọn còn 147/320) nên chỉ có 320 vị trí lẻ; dựng bảng hệ số cho
+320 pha ấy một lần rồi tra là đủ. Đo hai bản viết cùng ngôn ngữ, cùng kiểu vòng lặp:
+**nhanh hơn 12,2 lần**, đầu ra lệch nhau nhiều nhất **8,3e-9**. Bề rộng cắt còn nửa của bản
+fbank (32 lần sinc cắt trục thay vì 64): phẳng tới 9,5 kHz thay vì 10 kHz, ảnh phổ dưới
+−50 dB — chênh nhau đúng ở mẩu 9,5–11 kHz mà Opus 32 kbps cũng không giữ. Toàn cục cho SNR
+**82,5 dB**, tức trần của chính i16 chứ không phải trần bộ lọc.
+
+Hai chỗ dễ sai khi đụng vào đường này:
+
+- **Phải chặn tràn i16.** Nâng tần số làm đỉnh nhô lên (Gibbs): sin 997 Hz đầy thang vọt tới
+  32 836. Tràn i16 không méo nhẹ, nó lật dấu thành tiếng nổ.
+- **OpusHead giữ tần số GỐC**, không phải 48 kHz đã nén. RFC 7845 mục 5.1 định nghĩa ô ấy là
+  tần số bản gốc và nói thẳng rằng bộ giải mã không dùng nó để phát.
+
+Đường Android vẫn không đụng tới: nó qua MediaCodec và MediaCodec nhận thẳng 22 050 Hz.
 
 `tts_manager.dart` là cửa vào duy nhất. Khoá cache gồm **engine + số hiệu cách sinh âm +
 giọng + tốc độ + nội dung đoạn + ngữ cảnh + lần đọc thứ mấy**. Thêm bất cứ thứ gì ảnh
@@ -545,5 +616,6 @@ Máy khác NDK hoặc khác phiên bản thì phải sửa file này trước kh
 ## Bản quyền
 
 Mô hình VieNeu-TTS theo giấy phép **CC BY-NC 4.0** — phi thương mại và phải ghi công tác
-giả. Hai giọng *Latradio* và *Việt Sử* trong `app/assets/giong.json` nhân bản từ bản ghi
+giả. Mô hình Matcha thì **MIT**, không ràng buộc phi thương mại — nên nếu sau này dự án đổi
+hướng thì đó là engine duy nhất đi theo được. Hai giọng *Latradio* và *Việt Sử* trong `app/assets/giong.json` nhân bản từ bản ghi
 của người khác: dùng riêng thì được, phát hành công khai phải xin phép.

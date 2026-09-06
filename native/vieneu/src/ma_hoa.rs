@@ -136,40 +136,211 @@ fn bitrate_lame(kbps: u32) -> Bitrate {
     }
 }
 
+// -- Lấy mẫu lại: cầu nối giữa engine 22 050 Hz và libopus --------------------
+
+/// Bề rộng bộ lọc, đếm bằng số lần sinc cắt trục ở MỖI bên.
+const LOC_SO_ZERO: usize = 32;
+
+/// Chặn tần, tính theo Nyquist của đầu có tần số THẤP hơn trong hai đầu, và
+/// cửa sổ Kaiser đi kèm. Đúng cặp số của `fbank.rs`, tức preset "kaiser_best"
+/// mà resampy/torchaudio dùng — không nghĩ lại làm gì, nó đã được soi kỹ.
+const LOC_CHAN_TAN: f64 = 0.947_593_716_739_959_6;
+const LOC_BETA: f64 = 14.769_656_459_379_492;
+
+/// Bảng hệ số đa pha: mỗi vị trí lẻ có thể gặp là một hàng hệ số dựng sẵn.
+///
+/// Số hàng là `dich / ƯCLN(sr, dich)` nên phụ thuộc vào việc hai tần số rút gọn
+/// đẹp tới đâu: 22 050 → 48 000 cho 320 hàng (88 KB), 44 100 cho 160. Tần số
+/// nguyên tố cùng nhau với 48 000 sẽ cho 48 000 hàng, cỡ 13 MB — không engine
+/// nào ra kiểu tần số ấy, nhưng đây là lý do bảng dựng theo từng lần gọi chứ
+/// không nằm thường trú.
+struct BangDaPha {
+    /// `so_pha` hàng nối tiếp nhau, mỗi hàng `so_tap` hệ số.
+    he_so: Vec<f32>,
+    so_tap: usize,
+    /// Số pha = `dich / ƯCLN`, cũng là mẫu số của mọi vị trí lẻ gặp được.
+    so_pha: u64,
+    /// Bước = `sr / ƯCLN`: mẫu ra thứ `i` rơi vào vị trí `i * buoc / so_pha`
+    /// trên lưới đầu vào.
+    buoc: u64,
+    /// Nửa bề rộng bộ lọc, đếm bằng mẫu ĐẦU VÀO.
+    nua: usize,
+}
+
+fn uoc_chung_lon_nhat(mut a: u64, mut b: u64) -> u64 {
+    while b != 0 {
+        let du = a % b;
+        a = b;
+        b = du;
+    }
+    a
+}
+
+fn dung_bang_da_pha(sr: u32, dich: u32) -> BangDaPha {
+    use std::f64::consts::PI;
+
+    let uc = uoc_chung_lon_nhat(sr as u64, dich as u64);
+    let so_pha = dich as u64 / uc;
+    let buoc = sr as u64 / uc;
+
+    // Hạ tần thì phải chặn dải theo Nyquist của đầu RA, không thì chồng phổ.
+    let ti_le = dich as f64 / sr as f64;
+    let chan_tan = LOC_CHAN_TAN * ti_le.min(1.0);
+    // Cửa sổ trải theo bề rộng bộ lọc tính trên lưới đầu vào: chặn tần càng
+    // thấp thì bộ lọc càng phải dài mới ôm đủ số lần sinc cắt trục.
+    let nua_that = LOC_SO_ZERO as f64 / chan_tan;
+    let nua = nua_that.ceil() as usize;
+    let so_tap = 2 * nua + 1;
+
+    let mau_so = crate::fbank::bessel_i0(LOC_BETA);
+    let mut he_so = vec![0f32; so_pha as usize * so_tap];
+    let mut hang = vec![0f64; so_tap];
+    for pha in 0..so_pha as usize {
+        let le = pha as f64 / so_pha as f64;
+        let mut tong = 0f64;
+        for (j, o) in hang.iter_mut().enumerate() {
+            // Hệ số thứ j ăn vào mẫu vào cách tâm (j - nua) bước.
+            let t = le - (j as f64 - nua as f64);
+            let x = t * chan_tan;
+            let sinc = if x.abs() < 1e-12 { 1.0 } else { (PI * x).sin() / (PI * x) };
+            let r = t / nua_that;
+            let cua_so = if r.abs() >= 1.0 {
+                0.0
+            } else {
+                crate::fbank::bessel_i0(LOC_BETA * (1.0 - r * r).sqrt()) / mau_so
+            };
+            *o = sinc * cua_so;
+            tong += *o;
+        }
+        // Chuẩn hoá từng pha về tổng 1: giữ đúng mức một chiều, và quan trọng
+        // hơn là để mọi pha cùng độ lợi — lệch nhau thì ra tiếng ù tuần hoàn.
+        for (j, &v) in hang.iter().enumerate() {
+            he_so[pha * so_tap + j] = (v / tong) as f32;
+        }
+    }
+
+    BangDaPha { he_so, so_tap, so_pha, buoc, nua }
+}
+
+/// Lấy mẫu lại PCM 16-bit mono sang [dich] Hz bằng nội suy windowed-sinc.
+///
+/// ## Vì sao không dùng lại `fbank::resample_to_16k`
+///
+/// Nó đúng là cùng một phép toán — sinc nhân cửa sổ Kaiser, cùng beta
+/// 14,7697 — nhưng dựng cho một việc khác hẳn: gọt một đoạn ghi âm vài giây
+/// lúc thêm giọng mới, chạy đúng một lần cho mỗi giọng. Nên nó tính lại cửa sổ
+/// Kaiser (một chuỗi Bessel tới 50 số hạng) cho TỪNG hệ số của TỪNG mẫu ra.
+/// Đường xuất file thì ngược lại: một part 30 phút ở 22 050 Hz là 86,4 triệu
+/// mẫu ra, mỗi mẫu 135 hệ số — gần 12 tỉ lượt tính Bessel.
+///
+/// Mà tỉ số hai tần số luôn là số hữu tỉ: 22 050/48 000 rút gọn còn 147/320,
+/// nên chỉ tồn tại đúng 320 vị trí lẻ khác nhau. Dựng bảng hệ số cho 320 pha ấy
+/// một lần rồi tra là xong — 69 phép nhân cộng mỗi mẫu ra, không còn Bessel nào
+/// trong vòng nóng. Đo bằng hai bản viết cùng ngôn ngữ, cùng kiểu vòng lặp:
+/// **nhanh hơn 12,2 lần**, mà hai đầu ra lệch nhau nhiều nhất **8,3e-9** — đổi
+/// cách tính chứ không đổi kết quả. Đó cũng là lý do không sửa `fbank.rs` cho
+/// dùng chung: file ấy khớp torchaudio tới cosine 1,0000, đụng vào là mất chỗ
+/// dựa ấy, mà đổi lại chẳng được gì.
+///
+/// Bề rộng thì cắt còn nửa của bản fbank (32 lần sinc cắt trục thay vì 64) sau
+/// khi đo đáp ứng tần số của cả hai ở 22 050 → 48 000:
+///
+/// | | 32 lần (69 hệ số) | 64 lần (137 hệ số) |
+/// |---|---|---|
+/// | phẳng tới | 9,5 kHz (−0,06 dB) | 10 kHz (−0,09 dB) |
+/// | ở 10 kHz | −1,22 dB | −0,09 dB |
+/// | ảnh phổ cao nhất | dưới −50 dB | dưới −139 dB |
+///
+/// Chênh nhau chỉ ở mẩu 9,5–11 kHz, mà Opus 32 kbps mono cũng không giữ tới
+/// đó. Đổi lại là một nửa công. Toàn cục thì sin 440 Hz nâng từ 22 050 lên
+/// 48 000 cho SNR **82,5 dB** so với sóng sin lý tưởng ở 48 kHz, tức sai số
+/// hiệu dụng 0,64 LSB — đã chạm trần của chính i16 chứ không phải trần bộ lọc.
+///
+/// Cạm bẫy: **phải chặn tràn.** Nâng tần số làm đỉnh nhô lên (Gibbs) — sin
+/// 997 Hz biên độ đầy thang vọt tới 32 836, mà i16 tràn thì không méo nhẹ, nó
+/// lật dấu thành tiếng nổ.
+fn lay_mau_lai(pcm: &[i16], sr: u32, dich: u32) -> Vec<i16> {
+    if sr == dich || pcm.is_empty() {
+        return pcm.to_vec();
+    }
+    let bang = dung_bang_da_pha(sr, dich);
+    let so_ra = (pcm.len() as u64 * dich as u64 / sr as u64) as usize;
+
+    // Đệm 0 hai đầu để vòng trong khỏi phải kiểm biên từng hệ số. Đuôi thừa ra
+    // một bộ hệ số vì mẫu ra cuối cùng vẫn còn với tới quá mẫu vào cuối cùng.
+    let mut vao = vec![0f32; pcm.len() + 2 * bang.nua + bang.so_tap];
+    for (i, &s) in pcm.iter().enumerate() {
+        vao[bang.nua + i] = s as f32;
+    }
+
+    let mut ra = Vec::with_capacity(so_ra);
+    for i in 0..so_ra as u64 {
+        // u64 chứ không u32: một part 30 phút cho i tới 86 triệu, nhân với
+        // bước 147 là vượt trần u32 từ lâu.
+        let vi_tri = i * bang.buoc;
+        let dau = (vi_tri / bang.so_pha) as usize;
+        let pha = (vi_tri % bang.so_pha) as usize;
+        let he = &bang.he_so[pha * bang.so_tap..(pha + 1) * bang.so_tap];
+        let cua = &vao[dau..dau + bang.so_tap];
+        let tong: f32 = cua.iter().zip(he).map(|(&a, &b)| a * b).sum();
+        ra.push(tong.round().clamp(-32768.0, 32767.0) as i16);
+    }
+    ra
+}
+
+/// Năm tần số libopus nhận thẳng. Ngoài chúng thì [wav_sang_opus] lấy mẫu lại.
+fn muc_libopus(sr: u32) -> Option<audiopus::SampleRate> {
+    use audiopus::SampleRate;
+    Some(match sr {
+        8_000 => SampleRate::Hz8000,
+        12_000 => SampleRate::Hz12000,
+        16_000 => SampleRate::Hz16000,
+        24_000 => SampleRate::Hz24000,
+        48_000 => SampleRate::Hz48000,
+        _ => return None,
+    })
+}
+
 /// Nén sang Opus, đóng trong container Ogg. [bitrate_bps] ví dụ 32000, 64000.
 ///
 /// Opus chỉ sinh ra từng khung nén, không tự dựng file; phần đóng gói Ogg phải
 /// làm tay: hai trang đầu là OpusHead và OpusTags theo đặc tả RFC 7845, rồi mỗi
 /// khung âm thanh một packet với granule position tính theo mẫu 48 kHz.
 ///
-/// ## Tần số vào: nhận thẳng cả năm mức của libopus
+/// ## Tần số vào: nhận tất — năm mức thì nén thẳng, còn lại thì lấy mẫu lại
 ///
-/// Trước đây hàm này đòi đúng 48 kHz, nên **engine VieNeu v2 không xuất được
-/// Opus**: NeuCodec dựng ra 24 kHz (xem `v2.rs`) nên mọi file cuối đều rơi về
-/// WAV kèm dòng "Opus cần 48 kHz, nhận 24000 Hz". Đòi hỏi ấy sai: libopus nhận
-/// thẳng 8/12/16/24/48 kHz, chỉ những tần số NGOÀI năm mức đó mới phải lấy mẫu
-/// lại. Đọc 24 kHz thẳng còn hơn nâng lên 48 kHz rồi mới nén — khỏi nội suy,
-/// khỏi tốn gấp đôi công.
+/// libopus nhận thẳng 8/12/16/24/48 kHz. Đưa 24 kHz của engine v2 vào thẳng còn
+/// hơn nâng lên 48 kHz rồi mới nén: khỏi nội suy, khỏi tốn gấp đôi công.
+///
+/// Nhưng hai engine ra **22 050 Hz** (Piper và Matcha) thì không rơi vào mức
+/// nào, và trước đây hàm này trả lỗi. Hậu quả không phải một dòng cảnh báo vô
+/// hại: Opus 32 kbps là định dạng xuất **mặc định**, nên ai chọn một trong hai
+/// engine ấy rồi xuất file đều nhận lại WAV kèm dòng "giữ nguyên WAV" — nặng
+/// gấp khoảng 30 lần. Giờ những tần số ngoài năm mức được nâng lên 48 kHz bằng
+/// [lay_mau_lai] trước khi nén.
 ///
 /// Cạm bẫy: **đồng hồ của Ogg không đổi theo tần số vào.** `pre_skip` và
 /// granule position luôn đếm bằng mẫu 48 kHz, nên phải nhân với
-/// [OPUS_DONG_HO]`/sr` (24 kHz thì gấp đôi). Quên chỗ này thì file vẫn phát
-/// được nhưng mọi trình phát báo độ dài chỉ bằng một nửa, và tua thì nhảy sai
-/// chỗ — hỏng lặng lẽ, không có lỗi nào bật ra.
+/// [OPUS_DONG_HO]`/sr` (24 kHz thì gấp đôi; sau khi lấy mẫu lại thì bằng 1).
+/// Quên chỗ này thì file vẫn phát được nhưng mọi trình phát báo độ dài chỉ bằng
+/// một nửa, và tua thì nhảy sai chỗ — hỏng lặng lẽ, không có lỗi nào bật ra.
 pub fn wav_sang_opus(pcm: &[i16], sr: u32, bitrate_bps: i32) -> Result<Vec<u8>, String> {
-    use audiopus::{coder::Encoder, Application, Bitrate as OpusBitrate, Channels, SampleRate};
+    use audiopus::{coder::Encoder, Application, Bitrate as OpusBitrate, Channels};
+    use std::borrow::Cow;
 
-    let sr_vao = match sr {
-        8_000 => SampleRate::Hz8000,
-        12_000 => SampleRate::Hz12000,
-        16_000 => SampleRate::Hz16000,
-        24_000 => SampleRate::Hz24000,
-        48_000 => SampleRate::Hz48000,
-        _ => return Err(format!("Opus nhận 8/12/16/24/48 kHz, không nhận {sr} Hz")),
+    if sr == 0 {
+        return Err("WAV khai tần số lấy mẫu bằng 0".into());
+    }
+    // Chỉ sao chép khi thật sự phải lấy mẫu lại; ba engine kia đi thẳng.
+    let (mau, sr_nen): (Cow<[i16]>, u32) = match muc_libopus(sr) {
+        Some(_) => (Cow::Borrowed(pcm), sr),
+        None => (Cow::Owned(lay_mau_lai(pcm, sr, OPUS_DONG_HO)), OPUS_DONG_HO),
     };
+    let sr_vao = muc_libopus(sr_nen).expect("đã đưa về 48 kHz nếu không khớp mức nào");
+
     // Chia hết với cả năm mức trên, nên không mất mẫu nào vì làm tròn.
-    let nhip = (OPUS_DONG_HO / sr) as u64;
-    let khung = khung_20ms(sr);
+    let nhip = (OPUS_DONG_HO / sr_nen) as u64;
+    let khung = khung_20ms(sr_nen);
 
     let mut enc = Encoder::new(sr_vao, Channels::Mono, Application::Audio)
         .map_err(|e| format!("Opus new: {e}"))?;
@@ -189,23 +360,27 @@ pub fn wav_sang_opus(pcm: &[i16], sr: u32, bitrate_bps: i32) -> Result<Vec<u8>, 
     {
         let mut w = PacketWriter::new(Cursor::new(&mut ra));
 
+        // Khai tần số GỐC chứ không phải tần số đã nén: RFC 7845 mục 5.1 định
+        // nghĩa ô này là tần số của bản gốc và nói thẳng rằng bộ giải mã không
+        // dùng nó để phát (Opus luôn giải ra 48 kHz). Giữ số gốc thì về sau còn
+        // biết file đến từ engine nào.
         w.write_packet(opus_head(1, pre_skip, sr), serial, PacketWriteEndInfo::EndPage, 0)
             .map_err(|e| format!("Ogg OpusHead: {e}"))?;
         w.write_packet(opus_tags(), serial, PacketWriteEndInfo::EndPage, 0)
             .map_err(|e| format!("Ogg OpusTags: {e}"))?;
 
         let mut dem_mau = pre_skip as u64;
-        let so_khung = pcm.len().div_ceil(khung);
+        let so_khung = mau.len().div_ceil(khung);
         let mut dem = [0u8; 4000];
         // Dựng một lần rồi dùng lại: một part 30 phút là gần 90 nghìn khung.
         let mut vao = vec![0i16; khung];
 
         for k in 0..so_khung {
             let dau = k * khung;
-            let het = (dau + khung).min(pcm.len());
+            let het = (dau + khung).min(mau.len());
             // Khung cuối thường thiếu mẫu: đệm số 0 cho đủ, vì Opus không nhận
             // khung ngắn hơn mức đã khai.
-            vao[..het - dau].copy_from_slice(&pcm[dau..het]);
+            vao[..het - dau].copy_from_slice(&mau[dau..het]);
             vao[het - dau..].fill(0);
 
             let n = enc
@@ -266,6 +441,40 @@ mod kiem_thu {
 
     fn sin_mot_giay() -> Vec<i16> {
         sin_mot_giay_o(48_000)
+    }
+
+    /// Một giây sóng sin [f] Hz biên độ [bien] ở tần số [sr], dựng bằng f64.
+    ///
+    /// Khác [sin_mot_giay_o] ở chỗ tính bằng f64. Bài đo SNR của bộ lấy mẫu lại
+    /// lấy chính sóng sin lý tưởng làm mốc, mà f32 tới cuối giây đã lệch pha
+    /// vài LSB — đủ để ăn mất mấy dB của thứ đang muốn đo.
+    fn sin_chinh_xac(sr: u32, f: f64, bien: f64) -> Vec<i16> {
+        (0..sr as usize)
+            .map(|i| ((i as f64 / sr as f64 * f * std::f64::consts::TAU).sin() * bien) as i16)
+            .collect()
+    }
+
+    /// Mức hiệu dụng — thước đo "có ra tiếng thật không".
+    fn rms(v: &[i16]) -> f64 {
+        (v.iter().map(|&s| (s as f64).powi(2)).sum::<f64>() / v.len() as f64).sqrt()
+    }
+
+    /// Số lần sóng cắt trục. Với sóng sin thuần thì đây là cao độ đo bằng cách
+    /// rẻ nhất, và nó bắt được cả lỗi làm tiếng nhanh/chậm đi.
+    fn doi_dau(v: &[i16]) -> usize {
+        v.windows(2).filter(|w| (w[0] >= 0) != (w[1] >= 0)).count()
+    }
+
+    /// Biên độ của thành phần [f] Hz — một bước DFT tại đúng một tần số. Dùng
+    /// để phân biệt cao độ đúng với cao độ mà một lỗi tỉ số sẽ đẻ ra.
+    fn nang_luong_tai(mau: &[i16], f: f64, sr: f64) -> f64 {
+        let (mut re, mut im) = (0f64, 0f64);
+        for (i, &s) in mau.iter().enumerate() {
+            let w = std::f64::consts::TAU * f * i as f64 / sr;
+            re += s as f64 * w.cos();
+            im -= s as f64 * w.sin();
+        }
+        (re * re + im * im).sqrt() / mau.len() as f64
     }
 
     #[test]
@@ -341,7 +550,6 @@ mod kiem_thu {
 
         // Còn ra tiếng thật chứ không phải im lặng hay nhiễu: mức hiệu dụng
         // phải xấp xỉ bản gốc (sin biên độ 12000 -> RMS ~8500).
-        let rms = |v: &[i16]| (v.iter().map(|&s| (s as f64).powi(2)).sum::<f64>() / v.len() as f64).sqrt();
         let (a, b) = (rms(&goc), rms(&ra));
         assert!(b > a * 0.7 && b < a * 1.3, "mức âm gốc {a:.0}, giải ra {b:.0}");
     }
@@ -364,13 +572,121 @@ mod kiem_thu {
         };
         // Một giây âm thanh là ~48 000 mẫu ở đồng hồ 48 kHz, dù vào ở tần số
         // nào — cộng thêm pre-skip và phần đệm của khung cuối.
-        for sr in [16_000u32, 24_000, 48_000] {
+        for sr in [16_000u32, 22_050, 24_000, 48_000] {
             let g = mot_giay(sr);
             assert!(
                 (48_000..49_500).contains(&g),
                 "{sr} Hz cho granule {g}, đáng lẽ quanh 48 000"
             );
         }
+    }
+
+    /// Bộ lấy mẫu lại phải giữ nguyên cao độ và mức âm, không chỉ giữ độ dài.
+    ///
+    /// Sai tỉ số thì độ dài lệch theo nên dễ thấy; sai *pha* của bảng hệ số thì
+    /// độ dài vẫn đúng mà tiếng ù đi — nên soi thêm số lần đổi dấu và mức hiệu
+    /// dụng, hai thứ mà một bảng hệ số hỏng không giữ được.
+    #[test]
+    fn lay_mau_lai_giu_cao_do_va_muc_am() {
+        const SR: u32 = 22_050; // Piper và Matcha
+        let goc = sin_chinh_xac(SR, 440.0, 12_000.0);
+        let ra = lay_mau_lai(&goc, SR, 48_000);
+        assert_eq!(ra.len(), 48_000, "một giây vào phải ra đúng một giây 48 kHz");
+
+        // 440 Hz trong một giây là 880 lần đổi dấu; mẫu cuối cắt mất một lần
+        // nên cả hai bên đều đếm được 879.
+        assert_eq!(doi_dau(&ra), doi_dau(&goc), "cao độ phải giữ nguyên");
+
+        let ti_le = rms(&ra) / rms(&goc);
+        assert!((0.99..1.01).contains(&ti_le), "mức âm lệch: tỉ lệ {ti_le:.4}");
+
+        // So với chính sóng sin lý tưởng ở 48 kHz. Đo được 82,5 dB — trần của
+        // i16 chứ không phải của bộ lọc; lấy 70 dB làm lưới cho chắc.
+        let bien = 12_000.0f64;
+        let bo = 100; // hai đầu có phần bộ lọc thò ra ngoài dữ liệu
+        let mut tong_loi = 0f64;
+        let mut tong_tin = 0f64;
+        for i in bo..ra.len() - bo {
+            let ly_tuong = (i as f64 / 48_000.0 * 440.0 * std::f64::consts::TAU).sin() * bien;
+            tong_loi += (ra[i] as f64 - ly_tuong).powi(2);
+            tong_tin += ly_tuong.powi(2);
+        }
+        let snr = 10.0 * (tong_tin / tong_loi).log10();
+        assert!(snr > 70.0, "SNR chỉ {snr:.1} dB");
+    }
+
+    /// Nâng tần số làm đỉnh nhô lên: sin đầy thang vọt tới 32 836, mà i16 tràn
+    /// thì lật dấu thành tiếng nổ chứ không méo nhẹ.
+    #[test]
+    fn lay_mau_lai_chan_tran_i16() {
+        const SR: u32 = 22_050;
+        let goc = sin_chinh_xac(SR, 997.0, 32_767.0);
+        let ra = lay_mau_lai(&goc, SR, 48_000);
+        // Đo được 65 mẫu chạm trần; điều phải giữ là không mẫu nào lật dấu.
+        assert_eq!(doi_dau(&ra), doi_dau(&goc), "tràn i16 sẽ đẻ ra lần đổi dấu lạ");
+        let ti_le = rms(&ra) / rms(&goc);
+        assert!((0.99..1.01).contains(&ti_le), "mức âm lệch: tỉ lệ {ti_le:.4}");
+    }
+
+    /// Đúng đường đi của Piper và Matcha: 22 050 Hz, không nằm trong năm mức
+    /// libopus nhận.
+    ///
+    /// Trước đây hàm nén trả lỗi nên hai engine ấy không xuất được Opus bao
+    /// giờ; mà Opus 32 kbps là định dạng mặc định, nên mọi file cuối rơi về WAV
+    /// — nặng gấp khoảng 30 lần.
+    ///
+    /// Soi cả ruột chứ không chỉ cái vỏ: nén rồi giải lại rồi đo cao độ. Lấy
+    /// nhầm tỉ số thì file vẫn đủ trang đủ mục, chỉ có tiếng là sai — 440 Hz
+    /// hoá 958 Hz nếu quên lấy mẫu lại, hoá 202 Hz nếu lấy mẫu lại ngược chiều.
+    #[test]
+    fn opus_lay_mau_lai_tan_so_ngoai_nam_muc() {
+        use audiopus::{coder::Decoder, Channels, SampleRate};
+        use ogg::PacketReader;
+
+        const SR: u32 = 22_050;
+        let goc = sin_mot_giay_o(SR);
+        let nen = wav_sang_opus(&goc, SR, 48_000).expect("22 050 Hz phải nén được");
+        assert_eq!(&nen[0..4], b"OggS");
+
+        // OpusHead giữ tần số GỐC: RFC 7845 mục 5.1 định nghĩa ô này là tần số
+        // của bản gốc, không phải tần số đã đưa vào bộ mã hoá.
+        let dau = nen.windows(8).position(|w| w == b"OpusHead").expect("thiếu OpusHead");
+        let khai = u32::from_le_bytes(nen[dau + 12..dau + 16].try_into().unwrap());
+        assert_eq!(khai, SR, "OpusHead phải ghi tần số gốc");
+
+        // Một giây ở 48 kbps là khoảng 6 KB, không phải cỡ WAV.
+        assert!(nen.len() > 2_000 && nen.len() < 20_000, "dài {} byte", nen.len());
+
+        let mut doc = PacketReader::new(Cursor::new(&nen));
+        let mut dec = Decoder::new(SampleRate::Hz48000, Channels::Mono).unwrap();
+        let mut ra: Vec<i16> = Vec::new();
+        let mut bo_qua_header = 2; // OpusHead và OpusTags không phải âm thanh
+        while let Ok(Some(goi)) = doc.read_packet() {
+            if bo_qua_header > 0 {
+                bo_qua_header -= 1;
+                continue;
+            }
+            let mut khung = vec![0i16; khung_20ms(48_000)];
+            let n = dec.decode(Some(&goi.data), &mut khung[..], false).unwrap();
+            ra.extend_from_slice(&khung[..n]);
+        }
+
+        // Một giây vào thì một giây ra — ở 48 kHz là 48 000 mẫu, không phải
+        // 22 050 (quên nói cho bộ giải mã) cũng không phải 96 000 (nhân hai lần).
+        let lech = (ra.len() as i64 - 48_000).abs();
+        assert!(lech < 4_800, "giải ra {} mẫu, đáng lẽ quanh 48 000", ra.len());
+
+        // Cao độ: 440 Hz phải áp đảo hai cao độ mà một lỗi tỉ số sẽ đẻ ra.
+        let (dung, cao, thap) = (
+            nang_luong_tai(&ra, 440.0, 48_000.0),
+            nang_luong_tai(&ra, 958.0, 48_000.0),
+            nang_luong_tai(&ra, 202.0, 48_000.0),
+        );
+        assert!(dung > cao * 5.0 && dung > thap * 5.0, "440 Hz {dung:.1}, 958 Hz {cao:.1}, 202 Hz {thap:.1}");
+
+        // Còn ra tiếng thật: mức hiệu dụng xấp xỉ bản gốc.
+        let ti_le = rms(&ra) / rms(&goc);
+        assert!((0.7..1.3).contains(&ti_le), "mức âm gốc {}, giải ra {}", rms(&goc), rms(&ra));
     }
 
     #[test]
@@ -424,8 +740,8 @@ mod kiem_thu {
     #[test]
     fn bao_loi_ro_chu_khong_sap() {
         assert!(doc_wav_mono(b"khong phai wav").is_err());
-        // 22 050 Hz (giọng Piper) không nằm trong năm mức libopus nhận, mà ở
-        // đây chưa có bộ lấy mẫu lại — phải nói ra chứ đừng ghi file hỏng.
-        assert!(wav_sang_opus(&[0i16; 960], 22_050, 32_000).is_err());
+        // Tần số bằng 0 thì không lấy mẫu lại được — phải nói ra chứ đừng chia
+        // cho 0. Còn 22 050 Hz thì giờ chạy được, xem bài lấy mẫu lại ở trên.
+        assert!(wav_sang_opus(&[0i16; 960], 0, 32_000).is_err());
     }
 }

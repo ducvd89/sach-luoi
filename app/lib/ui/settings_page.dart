@@ -169,6 +169,10 @@ class _SettingsPageState extends State<SettingsPage> {
                   const Divider(height: 26),
                   const _ModelV2Section(),
                 ],
+                if (settings.engineId == 'matcha') ...[
+                  const Divider(height: 26),
+                  const _ModelMatchaSection(),
+                ],
                 if (settings.engineId == 'piper') ...[
                   const Divider(height: 26),
                   const _VoicePackSection(),
@@ -545,6 +549,107 @@ class _ModelV2SectionState extends State<_ModelV2Section> {
       ),
     );
     if (ok == true) await state.deleteV2Model();
+  }
+}
+
+/// Tải bộ file của engine Matcha.
+///
+/// Khuôn giống hai mục trên, chỉ khác con số và lời mô tả. Giữ ba mục riêng
+/// thay vì một mục dùng chung nhận tham số: mỗi engine có một lý do khác nhau
+/// để người ta chọn nó, mà chỗ nói lý do ấy chính là đoạn chữ ở đây.
+class _ModelMatchaSection extends StatefulWidget {
+  const _ModelMatchaSection();
+
+  @override
+  State<_ModelMatchaSection> createState() => _ModelMatchaSectionState();
+}
+
+class _ModelMatchaSectionState extends State<_ModelMatchaSection> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      AppScope.read(context).refreshMatchaStatus();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final hint = Theme.of(context).hintColor;
+    final progress = state.modelProgress;
+    final installed = state.matchaInstalled;
+
+    if (progress != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Đang tải mô hình Matcha', style: TextStyle(fontSize: 14)),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(99),
+            child: LinearProgressIndicator(value: progress.value, minHeight: 5),
+          ),
+          const SizedBox(height: 6),
+          Text('${progress.phase} · ${progress.percent}%',
+              style: TextStyle(fontSize: 12.5, color: hint)),
+        ],
+      );
+    }
+
+    if (installed == true) {
+      return Row(
+        children: [
+          const Icon(Icons.check_circle_outline, size: 18, color: Colors.green),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text('Mô hình Matcha đã có trên máy — đọc được khi không có mạng',
+                style: TextStyle(fontSize: 13, color: hint)),
+          ),
+          TextButton(
+            onPressed: () => _confirmDelete(context),
+            child: const Text('Xoá mô hình Matcha'),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Cần tải mô hình Matcha về máy một lần (~${matchaMegabytes.round()} MB) — nhẹ nhất '
+          'trong ba mô hình. Đọc nhanh gấp gần bảy lần VieNeu, bù lại chỉ có một giọng cố định '
+          'và âm 22 kHz thay vì 48 kHz.',
+          style: TextStyle(fontSize: 12.5, color: hint),
+        ),
+        const SizedBox(height: 10),
+        NutSac(
+          nhan: 'TẢI MÔ HÌNH MATCHA (${matchaMegabytes.round()} MB)',
+          hinh: Icons.arrow_downward_rounded,
+          onNhan: installed == null
+              ? null
+              : () => _chayVaBaoLoi(context, AppScope.read(context).downloadMatchaModel),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _confirmDelete(BuildContext context) async {
+    final state = AppScope.read(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Xoá mô hình Matcha?'),
+        content: Text('Giải phóng khoảng ${matchaMegabytes.round()} MB. '
+            'Hai mô hình VieNeu không bị ảnh hưởng.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Huỷ')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Xoá')),
+        ],
+      ),
+    );
+    if (ok == true) await state.deleteMatchaModel();
   }
 }
 

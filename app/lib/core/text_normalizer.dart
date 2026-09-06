@@ -259,6 +259,20 @@ String danhDauTiengAnh(String text) {
   });
 }
 
+final _theEn = RegExp(r'</?en>');
+
+/// Gỡ thẻ `<en>…</en>` khỏi phần văn bản sắp đọc.
+///
+/// Thẻ ấy là quy ước riêng của sea-g2p — chỉ đường đi qua hai engine VieNeu mới
+/// có người bóc nó ra. Engine nào đọc thẳng mặt chữ (Matcha) mà nhận nguyên
+/// thẻ thì đọc luôn thành tiếng "en" trước mỗi từ ngoại lai.
+///
+/// Thay bằng dấu cách chứ không xoá trắng: `<en>` luôn dính liền vào từ, xoá
+/// trắng thì `mua <en>iPhone</en> mới` vẫn ổn nhưng `a<en>B</en>c` dính thành
+/// một từ khác hẳn. Khoảng trắng thừa dọn ngay sau đó.
+String boTheEn(String text) =>
+    text.replaceAll(_theEn, ' ').replaceAll(RegExp(r'[ \t]{2,}'), ' ').trim();
+
 /// Chuẩn hoá nhẹ để hiển thị trên màn hình đọc: giữ nguyên chữ số và dấu câu.
 String normalizeForDisplay(String text) {
   return text

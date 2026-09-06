@@ -18,6 +18,11 @@ pub mod ma_hoa;
 pub mod ffi_v2;
 pub mod v2;
 
+// Engine Matcha-TTS (khớp dòng chảy + Vocos, ONNX). Chỉ cần ONNX Runtime nên
+// chạy được ở mọi nền tảng mà hai engine kia chạy được.
+pub mod ffi_matcha;
+pub mod matcha;
+
 pub mod engine;
 pub mod enroll;
 pub mod fbank;

@@ -11,7 +11,7 @@ Chạy **hoàn toàn trên máy**: không cần mạng, không gửi sách đi �
 
 | | |
 |---|---|
-| **Windows** | Chạy `SachLuoi-Setup-1.6.3.exe`. Không cần quyền quản trị, cài vào `%LOCALAPPDATA%`. |
+| **Windows** | Chạy `SachLuoi-Setup-1.7.0.exe`. Không cần quyền quản trị, cài vào `%LOCALAPPDATA%`. |
 | **Android** | Cài `SachLuoi-android-arm64.apk`. Cần Android 7 trở lên, máy 64-bit. |
 
 Sau khi cài, mở *Cài đặt → Giọng đọc* và bấm **Tải mô hình (145 MB)** một lần. Từ đó đọc được cả
@@ -21,22 +21,24 @@ khi không có mạng.
 
 ## Giọng đọc
 
-Bốn engine, đổi trong **Cài đặt**:
+Năm engine, đổi trong **Cài đặt**:
 
-| | VieNeu v3 Turbo | VieNeu v2 | Giọng nhẹ (Piper) | TTS hệ thống |
-|---|---|---|---|---|
-| Giọng | 14 dựng sẵn + tự thêm | 9 dựng sẵn + tự thêm | 3 gói tải sẵn | giọng của máy |
-| Vùng miền | Bắc, Trung, Nam | Bắc | Bắc | tuỳ máy |
-| Âm thanh | 48 kHz, trong nhất | 24 kHz | khá, hơi máy | tuỳ máy |
-| Đọc | chuẩn | tự nhiên hơn, biết cả tiếng Anh xen kẽ | hơi máy | tuỳ máy |
-| Tốc độ | ~2,9× thời gian thực | ~2,8× | nhanh hơn nhiều | nhanh |
-| Dung lượng tải | 145 MB | 478 MB | 32–64 MB mỗi gói | không phải tải |
-| Nền tảng | Windows, Android | Windows, Android | Windows, Android | Android |
+| | VieNeu v3 Turbo | VieNeu v2 | Matcha-TTS | Giọng nhẹ (Piper) | TTS hệ thống |
+|---|---|---|---|---|---|
+| Giọng | 14 dựng sẵn + tự thêm | 9 dựng sẵn + tự thêm | **1, cố định** | 3 gói tải sẵn | giọng của máy |
+| Vùng miền | Bắc, Trung, Nam | Bắc | Bắc | Bắc | tuỳ máy |
+| Âm thanh | 48 kHz, trong nhất | 24 kHz | 22 kHz | khá, hơi máy | tuỳ máy |
+| Đọc | chuẩn | tự nhiên hơn, biết cả tiếng Anh xen kẽ | chuẩn | hơi máy | tuỳ máy |
+| Tốc độ | ~2,9× thời gian thực | ~2,8× | **~19×** | nhanh hơn nhiều | nhanh |
+| Dung lượng tải | 145 MB | 478 MB | **59 MB** | 32–64 MB mỗi gói | không phải tải |
+| Nền tảng | Windows, Android | Windows, Android | Windows, Android | Windows, Android | Android |
 
 **Chọn cái nào:** v3 Turbo cho gần như mọi trường hợp — nó chở gấp 2,5 lần lượng thông tin âm cho
 mỗi giây tiếng nên tiếng trong hơn. Đổi sang **v2** nếu sách có nhiều tên riêng nước ngoài, hoặc
-nếu bạn thấy v3 đọc đều đều: v2 lớn gấp ba nên ngắt nghỉ tự nhiên hơn. Giọng nhẹ khi máy yếu hoặc
-cần đọc thật nhanh một cuốn dài. TTS hệ thống khi không muốn tải gì thêm.
+nếu bạn thấy v3 đọc đều đều: v2 lớn gấp ba nên ngắt nghỉ tự nhiên hơn. **Matcha** khi bạn cần
+nhanh và nhẹ: tải một phần ba, đọc nhanh gấp gần bảy lần hai bản trên, đủ để nghe theo kịp trên
+cả máy yếu — đổi lại chỉ có đúng một giọng và không thêm giọng riêng được. Giọng nhẹ khi máy yếu
+hoặc cần đọc thật nhanh một cuốn dài. TTS hệ thống khi không muốn tải gì thêm.
 
 **Thêm giọng của bạn.** *Cài đặt → Thêm giọng từ file ghi âm*. Hai bản VieNeu làm việc này theo hai
 cách khác nhau:
@@ -126,9 +128,10 @@ app/                  Ứng dụng Flutter (Windows + Android)
   lib/ui/               các màn hình
   assets/               từ điển âm vị và hồ sơ giọng
 
-native/vieneu/        Rust: chạy cả hai bản VieNeu, nhân bản giọng, mã hoá âm thanh
+native/vieneu/        Rust: chạy ba mô hình trên máy, nhân bản giọng, mã hoá âm thanh
   src/engine.rs         v3 Turbo qua ONNX Runtime
   src/v2.rs             v2 qua llama.cpp + NeuCodec
+  src/matcha.rs         Matcha-TTS qua ONNX Runtime (khớp dòng chảy + Vocos)
 native/sea-g2p/       Rust: chuyển chữ sang âm vị (fork của sea-g2p, thêm cổng C)
 tts_service/          Script Python chuẩn bị dữ liệu — KHÔNG cần để chạy ứng dụng
 
@@ -220,6 +223,11 @@ rời còn chậm hơn CPU (1,83× so với 2,94×).
   sang ONNX.
 - [**llama.cpp**](https://github.com/ggml-org/llama.cpp) qua
   [**llama-cpp-2**](https://crates.io/crates/llama-cpp-2) — chạy mô hình v2.
+- [**Matcha-TTS tiếng Việt**](https://huggingface.co/Cong123779/matcha-tts-vietnamese-onnx-int8) —
+  Cong123779, giấy phép **MIT**. Dùng bản int8 của bộ ba `matcha_encoder` / `matcha_decoder` /
+  `vocos`; [mã nguồn](https://github.com/congkx123789/match_TTS_VI). Dựa trên
+  [**Matcha-TTS**](https://github.com/shivammehta25/Matcha-TTS) (Shivam Mehta và cộng sự, MIT) và
+  [**Vocos**](https://github.com/gemelo-ai/vocos) (Gemelo AI, MIT).
 - [**Piper**](https://github.com/rhasspy/piper) qua
   [**sherpa-onnx**](https://github.com/k2-fsa/sherpa-onnx).
 - [**ONNX Runtime**](https://github.com/microsoft/onnxruntime) — Microsoft, MIT.

@@ -14,8 +14,9 @@ import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 
 import '../../core/wav.dart';
-import '../../models/settings.dart' show coEngineV2;
+import '../../models/settings.dart' show coEngineMatcha, coEngineV2;
 import '../storage.dart';
+import 'matcha_engine.dart';
 import 'model_store.dart';
 import 'ondevice_engine.dart';
 import 'system_tts_engine.dart';
@@ -40,14 +41,18 @@ class TtsManager {
       : modelStore = store ?? ModelStore() {
     onDevice = OnDeviceVieNeuEngine(modelStore);
     vieneuV2 = VieNeuV2Engine(modelStore);
-    // Bốn engine, tất cả chạy thẳng trên máy: hai bản VieNeu cho chất lượng
-    // (v3 Turbo âm sạch hơn, v2 đọc tự nhiên hơn), Piper cho máy yếu, TTS hệ
-    // thống cho ai không muốn tải gì thêm. Không đường nào nhờ máy khác đọc hộ.
+    matcha = MatchaEngine(modelStore);
+    // Năm engine, tất cả chạy thẳng trên máy: hai bản VieNeu cho chất lượng
+    // (v3 Turbo âm sạch hơn, v2 đọc tự nhiên hơn), Matcha cho ai cần nhanh và
+    // nhẹ, Piper cho máy yếu, TTS hệ thống cho ai không muốn tải gì thêm. Không
+    // đường nào nhờ máy khác đọc hộ.
     _engines = {
       onDevice.id: onDevice,
-      // v2 chỉ đăng ký trên nền tảng có thư viện native của nó — xem [coEngineV2].
-      // Hiện một engine bấm vào là sập còn tệ hơn không hiện.
+      // v2 và Matcha chỉ đăng ký trên nền tảng có thư viện native của chúng —
+      // xem [coEngineV2] và [coEngineMatcha]. Hiện một engine bấm vào là sập
+      // còn tệ hơn không hiện.
       if (coEngineV2) vieneuV2.id: vieneuV2,
+      if (coEngineMatcha) matcha.id: matcha,
       piper.id: piper,
       systemTts.id: systemTts,
       for (final e in themEngine) e.id: e,
@@ -57,6 +62,7 @@ class TtsManager {
   final ModelStore modelStore;
   late final OnDeviceVieNeuEngine onDevice;
   late final VieNeuV2Engine vieneuV2;
+  late final MatchaEngine matcha;
   final OnDeviceTtsEngine piper = OnDeviceTtsEngine();
   final SystemTtsEngine systemTts = SystemTtsEngine();
   late final Map<String, TtsEngine> _engines;
