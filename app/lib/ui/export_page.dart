@@ -668,7 +668,8 @@ class _JobCard extends StatelessWidget {
                       '${remaining == null ? '' : ' · còn khoảng ${formatTime(remaining.inSeconds.toDouble())}'}'
                       // Đọc lại là chuyện bình thường, chỉ hiện cho biết máy
                       // đang làm gì trong lúc thanh tiến trình đứng yên.
-                      '${job.doanDocLai == 0 ? '' : ' · đọc lại ${job.doanDocLai} đoạn'}',
+                      '${job.doanDocLai == 0 ? '' : ' · đọc lại ${job.doanDocLai} đoạn'}'
+                      '${job.doanChuaKiem == 0 ? '' : ' · ${job.doanChuaKiem} đoạn chưa kiểm âm'}',
               style: TextStyle(fontSize: 12.5, color: hint),
             ),
             if (job.error != null) ...[
@@ -782,7 +783,7 @@ class KhungNhatKy extends StatelessWidget {
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  'Soi âm — đoạn đọc ra không khớp văn bản'
+                  'Kiểm âm wav2vec2 — đoạn lệch hoặc chưa kiểm'
                   '${job.doanChuaDat == 0 ? '' : ' · ${job.doanChuaDat} đoạn vẫn lệch'}',
                   style: TextStyle(fontSize: 11.5, color: hint),
                 ),
@@ -824,7 +825,9 @@ class DongNhatKy extends StatelessWidget {
 
     // Ba trạng thái, ba màu: đang đọc lại (cam), đọc lại xong đã khớp (xanh),
     // hết lượt vẫn lệch (đỏ — đoạn này nghe có thể thừa hoặc thiếu chữ).
-    final (mau, chu) = !muc.xong
+    final (mau, chu) = !muc.daKiem
+        ? (Colors.orange, 'chưa kiểm: ${muc.lyDoBoQua ?? 'không có kết quả nhận dạng'}')
+        : !muc.xong
         ? (Colors.orange, 'đang đọc lại lần ${muc.soLan + 1}…')
         : muc.dat
             ? (Colors.green, 'đã khớp sau ${muc.soLan} lượt')
@@ -852,10 +855,14 @@ class DongNhatKy extends StatelessWidget {
                     style: TextStyle(color: hint, fontWeight: FontWeight.w600),
                   ),
                   TextSpan(
-                    text: ' · ${muc.soAm}/${muc.soTu} âm (${(muc.tiLe * 100).round()}%) · ',
+                    text: muc.daKiem
+                        ? ' · ${muc.soAm}/${muc.soTu} âm (${(muc.tiLe * 100).round()}%) · '
+                        : ' · ',
                     style: TextStyle(color: hint),
                   ),
                   TextSpan(text: chu, style: TextStyle(color: mau)),
+                  if (muc.amVi.isNotEmpty)
+                    TextSpan(text: '\nÂm vị wav2vec2: ${muc.amVi}', style: TextStyle(color: hint)),
                 ],
               ),
               style: const TextStyle(fontSize: 11.5, height: 1.35),

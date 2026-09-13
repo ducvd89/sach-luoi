@@ -15,6 +15,8 @@ import 'package:sach_noi/models/book.dart';
 import 'package:sach_noi/models/export_job.dart';
 import 'package:sach_noi/models/settings.dart';
 import 'package:sach_noi/services/export_service.dart';
+import 'package:sach_noi/services/kiem_am/bo_kiem_am.dart';
+import 'package:sach_noi/services/kiem_am/wav2vec2_native.dart';
 import 'package:sach_noi/services/storage.dart';
 import 'package:sach_noi/services/tts/tts_engine.dart';
 import 'package:sach_noi/services/tts/tts_manager.dart';
@@ -31,7 +33,8 @@ Float32List _chuoiAm(int soAm) {
     for (var i = 0; i < amMau; i++) {
       final t = i / _rate;
       final bao = math.sin(math.pi * i / amMau);
-      out[at + i] = 0.5 *
+      out[at + i] =
+          0.5 *
           bao *
           (math.sin(2 * math.pi * 130 * t) +
               0.5 * math.sin(4 * math.pi * 130 * t) +
@@ -73,11 +76,13 @@ class _EngineGia implements TtsEngine {
   void huyDangDoc() {}
 
   @override
-  Future<EngineStatus> status() async => const EngineStatus(ready: true, message: 'Sẵn sàng');
+  Future<EngineStatus> status() async =>
+      const EngineStatus(ready: true, message: 'Sẵn sàng');
 
   @override
-  Future<List<TtsVoice>> voices() async =>
-      [const TtsVoice(id: 'gia', name: 'Giả', gender: '')];
+  Future<List<TtsVoice>> voices() async => [
+    const TtsVoice(id: 'gia', name: 'Giả', gender: ''),
+  ];
 
   @override
   Future<void> setBulkMode(bool on) async {}
@@ -97,7 +102,7 @@ class _EngineGia implements TtsEngine {
   }
 }
 
-/// Sách một đoạn mười từ — đủ dài để dùng dải 85-115%.
+/// Sách một đoạn mười âm — nhận 10 hoặc 11 âm thì đạt ngưỡng 100–110%.
 const _doan = 'Một hai ba bốn năm sáu bảy tám chín mười.';
 
 void main() {
@@ -119,8 +124,25 @@ void main() {
   });
 
   /// Chạy một lượt xuất trọn vẹn với engine giả, trả về job đã xong.
-  Future<ExportJob> xuat(_EngineGia engine) async {
-    final tts = TtsManager(themEngine: [engine]);
+  Future<ExportJob> xuat(
+    _EngineGia engine, {
+    bool loiNhanDang = false,
+    int? loiTuLan,
+  }) async {
+    var lanKiem = 0;
+    final kiem = BoKiemAm(
+      nhanAm: (wav, nhip) async {
+        if (loiNhanDang || (loiTuLan != null && lanKiem++ >= loiTuLan)) {
+          throw StateError('Không nạp được wav2vec2');
+        }
+        // Nhận dạng giả độc lập với thuật toán sóng: thời lượng chỉ mã hoá số
+        // đếm đã đặt trong fixture của test, không dùng ở ứng dụng.
+        final so = (wavDuration(await wav.readAsBytes()) / 0.25).round();
+        return AmNhanDang(so, List.filled(so, 'a-0').join(' '));
+      },
+    );
+    addTearDown(kiem.dong);
+    final tts = TtsManager(themEngine: [engine], boKiemAm: kiem);
     final service = ExportService(tts);
     addTearDown(service.dispose);
 
@@ -133,14 +155,26 @@ void main() {
       format: 'txt',
       addedAt: DateTime.now(),
       chapters: const [
-        Chapter(index: 0, title: 'Chương một', firstChunk: 0, chunkCount: 1, charCount: 40),
+        Chapter(
+          index: 0,
+          title: 'Chương một',
+          firstChunk: 0,
+          chunkCount: 1,
+          charCount: 40,
+        ),
       ],
       chunkCount: 1,
       charCount: 40,
       expandNumbers: true,
     );
     final chunks = [
-      const Chunk(index: 0, chapter: 0, display: _doan, speech: _doan, heading: false),
+      const Chunk(
+        index: 0,
+        chapter: 0,
+        display: _doan,
+        speech: _doan,
+        heading: false,
+      ),
     ];
 
     final job = await service.createJob(
@@ -163,7 +197,9 @@ void main() {
     // start() chạy nền — chờ tới khi job xong.
     final hetGio = DateTime.now().add(const Duration(seconds: 30));
     while (job.isActive || service.isRunning(job.id)) {
-      if (DateTime.now().isAfter(hetGio)) fail('job không kết thúc: ${job.status} ${job.error}');
+      if (DateTime.now().isAfter(hetGio)) {
+        fail('job không kết thúc: ${job.status} ${job.error}');
+      }
       await Future<void>.delayed(const Duration(milliseconds: 20));
     }
     expect(job.status, JobStatus.done, reason: job.error ?? '');
@@ -177,7 +213,11 @@ void main() {
     expect(engine.lanDaGoi, [0]);
     expect(job.doanDocLai, 0);
     expect(job.doanChuaDat, 0);
-    expect(job.nhatKy, isEmpty, reason: 'đọc trúng ngay thì không có gì để ghi');
+    expect(
+      job.nhatKy,
+      isEmpty,
+      reason: 'đọc trúng ngay thì không có gì để ghi',
+    );
   });
 
   test('lệch thì đọc lại tới khi đạt rồi dừng', () async {
@@ -199,17 +239,36 @@ void main() {
     expect(muc.dat, isTrue);
   });
 
+  test('thiếu một âm phải đọc lại, đủ 110% thì dừng', () async {
+    final engine = _EngineGia([9, 12, 11, 10]);
+    final job = await xuat(engine);
+
+    expect(engine.lanDaGoi, [0, 1, 2]);
+    expect(job.nhatKy.single.soAm, 11);
+    expect(job.nhatKy.single.dat, isTrue);
+    expect(job.doanChuaDat, 0);
+  });
+
   test('đọc lại tối đa năm lần rồi lấy bản gần đúng nhất', () async {
     // Không lần nào đạt; lần thứ tư (12 âm, tức 120%) là gần 10 nhất.
     final engine = _EngineGia([3, 20, 4, 12, 16, 5]);
     final job = await xuat(engine);
 
-    expect(engine.lanDaGoi, [0, 1, 2, 3, 4, 5], reason: 'một lần đầu + năm lần đọc lại');
+    expect(engine.lanDaGoi, [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+    ], reason: 'một lần đầu + năm lần đọc lại');
     expect(job.doanDocLai, 1);
     expect(job.doanChuaDat, 1);
 
     // File xuất ra phải đúng là bản 12 âm: 12 x 250 ms.
-    final file = File('${outDir.path}${Platform.pathSeparator}${job.parts.single.fileName}');
+    final file = File(
+      '${outDir.path}${Platform.pathSeparator}${job.parts.single.fileName}',
+    );
     expect(await file.exists(), isTrue);
     expect(wavDuration(await file.readAsBytes()), closeTo(12 * 0.25, 0.05));
 
@@ -231,7 +290,9 @@ void main() {
     expect(job.doanDocLai, 1);
     expect(job.doanChuaDat, 1);
 
-    final file = File('${outDir.path}${Platform.pathSeparator}${job.parts.single.fileName}');
+    final file = File(
+      '${outDir.path}${Platform.pathSeparator}${job.parts.single.fileName}',
+    );
     expect(wavDuration(await file.readAsBytes()), closeTo(12 * 0.25, 0.05));
   });
 
@@ -239,11 +300,39 @@ void main() {
     final engine = _EngineGia([4], raKhac: false);
     final job = await xuat(engine);
 
-    expect(engine.lanDaGoi, [0], reason: 'đọc lại cũng ra đúng bản cũ, phí thời gian');
+    expect(engine.lanDaGoi, [
+      0,
+    ], reason: 'đọc lại cũng ra đúng bản cũ, phí thời gian');
     expect(job.doanDocLai, 0);
     // Không đọc lại được không có nghĩa là im lặng: đoạn lệch vẫn phải vào sổ.
     expect(job.nhatKy.single.dat, isFalse);
     expect(job.nhatKy.single.soLan, 1);
+  });
+
+  test('lỗi wav2vec2 không gây đọc lại và không báo nhầm đạt', () async {
+    final engine = _EngineGia([10]);
+    final job = await xuat(engine, loiNhanDang: true);
+    expect(engine.lanDaGoi, [0]);
+    expect(job.doanChuaDat, 0);
+    expect(job.doanChuaKiem, 1);
+    expect(job.nhatKy.single.soAm, isNull);
+    expect(job.nhatKy.single.dat, isFalse);
+    expect(job.nhatKy.single.lyDoBoQua, contains('wav2vec2'));
+    final luu = ExportJob.fromJson(job.toJson());
+    expect(luu.doanChuaKiem, 1);
+    expect(luu.nhatKy.single.soAm, isNull);
+  });
+
+  test('lỗi nhận dạng giữa chừng giữ bản đã kiểm tốt nhất', () async {
+    final engine = _EngineGia([7, 3, 10]);
+    final job = await xuat(engine, loiTuLan: 1);
+    expect(engine.lanDaGoi, [0, 1]);
+    expect(job.nhatKy.single.soAm, 7);
+    expect(job.nhatKy.single.amVi, isNotEmpty);
+    final file = File(
+      '${outDir.path}${Platform.pathSeparator}${job.parts.single.fileName}',
+    );
+    expect(wavDuration(await file.readAsBytes()), closeTo(7 * 0.25, 0.05));
   });
 
   test('nhật ký chỉ giữ những dòng gần nhất', () {

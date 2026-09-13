@@ -120,6 +120,8 @@ class MucNhatKy {
     this.soLan = 1,
     this.xong = false,
     this.dat = false,
+    this.amVi = '',
+    this.lyDoBoQua,
   });
 
   /// Chỉ số đoạn trong sách, đếm từ 0.
@@ -130,7 +132,10 @@ class MucNhatKy {
 
   /// Số âm nghe được ở bản đọc đang xét — bản cuối lúc còn đang đọc lại, bản
   /// được chọn khi đã [xong].
-  int soAm;
+  int? soAm;
+  String amVi;
+  String? lyDoBoQua;
+  bool get daKiem => soAm != null;
 
   /// Đã đọc cả thảy mấy lượt.
   int soLan;
@@ -141,7 +146,7 @@ class MucNhatKy {
   /// Chốt ở bản đạt, hay đành lấy bản gần đúng nhất.
   bool dat;
 
-  double get tiLe => soTu == 0 ? 1 : soAm / soTu;
+  double get tiLe => soTu == 0 ? 1 : (soAm ?? 0) / soTu;
 
   Map<String, dynamic> toJson() => {
         'doan': doan,
@@ -150,12 +155,16 @@ class MucNhatKy {
         'soLan': soLan,
         'xong': xong,
         'dat': dat,
+        if (amVi.isNotEmpty) 'amVi': amVi,
+        if (lyDoBoQua != null) 'lyDoBoQua': lyDoBoQua,
       };
 
   factory MucNhatKy.fromJson(Map<String, dynamic> json) => MucNhatKy(
         doan: json['doan'] as int? ?? 0,
         soTu: json['soTu'] as int? ?? 0,
-        soAm: json['soAm'] as int? ?? 0,
+        soAm: json.containsKey('soAm') ? json['soAm'] as int? : 0,
+        amVi: json['amVi'] as String? ?? '',
+        lyDoBoQua: json['lyDoBoQua'] as String?,
         soLan: json['soLan'] as int? ?? 1,
         // Ghi lại từ đĩa thì chắc chắn không còn lượt đọc nào đang chạy dở.
         xong: json['xong'] as bool? ?? true,
@@ -196,6 +205,7 @@ class ExportJob {
     this.doneChunks = 0,
     this.doanDocLai = 0,
     this.doanChuaDat = 0,
+    this.doanChuaKiem = 0,
     this.secondsDone = 0,
     List<ExportPart>? parts,
     List<MucNhatKy>? nhatKy,
@@ -253,9 +263,12 @@ class ExportJob {
   /// Số đoạn phải đọc lại vì số âm không khớp số từ — xem `kiem_am.dart`.
   int doanDocLai;
 
-  /// Trong số ấy, số đoạn đọc lại hết lượt mà vẫn lệch; những đoạn này lấy bản
-  /// gần đúng nhất, có thể nghe ra thừa hoặc thiếu chữ.
+  /// Số đoạn đã kiểm nhưng vẫn lệch, kể cả engine cố định chỉ kiểm một lần.
+  /// Những đoạn này có thể nghe ra thừa hoặc thiếu âm.
   int doanChuaDat;
+
+  /// Thiếu mô hình hoặc lỗi nhận dạng: không gộp vào số đoạn thừa/thiếu âm.
+  int doanChuaKiem;
 
   double secondsDone;
   List<ExportPart> parts;
@@ -317,6 +330,7 @@ class ExportJob {
         'doneChunks': doneChunks,
         'doanDocLai': doanDocLai,
         'doanChuaDat': doanChuaDat,
+        'doanChuaKiem': doanChuaKiem,
         'secondsDone': secondsDone,
         'parts': parts.map((p) => p.toJson()).toList(),
         'nhatKy': nhatKy.map((m) => m.toJson()).toList(),
@@ -351,6 +365,7 @@ class ExportJob {
         doneChunks: json['doneChunks'] as int? ?? 0,
         doanDocLai: json['doanDocLai'] as int? ?? 0,
         doanChuaDat: json['doanChuaDat'] as int? ?? 0,
+        doanChuaKiem: json['doanChuaKiem'] as int? ?? 0,
         secondsDone: (json['secondsDone'] as num?)?.toDouble() ?? 0,
         parts: (json['parts'] as List<dynamic>? ?? [])
             .map((p) => ExportPart.fromJson(p as Map<String, dynamic>))

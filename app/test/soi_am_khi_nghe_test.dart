@@ -1,69 +1,153 @@
-/// Soi âm lúc nghe: đọc lại đoạn hỏng và phát bản khớp nhất.
-///
-/// Bài này không dựng cả PlayerController (nó cần media_kit) mà kiểm đúng phần
-/// quyết định: cách chấm điểm và cách chọn. Cùng luật với `export_service.dart`,
-/// chỉ khác số lượt đọc lại.
+/// Đường nhận dạng dùng chung phải ổn định khi đọc trước, nghe lại và đổi tốc độ.
 library;
 
-import 'dart:math' as math;
-import 'dart:typed_data';
-
+import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sach_noi/core/kiem_am.dart';
-import 'package:sach_noi/core/wav.dart';
-
-/// Dựng một chuỗi "âm" giả: mỗi âm là một đoạn sóng có thanh, cách nhau bằng
-/// khoảng lặng ngắn. Giống cách `kiem_am_test.dart` dựng mẫu.
-Uint8List _wavCoAm(int soAm) {
-  const rate = 16000;
-  const mauAm = rate * 180 ~/ 1000;
-  const mauNghi = rate * 70 ~/ 1000;
-  final out = Float32List(soAm * (mauAm + mauNghi));
-  var at = 0;
-  for (var i = 0; i < soAm; i++) {
-    for (var j = 0; j < mauAm; j++) {
-      final t = j / rate;
-      // Vài hài của f0 để phép xét thanh nhận ra là có chu kỳ.
-      out[at++] = 0.5 *
-          (0.6 * _sin(130, t) + 0.3 * _sin(260, t) + 0.1 * _sin(390, t)) *
-          // Vào/ra êm cho khỏi lách cách ở hai đầu.
-          (j < 400 ? j / 400 : (mauAm - j < 400 ? (mauAm - j) / 400 : 1));
-    }
-    at += mauNghi;
-  }
-  return buildWav(out, rate);
-}
-
-double _sin(double hz, double t) => math.sin(2 * math.pi * hz * t);
+import 'package:sach_noi/services/kiem_am/bo_kiem_am.dart';
+import 'package:sach_noi/services/kiem_am/kho_wav2vec2.dart';
+import 'package:sach_noi/services/kiem_am/wav2vec2_native.dart';
+import 'package:sach_noi/services/tts/tts_manager.dart';
 
 void main() {
-  test('bản khớp số từ được chấm là đạt, bản lệch thì không', () {
-    // Mười hai từ, mười hai âm — đúng nhịp tiếng Việt một từ một âm tiết.
-    const loi = 'một hai ba bốn năm sáu bảy tám chín mười mười một';
-    final soTu = loi.split(' ').length;
-
-    final dung = kiemAm(speech: loi, wav: _wavCoAm(soTu), nhip: 1.0);
-    expect(dung.soTu, soTu);
-
-    // Đoạn đọc lảm nhảm: gấp ba số âm. Đây đúng là bệnh đo được ở v2 khi hạt
-    // giống xấu — 27 giây tiếng cho câu đáng lẽ 5 giây.
-    final thua = kiemAm(speech: loi, wav: _wavCoAm(soTu * 3), nhip: 1.0);
-    expect(thua.lech, greaterThan(dung.lech),
-        reason: 'bản lảm nhảm phải lệch xa hơn bản đúng');
+  TestWidgetsFlutterBinding.ensureInitialized();
+  late Directory thu;
+  late File wav;
+  setUp(() async {
+    thu = await Directory.systemTemp.createTemp('sach-luoi-kiem-am-');
+    wav = await File('${thu.path}/mau.wav').writeAsBytes([1, 2, 3]);
+  });
+  tearDown(() async {
+    await thu.delete(recursive: true);
   });
 
-  test('chọn bản lệch ít nhất trong các lần đọc lại', () {
-    // Mô phỏng đúng vòng chọn trong PlayerController._docCoSoi: giữ bản lệch ít
-    // nhất, và lệch bằng nhau thì giữ bản ĐẦU vì các lần sau không hơn gì.
-    final lech = [0.9, 0.3, 0.3];
-    var chon = -1;
-    var tot = double.infinity;
-    for (var lan = 0; lan < lech.length; lan++) {
-      if (lech[lan] < tot) {
-        tot = lech[lan];
-        chon = lan;
-      }
+  test('lời gốc không được đưa vào nhận dạng để ép số âm đúng', () async {
+    var lan = 0;
+    final bo = BoKiemAm(
+      nhanAm: (f, nhip) async {
+        lan++;
+        return const AmNhanDang(2, 'a-0 iə-1');
+      },
+    );
+    addTearDown(bo.dong);
+    final dung = await bo.kiem(loi: 'xin chào', wav: wav);
+    final sai = await bo.kiem(
+      loi: 'một hai ba bốn năm sáu bảy tám chín mười',
+      wav: wav,
+    );
+    expect(lan, 1);
+    expect(dung.dat, isTrue);
+    expect(sai.dat, isFalse);
+    expect(sai.amVi, 'a-0 iə-1');
+  });
+
+  test('expected cộng đủ âm tiếng Anh rồi mới chấm ngưỡng 100–110%', () async {
+    // 7 từ Việt + Windows(2) + driver(2) = 11 âm, không phải 9 hay 13.
+    const loi = 'Anh ấy mở Windows lên rồi cài driver mới.';
+    for (final soAm in [10, 11, 12, 13]) {
+      final bo = BoKiemAm(
+        nhanAm: (f, nhip) async => AmNhanDang(soAm, 'âm vị giả'),
+      );
+      addTearDown(bo.dong);
+      final ket = await bo.kiem(loi: loi, wav: wav);
+      expect(ket.soTu, 11);
+      expect(ket.dat, soAm == 11 || soAm == 12, reason: '$soAm/11 âm');
     }
-    expect(chon, 1, reason: 'phải lấy lần đầu tiên đạt mức lệch nhỏ nhất');
   });
+
+  test('từ Anh có hoặc không có thẻ en đều cộng âm một lần', () async {
+    final bo = BoKiemAm(
+      nhanAm: (f, nhip) async => const AmNhanDang(4, 'âm vị giả'),
+    );
+    addTearDown(bo.dong);
+    for (final loi in ['Mua iPhone mới', 'Mua <en>iPhone</en> mới']) {
+      final ket = await bo.kiem(loi: loi, wav: wav);
+      expect(ket.soTu, 4);
+      expect(ket.dat, isTrue);
+    }
+  });
+
+  test(
+    'chạm mtime giữ cache, thay nội dung WAV thì phải nhận dạng lại',
+    () async {
+      var lan = 0;
+      final bo = BoKiemAm(
+        nhanAm: (f, nhip) async {
+          lan++;
+          return AmNhanDang(lan, 'a-0');
+        },
+      );
+      addTearDown(bo.dong);
+      await bo.kiem(loi: 'một', wav: wav);
+      await wav.setLastModified(DateTime(2030));
+      await bo.kiem(loi: 'một', wav: wav);
+      expect(lan, 1);
+      await wav.writeAsBytes([3, 2, 1]);
+      expect((await bo.kiem(loi: 'hai', wav: wav)).soAm, 2);
+    },
+  );
+
+  test(
+    'yêu cầu đồng thời dùng một hàng đợi, lỗi không làm treo yêu cầu kế',
+    () async {
+      var dangChay = 0;
+      var dinh = 0;
+      var lan = 0;
+      final bo = BoKiemAm(
+        nhanAm: (f, nhip) async {
+          dangChay++;
+          if (dangChay > dinh) dinh = dangChay;
+          await Future<void>.delayed(const Duration(milliseconds: 5));
+          dangChay--;
+          if (lan++ == 0) throw StateError('lỗi thử');
+          return const AmNhanDang(1, 'a-0');
+        },
+      );
+      addTearDown(bo.dong);
+      final ket = await Future.wait([
+        bo.kiem(loi: 'một', wav: wav),
+        bo.kiem(loi: 'hai', wav: wav),
+      ]);
+      expect(dinh, 1);
+      expect(ket.first.daKiem, isFalse);
+      expect(ket.last.dat, isTrue);
+    },
+  );
+
+  test('chỉ khôi phục cao độ hai VieNeu, không đổi cao độ Matcha', () async {
+    final nhipNhan = <double>[];
+    final bo = BoKiemAm(
+      nhanAm: (f, nhip) async {
+        nhipNhan.add(nhip);
+        return const AmNhanDang(1, 'a-0');
+      },
+    );
+    addTearDown(bo.dong);
+    final tts = TtsManager(boKiemAm: bo);
+    for (final id in ['vieneu', 'vieneu_v2', 'matcha', 'piper', 'system']) {
+      await bo.napLai();
+      await tts.kiemDoan(loi: 'một', wav: wav, engineId: id, tocDo: 1.5);
+    }
+    expect(nhipNhan, [1.5, 1.5, 1, 1, 1]);
+  });
+
+  test('thiếu mô hình trả chưa kiểm, không thay bằng đếm sóng', () async {
+    final bo = BoKiemAm(
+      kho: KhoWav2vec2(thuMuc: Directory('${thu.path}/thieu')),
+    );
+    addTearDown(bo.dong);
+    final ket = await bo.kiem(loi: 'một hai ba', wav: wav);
+    expect(ket.soAm, isNull);
+    expect(ket.dat, isFalse);
+    expect(ket.lyDoBoQua, contains('Cài đặt'));
+  });
+
+  test(
+    'thiếu thư viện native phải trả lỗi và đóng isolate, không chờ mãi',
+    () async {
+      await expectLater(
+        Wav2vec2Native.mo(thu.path, thuVien: '${thu.path}/khong-co.dll'),
+        throwsA(isA<StateError>()),
+      );
+    },
+  );
 }

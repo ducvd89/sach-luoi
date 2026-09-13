@@ -82,11 +82,13 @@ Nhân Tu Tiên (2.467 chương): bỏ được 1 mục lục + 7.474 dòng heade
 Tua ±15 giây, hẹn giờ tắt, đổi tốc độ 0.4×–2.0× có hiệu lực ngay. Phím tắt: `Space` phát/dừng ·
 `←` `→` tua · `↑` `↓` chuyển đoạn.
 
-**Kiểm tra trước khi phát** — nút cạnh nút hẹn giờ. Bật lên thì mỗi đoạn được soi âm trước khi
-nghe: đếm số âm nghe được rồi so với số từ, lệch quá thì đọc lại (tối đa hai lần) và phát bản khớp
-nhất. Bắt được lỗi lặp chữ, nuốt câu, đọc mãi không dừng. Mặc định tắt vì mỗi lần đọc lại tốn thời
-gian như đọc một đoạn mới — bật khi thấy giọng hay vấp, máy chậm thì có thể nghe khựng ở chỗ
-chuyển đoạn.
+**Kiểm tra trước khi phát** — dùng wav2vec2 nhận dạng âm vị tiếng Việt và đếm nhân nguyên âm,
+so với số âm tiết trong văn bản. Tải mô hình một lần tại *Cài đặt → Kiểm âm* (~122 MB), sau đó
+chạy offline. Đạt khi nhận được **100–110%** số âm dự kiến, áp dụng cả câu ngắn. Số dự kiến
+đã cộng đủ âm tiết ước lượng của các từ tiếng Anh. Bật nút cạnh hẹn giờ để kiểm cả đoạn đang nghe lẫn đoạn đọc trước. VieNeu được đọc
+lại tối đa hai lần khi lệch; Matcha, Piper và giọng hệ thống chỉ kiểm một lần. Mặc định tắt để
+không tốn thời gian nhận dạng khi nghe. Đây là phép kiểm gần đúng, không phát hiện được mọi lỗi
+đọc sai chữ có cùng số âm. Xem [chi tiết kiểm âm](kiem-am-wav2vec2.md).
 
 **Tay cầm chơi game** — lái được cả ứng dụng không cần chạm màn hình. Cần trái đi giữa các điểm
 chọn, `A` chọn, `B` quay lại, `X` mở bảng chọn chương, `Y` phát/dừng, `L`/`R` chuyển tab, cần phải
@@ -108,9 +110,10 @@ kbps, AAC 64 kbps, MP3 128 kbps hoặc WAV. Tạm dừng và chạy tiếp bất
 (đo trên máy 12 nhân), v2 thì 3,57× với 2 luồng — nó nghẽn ở băng thông bộ nhớ nên thêm luồng gần
 như không nhanh thêm, mà mỗi luồng tốn ~750 MB.
 
-**Soi âm khi xuất** — đếm số âm nghe được trong đoạn vừa tạo rồi so với số từ trong văn bản, lệch
-quá thì đọc lại bằng hạt giống khác, tối đa năm lần. Bắt được lỗi lặp chữ, nuốt câu, lảm nhảm không
-dừng. Màn hình xuất có khung nhật ký chạy theo thời gian thực.
+**Kiểm âm khi xuất** — dùng cùng bộ wav2vec2, không đếm đỉnh sóng. Nếu lệch, hai VieNeu được đọc
+lại tối đa năm lần và chọn bản gần đúng nhất; các engine cố định chỉ kiểm một lần. Nhật ký lưu
+số âm và chuỗi âm vị nhận dạng. Thiếu mô hình hoặc nhận dạng lỗi thì vẫn xuất, ghi rõ **chưa kiểm**
+và không bắt TTS đọc lại vì lỗi của bộ kiểm.
 
 **Lưu tiến trình** — chỗ đang nghe lưu tự động. Mỗi đoạn âm thanh đã tạo được giữ lại nên nghe lại
 gần như tức thì; trần dung lượng chọn trong *Cài đặt → Dữ liệu* (mặc định 500 MB).

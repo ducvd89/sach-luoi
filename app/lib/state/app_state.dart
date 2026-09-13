@@ -178,6 +178,31 @@ class AppState extends ChangeNotifier {
   ///
   /// Tách hẳn khỏi hai cờ trên, cùng lý do: ba engine tải riêng và gỡ riêng.
   bool? matchaInstalled;
+  bool? coWav2vec2;
+  WorkProgress? tienDoWav2vec2;
+
+  Future<void> xemWav2vec2() async {
+    coWav2vec2 = await tts.kiemAm.kho.sanSang();
+    notifyListeners();
+  }
+
+  Future<void> taiWav2vec2() async {
+    if (tienDoWav2vec2 != null) return;
+    tienDoWav2vec2 = const WorkProgress('Đang chuẩn bị wav2vec2…');
+    notifyListeners();
+    try {
+      await tts.kiemAm.kho.tai(tienDo: (p) {
+        tienDoWav2vec2 = p;
+        notifyListeners();
+      });
+      await tts.kiemAm.napLai();
+      await xemWav2vec2();
+    } finally {
+      tienDoWav2vec2 = null;
+      notifyListeners();
+    }
+  }
+
 
   Future<void> refreshMatchaStatus() async {
     matchaInstalled = await tts.modelStore.isMatchaInstalled();
@@ -554,6 +579,7 @@ class AppState extends ChangeNotifier {
     unawaited(_jobSubscription?.cancel());
     player.dispose();
     exports.dispose();
+    unawaited(tts.kiemAm.dong());
     super.dispose();
   }
 }

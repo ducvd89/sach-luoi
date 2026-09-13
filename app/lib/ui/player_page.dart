@@ -338,15 +338,11 @@ class _SpeedSelector extends StatelessWidget {
 /// bật hay tắt trông y hệt nhau, tức là cái nút không nói được điều duy nhất nó
 /// cần nói.
 ///
-/// Chỉ hiện với engine đọc lại ra bản khác — engine đọc theo luật (Piper, TTS hệ
-/// thống) thì đọc lại vẫn ra đúng bản cũ, bật lên chỉ tốn thời gian.
+/// Engine cố định vẫn kiểm được; chỉ bước đọc lại phụ thuộc khả năng engine.
 class _SoiAmButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
-    if (!state.tts.engine(state.settings.engineId).docLaiRaKhac) {
-      return const SizedBox.shrink();
-    }
     final bat = state.settings.soiAmKhiNghe;
 
     // Dựng đúng kiểu nút "Hẹn giờ" ngay bên cạnh: `TextButton.icon`, và màu lấy
@@ -365,30 +361,22 @@ class _SoiAmButton extends StatelessWidget {
     // gán cứng ở đó là mất hút trên nền giấy.
     final mau = bat ? SacNut.chinh.first : Theme.of(context).colorScheme.onSurface;
 
-    return Tooltip(
-      message: bat
-          ? 'Kiểm tra trước khi phát: ĐANG BẬT — đoạn đọc hỏng sẽ được đọc lại (tối đa 2 lần)'
-          : 'Kiểm tra trước khi phát: đang tắt',
-      child: TextButton.icon(
-        style: TextButton.styleFrom(
-          foregroundColor: mau,
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          minimumSize: const Size(0, 40),
+    return ValueListenableBuilder<String>(
+      valueListenable: state.tts.kiemAm.thongBao,
+      builder: (context, chu, _) => Tooltip(
+        message: bat ? 'Kiểm âm wav2vec2 đang bật. $chu' : 'Kiểm âm trước khi phát đang tắt',
+        child: TextButton.icon(
+          style: TextButton.styleFrom(foregroundColor: mau,
+              padding: const EdgeInsets.symmetric(horizontal: 10), minimumSize: const Size(0, 40)),
+          onPressed: () {
+            state.settings.soiAmKhiNghe = !bat;
+            state.saveSettings();
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+                bat ? 'Đã tắt kiểm âm trước khi phát' : 'Đã bật kiểm âm wav2vec2. $chu')));
+          },
+          icon: const Icon(Icons.check_circle_outline, size: 20),
+          label: Text(bat && chu.startsWith('Chưa kiểm âm:') ? 'Chưa kiểm' : 'Kiểm âm'),
         ),
-        onPressed: () {
-          state.settings.soiAmKhiNghe = !bat;
-          AppScope.read(context).saveSettings();
-        },
-        // MỘT icon cho cả hai trạng thái, chỉ đổi màu.
-        //
-        // Không phải chọn cho gọn: bản đặc (`check_circle`, trước đó là
-        // `verified_rounded`) không vẽ ra gì trên máy này, trong khi bản viền
-        // hiện bình thường — thử ba cặp icon đều đúng như vậy. Giữ một glyph đã
-        // biết chắc vẽ được thì bỏ hẳn được biến gây lỗi ấy.
-        icon: const Icon(Icons.check_circle_outline, size: 20),
-        // Chữ ăn theo `foregroundColor` của nút nên luôn cùng màu với icon,
-        // khỏi phải đặt màu ở hai chỗ rồi có ngày lệch nhau.
-        label: const Text('Kiểm âm'),
       ),
     );
   }

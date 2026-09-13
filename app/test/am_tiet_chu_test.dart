@@ -198,7 +198,7 @@ void main() {
 
     test('câu lẫn tiếng Anh không còn bị đếm hụt', () {
       // Số âm vị thật đo bằng sea-g2p. Cách đếm cũ (mỗi từ một âm) cho ra con
-      // số trong ngoặc — lệch tới 35%, vượt xa dải ±15% của `kiem_am.dart`,
+      // số trong ngoặc — lệch tới 35%, vượt xa dải cho phép của `kiem_am.dart`,
       // nên đoạn đọc hoàn toàn đúng vẫn bị bắt đọc lại năm lần.
       expect(demAmChu('Anh ấy mở Windows lên rồi cài driver mới.'), 11); // cũ 9
       expect(demAmChu('Cắm USB vào máy tính rồi bật lên.'), 10); // cũ 8

@@ -9,35 +9,79 @@ import 'package:sach_noi/models/settings.dart';
 import 'package:sach_noi/ui/export_page.dart';
 
 ExportJob _job(List<MucNhatKy> nhatKy, {int chuaDat = 0}) => ExportJob(
-      id: 'x',
-      bookId: 'x',
-      bookTitle: 'Sách thử',
-      author: '',
-      createdAt: DateTime.now(),
-      engineId: 'vieneu',
-      voiceId: 'g',
-      voiceName: 'Giọng',
-      speed: 1,
-      pauseMs: 0,
-      splitMode: SplitMode.single,
-      partMinutes: 30,
-      alignChapter: false,
-      fromChunk: 0,
-      toChunk: 100,
-      outputDir: '',
-      doanChuaDat: chuaDat,
-      nhatKy: nhatKy,
-    );
+  id: 'x',
+  bookId: 'x',
+  bookTitle: 'Sách thử',
+  author: '',
+  createdAt: DateTime.now(),
+  engineId: 'vieneu',
+  voiceId: 'g',
+  voiceName: 'Giọng',
+  speed: 1,
+  pauseMs: 0,
+  splitMode: SplitMode.single,
+  partMinutes: 30,
+  alignChapter: false,
+  fromChunk: 0,
+  toChunk: 100,
+  outputDir: '',
+  doanChuaDat: chuaDat,
+  nhatKy: nhatKy,
+);
 
 Widget _wrap(Widget child) => MaterialApp(
-      home: Scaffold(body: SizedBox(width: 520, child: child)),
-    );
+  home: Scaffold(body: SizedBox(width: 520, child: child)),
+);
 
 void main() {
+  testWidgets('chưa kiểm không hiện tỉ lệ giả hoặc báo đã khớp', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(
+        DongNhatKy(
+          muc: MucNhatKy(
+            doan: 0,
+            soTu: 10,
+            soAm: null,
+            xong: true,
+            lyDoBoQua: 'Cần tải wav2vec2',
+          ),
+        ),
+      ),
+    );
+    expect(find.textContaining('chưa kiểm'), findsOneWidget);
+    expect(find.textContaining('Cần tải wav2vec2'), findsOneWidget);
+    expect(find.textContaining('100%'), findsNothing);
+  });
+
+  testWidgets('nhật ký có âm vị để đối chiếu kết quả nhận dạng', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(
+        DongNhatKy(
+          muc: MucNhatKy(
+            doan: 0,
+            soTu: 10,
+            soAm: 2,
+            xong: true,
+            amVi: 'a-0 iə-1',
+          ),
+        ),
+      ),
+    );
+    expect(find.textContaining('Âm vị wav2vec2: a-0 iə-1'), findsOneWidget);
+  });
+
   testWidgets('đang đọc lại thì báo đang chạy lượt kế tiếp', (tester) async {
-    await tester.pumpWidget(_wrap(KhungNhatKy(
-      job: _job([MucNhatKy(doan: 41, soTu: 17, soAm: 9, soLan: 2)]),
-    )));
+    await tester.pumpWidget(
+      _wrap(
+        KhungNhatKy(
+          job: _job([MucNhatKy(doan: 41, soTu: 17, soAm: 9, soLan: 2)]),
+        ),
+      ),
+    );
 
     expect(find.textContaining('Đoạn 42'), findsOneWidget);
     expect(find.textContaining('9/17 âm (53%)'), findsOneWidget);
@@ -47,36 +91,59 @@ void main() {
   });
 
   testWidgets('đọc lại xong đã khớp', (tester) async {
-    await tester.pumpWidget(_wrap(KhungNhatKy(
-      job: _job([MucNhatKy(doan: 0, soTu: 17, soAm: 17, soLan: 3, xong: true, dat: true)]),
-    )));
+    await tester.pumpWidget(
+      _wrap(
+        KhungNhatKy(
+          job: _job([
+            MucNhatKy(
+              doan: 0,
+              soTu: 17,
+              soAm: 17,
+              soLan: 3,
+              xong: true,
+              dat: true,
+            ),
+          ]),
+        ),
+      ),
+    );
 
     expect(find.textContaining('17/17 âm (100%)'), findsOneWidget);
     expect(find.textContaining('đã khớp sau 3 lượt'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 
-  testWidgets('hết lượt vẫn lệch thì nói rõ là lấy bản gần nhất', (tester) async {
-    await tester.pumpWidget(_wrap(KhungNhatKy(
-      job: _job(
-        [MucNhatKy(doan: 7, soTu: 20, soAm: 14, soLan: 6, xong: true)],
-        chuaDat: 1,
+  testWidgets('hết lượt vẫn lệch thì nói rõ là lấy bản gần nhất', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(
+        KhungNhatKy(
+          job: _job([
+            MucNhatKy(doan: 7, soTu: 20, soAm: 14, soLan: 6, xong: true),
+          ], chuaDat: 1),
+        ),
       ),
-    )));
+    );
 
     expect(find.textContaining('14/20 âm (70%)'), findsOneWidget);
     expect(find.textContaining('vẫn lệch sau 6 lượt'), findsOneWidget);
     expect(find.textContaining('1 đoạn vẫn lệch'), findsOneWidget);
   });
 
-  testWidgets('nhiều dòng thì thấy dòng mới nhất chứ không phải dòng cũ nhất',
-      (tester) async {
-    await tester.pumpWidget(_wrap(KhungNhatKy(
-      job: _job([
-        for (var i = 0; i < 30; i++)
-          MucNhatKy(doan: i, soTu: 20, soAm: 12, soLan: 6, xong: true),
-      ]),
-    )));
+  testWidgets('nhiều dòng thì thấy dòng mới nhất chứ không phải dòng cũ nhất', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(
+        KhungNhatKy(
+          job: _job([
+            for (var i = 0; i < 30; i++)
+              MucNhatKy(doan: i, soTu: 20, soAm: 12, soLan: 6, xong: true),
+          ]),
+        ),
+      ),
+    );
 
     // Khung chỉ cao 116 nên chỉ vài dòng lọt vào; dòng của đoạn cuối phải là
     // dòng thấy được, còn dòng đầu tiên thì đã trôi lên trên.

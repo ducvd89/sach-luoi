@@ -17,7 +17,7 @@
 /// | `Cắm USB vào máy` | 4 | 6 (`jˈuː ˈɛs bˈiː`) |
 /// | `mở Windows lên` | 3 | 4 (`wˈɪndoʊz`) |
 ///
-/// Đếm hụt thì tỉ lệ âm/từ vọt lên trên trần 115%, đoạn đọc hoàn toàn đúng vẫn
+/// Đếm hụt thì tỉ lệ âm/từ vọt lên trên trần cho phép, đoạn đọc hoàn toàn đúng vẫn
 /// bị kết tội rồi đọc lại tới 5 lần — vừa chậm vừa vô ích, và lần nào cũng
 /// trượt như nhau vì lỗi nằm ở phép đếm chứ không ở bản đọc. Đo trên bộ câu
 /// trong `am_tiet_chu_test.dart`: lệch trung bình **24,3%** so với âm vị thật,
@@ -53,8 +53,8 @@
 /// đã nằm trong từ điển: `NASA` đánh vần thành 4 mà g2p đọc liền `nˈæsɐ` chỉ 2
 /// âm. Đổi lại, chúng chỉ lệch **một** âm mỗi từ thay vì lệch
 /// bằng cả số âm tiết của từ như trước, và lệch cả hai chiều nên bù trừ nhau
-/// trong một đoạn dài. Dải chấp nhận của `kiem_am.dart` vốn đã rộng ±15% chính
-/// là để nuốt đúng loại sai số này.
+/// trong một đoạn dài. Ngưỡng kiểm âm hiện là 100–110%, nên ước lượng dư âm
+/// có thể khiến bản đọc đúng bị chấm thiếu; đây vẫn là phép dự đoán gần đúng.
 ///
 /// Đừng đổi phép đoán thành bảng tra tay: bảng nào cũng thủng ở tên riêng, mà
 /// tên riêng mới là thứ dày đặc trong sách dịch.
@@ -63,6 +63,10 @@ library;
 import 'vi_number.dart';
 
 /// Số âm tiết mà văn bản đã chuẩn hoá [speech] sẽ đọc ra.
+///
+/// Cộng số âm của từng từ vào expected: từ Việt thường 1, từ Anh dùng toàn bộ
+/// số âm dự đoán. Ví dụ "mở Windows lên" = 1 + 2 + 1 = 4; không cộng thêm
+/// 2 âm của Windows vào cả 3 từ vì như vậy sẽ tính trùng 1 âm của từ ấy.
 int demAmChu(String speech) {
   // Thẻ tiếng Anh là chỉ dẫn cho g2p, không phải chữ để đọc — bỏ trước khi đếm,
   // không thì `<en>iPhone</en>` trông như một từ dính liền chẳng ra tiếng gì.

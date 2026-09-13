@@ -183,6 +183,9 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
         const SizedBox(height: 14),
 
+        const Card(child: Padding(padding: EdgeInsets.all(18), child: _MucKiemAm())),
+        const SizedBox(height: 14),
+
         // -- Cách đọc ---------------------------------------------------------
         Card(
           child: Padding(
@@ -1098,5 +1101,65 @@ class _CacheLimitPickerState extends State<_CacheLimitPicker> {
         ],
       ],
     );
+  }
+}
+
+/// Mô hình kiểm âm tải độc lập với giọng đọc; ai không kiểm thì không tốn RAM.
+class _MucKiemAm extends StatefulWidget {
+  const _MucKiemAm();
+  @override
+  State<_MucKiemAm> createState() => _MucKiemAmState();
+}
+
+class _MucKiemAmState extends State<_MucKiemAm> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) AppScope.read(context).xemWav2vec2();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final tienDo = state.tienDoWav2vec2;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('Kiểm âm · wav2vec2', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+      const SizedBox(height: 8),
+      const Text('Nhận dạng âm vị tiếng Việt để đếm số âm đã đọc. '
+          'Tải riêng khoảng 122 MB, sau đó dùng offline khi nghe và xuất file. '
+          'Tên nước ngoài hoặc giọng lạ vẫn có thể được nhận dạng sai.',
+          style: TextStyle(fontSize: 12.5)),
+      const SizedBox(height: 10),
+      if (tienDo != null) ...[
+        LinearProgressIndicator(value: tienDo.value),
+        const SizedBox(height: 6),
+        Text('${tienDo.phase} · ${tienDo.percent}%'),
+      ] else if (state.coWav2vec2 == true)
+        const Text('Đã có mô hình wav2vec2 trên máy', style: TextStyle(color: Colors.green))
+      else
+        NutSac(nhan: 'TẢI WAV2VEC2 (122 MB)', hinh: Icons.arrow_downward_rounded,
+            onNhan: () => _chayVaBaoLoi(context, state.taiWav2vec2)),
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text('Kiểm tra trước khi phát', style: TextStyle(fontSize: 14)),
+        subtitle: const Text('VieNeu được đọc lại tối đa 2 lần nếu lệch số âm. '
+            'Matcha và các giọng đọc cố định chỉ kiểm một lần.', style: TextStyle(fontSize: 12.5)),
+        value: state.settings.soiAmKhiNghe,
+        onChanged: (bat) {
+          state.settings.soiAmKhiNghe = bat;
+          state.saveSettings();
+        },
+      ),
+      ValueListenableBuilder<String>(
+        valueListenable: state.tts.kiemAm.thongBao,
+        builder: (context, chu, _) => Text(chu, style: const TextStyle(fontSize: 12.5)),
+      ),
+      const SizedBox(height: 6),
+      const Text('Khi xuất file, mọi đoạn đều được kiểm nếu đã có mô hình. '
+          'Nếu thiếu mô hình hoặc nhận dạng lỗi, nhật ký ghi “chưa kiểm” và không bắt đọc lại.',
+          style: TextStyle(fontSize: 12.5)),
+    ]);
   }
 }

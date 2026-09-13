@@ -13,7 +13,6 @@ import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:path/path.dart' as p;
 
-import '../core/kiem_am.dart';
 import '../core/wav.dart';
 import '../models/book.dart';
 import '../models/settings.dart';
@@ -428,9 +427,9 @@ class PlayerController extends ChangeNotifier {
   /// đa [_soiNgheDocLai] lần và phát bản khớp văn bản nhất — cùng cách chấm điểm
   /// với lúc xuất file (`export_service.dart`), nhưng ít lượt hơn.
   ///
-  /// Phép soi chạy trên chính file WAV nên các lần nghe lại sau đó không tốn gì
-  /// thêm: mọi bản đọc đều nằm sẵn trong bộ nhớ đệm, chấm lại cho ra đúng lựa
-  /// chọn cũ vì hạt giống suy từ nội dung đoạn.
+  /// Nhận dạng chạy trên chính WAV, trong isolate wav2vec2. Bộ đếm giữ 32
+  /// kết quả gần nhất theo nội dung WAV; nghe lại xa hơn có thể cần nhận dạng
+  /// lại nhưng không phải tổng hợp lại. Engine cố định chỉ kiểm một lượt.
   /// [engineId] và [voiceId] truyền vào chứ không đọc từ `_settings`: đổi giọng
   /// lúc đang nghe không huỷ lượt đọc trước đang chạy, mà đọc thẳng từ cài đặt
   /// thì giữa chừng có thể nhảy sang giọng mới — ra một đoạn nửa nọ nửa kia.
@@ -449,19 +448,18 @@ class PlayerController extends ChangeNotifier {
           lanThu: lan,
         );
 
-    if (!_settings.soiAmKhiNghe || !_tts.engine(engineId).docLaiRaKhac) {
+    if (!_settings.soiAmKhiNghe) {
       return doc(0);
     }
 
     CachedAudio? tot;
     double lechTot = double.infinity;
-    for (var lan = 0; lan <= _soiNgheDocLai; lan++) {
+    final soLan = _tts.engine(engineId).docLaiRaKhac ? _soiNgheDocLai : 0;
+    for (var lan = 0; lan <= soLan; lan++) {
       final audio = await doc(lan);
-      final ket = kiemAm(
-        speech: speech,
-        wav: await audio.file.readAsBytes(),
-        nhip: _synthesisSpeed,
-      );
+      final ket = await _tts.kiemDoan(loi: speech, wav: audio.file,
+          engineId: engineId, tocDo: _synthesisSpeed);
+      if (!ket.daKiem) return tot ?? audio;
       if (ket.dat) return audio;
       // Lệch bằng nhau thì giữ bản đầu — các lần sau không hơn gì.
       if (ket.lech < lechTot) {

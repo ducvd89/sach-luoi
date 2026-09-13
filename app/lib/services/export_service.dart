@@ -299,16 +299,18 @@ class ExportService {
     void ghiSo(KetQuaKiemAm ket, int lan, {bool xong = false}) {
       if (muc == null) {
         if (ket.dat) return; // đọc trúng ngay lần đầu thì không có gì để ghi
-        muc = MucNhatKy(doan: chunk.index, soTu: ket.soTu, soAm: ket.soAm ?? 0, soLan: lan);
+        muc = MucNhatKy(doan: chunk.index, soTu: ket.soTu, soAm: ket.soAm, soLan: lan);
         job.ghiNhatKy(muc!);
       } else {
         muc!
-          ..soAm = ket.soAm ?? 0
+          ..soAm = ket.soAm
           ..soLan = lan;
       }
       muc!
         ..xong = xong
-        ..dat = ket.dat;
+        ..dat = ket.dat
+        ..amVi = ket.amVi
+        ..lyDoBoQua = ket.lyDoBoQua;
       _notify(job);
     }
 
@@ -325,9 +327,17 @@ class ExportService {
       final doan = _DoanDaDoc(
         audio,
         raw,
-        kiemAm(speech: chunk.speech, wav: raw, nhip: job.speed),
+        await _tts.kiemDoan(loi: chunk.speech, wav: audio.file,
+            engineId: job.engineId, tocDo: job.speed),
         lan + 1,
       );
+      if (!doan.kiem.daKiem) {
+        // Bộ nhận dạng hỏng không phải lý do để TTS đọc lại. Nếu đã kiểm được
+        // một bản trước đó thì giữ bản tốt nhất ấy, đừng thay bằng bản chưa kiểm.
+        final chon = tot ?? doan;
+        ghiSo(chon.kiem, lan + 1, xong: true);
+        return _DoanDaDoc(chon.audio, chon.raw, chon.kiem, lan + 1);
+      }
       ghiSo(doan.kiem, lan + 1, xong: doan.kiem.dat);
       if (doan.kiem.dat) return doan;
       // Lệch bằng nhau thì giữ bản đầu: các lần sau không hơn gì mà bản đầu còn
@@ -578,9 +588,11 @@ class ExportService {
       final doc = await _docVaSoi(job, chunk, dauLo(index) ? null : duoi);
       final audio = doc.audio;
       duoi = audio.duoi;
-      if (doc.soLanDoc > 1) {
-        job.doanDocLai++;
-        if (!doc.kiem.dat) job.doanChuaDat++;
+      if (doc.soLanDoc > 1) job.doanDocLai++;
+      if (!doc.kiem.daKiem) {
+        job.doanChuaKiem++;
+      } else if (!doc.kiem.dat) {
+        job.doanChuaDat++;
       }
 
       // Quyết định đóng phần hiện tại *sau khi* biết đoạn này dài bao nhiêu, và
