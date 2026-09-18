@@ -116,6 +116,8 @@ class TtsManager {
   /// Bản cũ nằm lại trong thư mục đệm nhưng không ai tra tới; phần dọn theo trần
   /// dung lượng sẽ xoá dần vì chúng không còn được chạm vào.
   static int phienBanAm(String engineId) => switch (engineId) {
+        // Đổi trọng số/tokenizer v3 lên revision 5f2a3e9; v2 giữ cache cũ.
+        'vieneu' => 2,
         'system' => 2,
         'matcha' => 2,
         _ => 1,

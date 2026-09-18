@@ -71,9 +71,12 @@ void main() {
     test('các engine khác không bị đụng tới', () {
       // Tăng nhầm là ném đi toàn bộ cache của engine chạy mô hình, mỗi đoạn
       // tổng hợp lại mất 5-7 giây.
-      for (final id in ['vieneu', 'vieneu_v2', 'piper']) {
+      for (final id in ['vieneu_v2', 'piper']) {
         expect(TtsManager.phienBanAm(id), 1, reason: id);
       }
+    });
+    test('v3 đổi trọng số thì không dùng lại âm thanh cũ', () {
+      expect(TtsManager.phienBanAm('vieneu'), 2);
     });
   });
 }

@@ -14,7 +14,7 @@ Chạy **hoàn toàn trên máy**: không cần mạng, không gửi sách đi �
 | **Windows** | Chạy `SachLuoi-Setup-1.7.1.exe`. Không cần quyền quản trị, cài vào `%LOCALAPPDATA%`. |
 | **Android** | Cài `SachLuoi-android-arm64.apk`. Cần Android 7 trở lên, máy 64-bit. |
 
-Sau khi cài, mở *Cài đặt → Giọng đọc* và bấm **Tải mô hình (145 MB)** một lần. Từ đó đọc được cả
+Sau khi cài, mở *Cài đặt → Giọng đọc* và bấm **Tải mô hình (147 MB)** một lần. Từ đó đọc được cả
 khi không có mạng.
 
 ---
@@ -30,7 +30,7 @@ Năm engine, đổi trong **Cài đặt**:
 | Âm thanh | 48 kHz, trong nhất | 24 kHz | 22 kHz | khá, hơi máy | tuỳ máy |
 | Đọc | chuẩn | tự nhiên hơn, biết cả tiếng Anh xen kẽ | chuẩn | hơi máy | tuỳ máy |
 | Tốc độ | ~2,9× thời gian thực | ~2,8× | **~19×** | nhanh hơn nhiều | nhanh |
-| Dung lượng tải | 145 MB | 478 MB | **59 MB** | 32–64 MB mỗi gói | không phải tải |
+| Dung lượng tải | 147 MB | 478 MB | **59 MB** | 32–64 MB mỗi gói | không phải tải |
 | Nền tảng | Windows, Android | Windows, Android | Windows, Android | Windows, Android | Android |
 
 **Chọn cái nào:** v3 Turbo cho gần như mọi trường hợp — nó chở gấp 2,5 lần lượng thông tin âm cho
@@ -215,8 +215,9 @@ rời còn chậm hơn CPU (1,83× so với 2,94×).
 
 - [**VieNeu-TTS**](https://github.com/pnnbao97/VieNeu-TTS) — Phạm Nguyễn Ngọc Bảo (pnnbao-ump).
   Dùng cả [bản v3 Turbo](https://huggingface.co/pnnbao-ump/VieNeu-TTS-v3-Turbo) (ONNX int8) và
-  [bản v2](https://huggingface.co/pnnbao-ump/VieNeu-TTS-v2) (GGUF Q4). Giấy phép **CC BY-NC 4.0**:
-  phi thương mại và phải ghi công tác giả.
+  [bản v2](https://huggingface.co/pnnbao-ump/VieNeu-TTS-v2) (GGUF Q4).
+  v3 Turbo revision `5f2a3e9` công bố **Apache-2.0** trong model card; bản v2 đang dùng
+  giữ giấy phép **CC BY-NC 4.0** (phi thương mại, ghi công tác giả).
 - [**sea-g2p**](https://github.com/pnnbao97/sea-g2p) — cùng tác giả, Apache-2.0. Bản trong
   `native/sea-g2p/` là fork từ v0.7.20, chỉ thêm cổng C và tách chế độ build.
 - [**MOSS-Audio-Tokenizer-Nano**](https://huggingface.co/OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano) —

@@ -9,6 +9,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive_io.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
@@ -27,7 +28,7 @@ import 'vieneu_v2_native.dart';
 /// sửa được gì vì đó là quyết định của bên thứ ba.
 ///
 /// Các file ở kho này là bản sao nguyên vẹn, giấy phép và ghi công đầy đủ trong
-/// README của nó. Toàn bộ nguồn gốc đều là Apache-2.0, cho phép phân phối lại.
+/// README của nó; giấy phép tuỳ mô hình và revision, không gán chung một loại.
 const _khoMoHinh = 'https://github.com/ducvd89/sach-luoi-models/releases/download/v1';
 
 /// Một gói mô hình: tải đúng MỘT file nén rồi bung ra.
@@ -42,6 +43,7 @@ class ModelPack {
     required this.tep,
     required this.megabytes,
     required this.canCo,
+    this.maBam,
   });
 
   /// Tên hiển thị lúc tải.
@@ -56,24 +58,31 @@ class ModelPack {
   /// cài xong chưa — bung dở thì thiếu file và lần sau tải lại.
   final List<String> canCo;
 
+  /// Bản cập nhật v3 phải đúng gói đã kiểm chứng trước khi bung ra.
+  final String? maBam;
+
   String get url => '$_khoMoHinh/$tep';
 }
 
 /// Mô hình chính của v3 Turbo: mạng sinh âm + bộ giải mã âm.
 ///
-/// Bung vào thư mục gốc, bên trong gói đã chia sẵn `model/` và `codec/`.
+/// Thư mục riêng theo revision: bộ cũ không được nhận nhầm là đã cập nhật,
+/// và tải hỏng không ghi đè trọng số đang có. Giọng tự thêm vẫn nằm ngoài nó.
+const phienBanV3 = '5f2a3e93092efaba9153253ff5f2e6a8e810e4f2';
+const thuMucMoHinhV3 = 'model-v3-5f2a3e9';
 const goiV3 = ModelPack(
   ten: 'mô hình v3 Turbo',
-  tep: 'vieneu-v3.zip',
-  megabytes: 145.4,
+  tep: 'vieneu-v3-5f2a3e9.zip',
+  megabytes: 146.7,
+  maBam: 'd228baf1439b3672f84a9508f453808ff0e7e170993186223d51081816989337',
   canCo: [
-    'model/vieneu_prefill.onnx',
-    'model/vieneu_decode_step.onnx',
-    'model/vieneu_acoustic_cached.onnx',
-    'model/vieneu_backbone_shared.data',
-    'model/vieneu_v3_heads.npz',
-    'model/config.json',
-    'model/tokenizer.json',
+    '$thuMucMoHinhV3/vieneu_prefill.onnx',
+    '$thuMucMoHinhV3/vieneu_decode_step.onnx',
+    '$thuMucMoHinhV3/vieneu_acoustic_cached.onnx',
+    '$thuMucMoHinhV3/vieneu_backbone_shared.data',
+    '$thuMucMoHinhV3/vieneu_v3_heads.npz',
+    '$thuMucMoHinhV3/config.json',
+    '$thuMucMoHinhV3/tokenizer.json',
     // Bản `_step` giải mã theo cửa sổ cuốn chiếu chứ không nuốt cả đoạn một
     // lượt: ra đúng từng mẫu như bản `_full` nhưng thời gian tuyến tính và bộ
     // nhớ có trần (xem KHUNG_MOI_LUOT trong native/vieneu/src/engine.rs).
@@ -218,7 +227,7 @@ class ModelStore {
 
   Directory get root =>
       _overrideRoot ?? Directory(p.join(Storage.instance.root.path, 'vieneu'));
-  Directory get modelDir => Directory(p.join(root.path, 'model'));
+  Directory get modelDir => Directory(p.join(root.path, thuMucMoHinhV3));
   Directory get codecDir => Directory(p.join(root.path, 'codec'));
   File get dictFile => File(p.join(root.path, 'sea_g2p.bin'));
   File get voicesFile => File(p.join(root.path, 'giong.json'));
@@ -523,6 +532,10 @@ class ModelStore {
         await sink.close();
       }
 
+      if (goi.maBam != null &&
+          (await sha256.bind(tam.openRead()).first).toString() != goi.maBam) {
+        throw Exception('Gói ${goi.ten} sai SHA-256; hãy tải lại');
+      }
       onProgress(WorkProgress('Đang bung ${goi.ten}…', value: 0.93));
       await _bungGoi(tam, dich);
 

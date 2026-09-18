@@ -29,7 +29,6 @@ pub struct Config {
     pub speech_end: i64,
     pub ref_slot: i64,
     pub default_style: i64,
-    pub style_labels: std::collections::HashMap<String, i64>,
     pub use_speaker_embedding: bool,
 }
 
@@ -44,14 +43,6 @@ impl Config {
         let c: Json = serde_json::from_str(&text).map_err(|e| format!("config.json hỏng: {e}"))?;
 
         let hidden = int(&c, "hidden_size", 768) as usize;
-        let mut style_labels = std::collections::HashMap::new();
-        if let Some(map) = c.get("style_labels").and_then(|v| v.as_object()) {
-            for (k, v) in map {
-                if let Some(id) = v.as_i64() {
-                    style_labels.insert(k.clone(), id);
-                }
-            }
-        }
 
         Ok(Config {
             n_vq: int(&c, "n_vq", 16) as usize,
@@ -66,7 +57,6 @@ impl Config {
             speech_end: int(&c, "speech_generation_end_token_id", 6),
             ref_slot: int(&c, "audio_ref_slot_token_id", 7),
             default_style: int(&c, "default_style_token_id", 16),
-            style_labels,
             use_speaker_embedding: c
                 .get("use_speaker_embedding")
                 .and_then(|v| v.as_bool())
@@ -288,8 +278,11 @@ impl Model {
         Ok(Some(v))
     }
 
-    pub fn style_id(&self, style: &str) -> i64 {
-        self.cfg.style_labels.get(style).copied().unwrap_or(self.cfg.default_style)
+    pub fn style_id(&self, _style: &str) -> i64 {
+        // Từ bản 5f2a3e9 (16/9/2026), SDK luôn dùng token mặc định: phong cách
+        // đã nằm trong mã tham chiếu. Giữ trường style của giọng cũ để không
+        // mất dữ liệu, nhưng không đưa token tin_tuc/doc_truyen vào mô hình mới.
+        self.cfg.default_style
     }
 
     /// Dựng bảng token đầu vào: hàng chữ rồi tới hàng mã tham chiếu của giọng.
