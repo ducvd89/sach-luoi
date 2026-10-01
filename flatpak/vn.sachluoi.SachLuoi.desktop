@@ -1,0 +1,14 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Sách lười
+GenericName=Audiobook Reader
+GenericName[vi]=Trình đọc sách nói
+Comment=Chuyển sách EPUB/TXT thành sách nói tiếng Việt
+Icon=vn.sachluoi.SachLuoi
+Exec=SachLuoi %u
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+Keywords=audiobook;tts;epub;txt;vietnamese;sach;noi;
+MimeType=application/epub+zip;text/plain;
+StartupWMClass=SachLuoi

@@ -321,7 +321,13 @@ class _SettingsPageState extends State<SettingsPage> {
                         nhan: 'Mở thư mục dữ liệu',
                         hinh: Icons.folder_open_rounded,
                         onNhan: () {
-                          if (Platform.isWindows) Process.run('explorer', [state.dataDirectory]);
+                          if (Platform.isWindows) {
+                            Process.run('explorer', [state.dataDirectory]);
+                          } else if (Platform.isLinux) {
+                            Process.run('xdg-open', [state.dataDirectory]);
+                          } else if (Platform.isMacOS) {
+                            Process.run('open', [state.dataDirectory]);
+                          }
                         },
                       ),
                     ),

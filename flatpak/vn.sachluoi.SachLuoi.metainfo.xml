@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>vn.sachluoi.SachLuoi</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Sách lười</name>
+  <summary>Chuyển sách EPUB/TXT thành sách nói tiếng Việt hoàn toàn offline</summary>
+  <summary xml:lang="en">Convert EPUB/TXT ebooks to Vietnamese audiobooks completely offline</summary>
+  <developer id="vn.sachluoi">
+    <name>Sách lười</name>
+  </developer>
+
+  <description>
+    <p>
+      Sách lười là ứng dụng chuyển đổi sách điện tử (định dạng EPUB và TXT) thành sách nói tiếng Việt chất lượng cao. Ứng dụng chạy hoàn toàn offline trên máy tính, không cần kết nối mạng hay gửi dữ liệu sách ra ngoài sau khi đã tải mô hình giọng nói.
+    </p>
+    <p xml:lang="en">
+      Sach Luoi is an offline application for converting EPUB and TXT ebooks into natural Vietnamese audiobooks using advanced on-device neural TTS models.
+    </p>
+    <ul>
+      <li>Nhiều engine giọng đọc: VieNeu v3 Turbo (48 kHz), VieNeu v2 (llama.cpp), Matcha-TTS (nhanh &amp; nhẹ), Piper, TTS hệ thống.</li>
+      <li>Chuẩn hoá tiếng Việt thông minh: tự động xử lý số, ngày tháng, đơn vị đo, từ viết tắt, tên riêng nước ngoài.</li>
+      <li>Tự động dọn rác: loại bỏ quảng cáo, mục lục thừa, header/footer của sách tải từ web.</li>
+      <li>Trình nghe tiện dụng: đánh dấu đoạn đang đọc, tự cuộn, tua nhanh, hẹn giờ tắt, lưu tiến trình.</li>
+      <li>Kiểm âm tự động: dùng mô hình wav2vec2 nhận diện âm vị và kiểm tra chất lượng đọc trước khi xuất.</li>
+      <li>Xuất file âm thanh: hỗ trợ định dạng M4A/AAC, MP3, Opus.</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">vn.sachluoi.SachLuoi.desktop</launchable>
+
+  <provides>
+    <binary>SachLuoi</binary>
+  </provides>
+
+  <url type="homepage">https://github.com/ducvd89/sach-luoi</url>
+  <url type="bugtracker">https://github.com/ducvd89/sach-luoi/issues</url>
+  <url type="vcs-browser">https://github.com/ducvd89/sach-luoi</url>
+
+  <content_rating type="oars-1.1" />
+
+  <releases>
+    <release version="1.8.0" date="2026-06-01">
+      <description>
+        <p>Bản phát hành hỗ trợ nền tảng Linux và đóng gói Flatpak, cải tiến hiệu năng đọc và xuất file âm thanh.</p>
+      </description>
+    </release>
+  </releases>
+</component>

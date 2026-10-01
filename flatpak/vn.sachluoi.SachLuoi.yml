@@ -1,0 +1,104 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/flatpak/flatpak-builder/main/data/flatpak-manifest.schema.json
+app-id: vn.sachluoi.SachLuoi
+runtime: org.gnome.Platform
+runtime-version: "50"
+sdk: org.gnome.Sdk
+command: SachLuoi
+
+finish-args:
+  # Hiển thị giao diện đồ hoạ Wayland và X11
+  - --socket=fallback-x11
+  - --socket=wayland
+  # Âm thanh PulseAudio / PipeWire
+  - --socket=pulseaudio
+  # Mạng (để tải mô hình giọng nói VieNeu, Matcha, Piper lúc cài đặt)
+  - --share=network
+  - --share=ipc
+  # Tăng tốc phần cứng GPU
+  - --device=dri
+  # Quyền truy cập các thư mục tài liệu, tải về và nhạc (để nhập sách EPUB/TXT và xuất file sách nói)
+  - --filesystem=xdg-download
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-music
+  # Thông báo hệ thống
+  - --talk-name=org.freedesktop.Notifications
+  # Điều khiển phát nhạc qua MPRIS
+  - --own-name=org.mpris.MediaPlayer2.SachLuoi.*
+
+modules:
+  - name: libmpv
+    cleanup:
+      - /share/bash-completion
+      - /share/zsh
+      - /share/doc
+      - /share/icons
+      - /share/applications
+    buildsystem: meson
+    config-opts:
+      - -Dlibmpv=true
+      - -Dcplayer=false
+      - -Dlua=disabled
+      - -Ddebug=false
+      - -Dbuild-date=false
+      - -Dalsa=disabled
+      - -Dmanpage-build=disabled
+      - -Dvulkan=enabled
+    sources:
+      - type: archive
+        url: https://github.com/mpv-player/mpv/archive/refs/tags/v0.40.0.tar.gz
+        sha256: 10a0f4654f62140a6dd4d380dcf0bbdbdcf6e697556863dc499c296182f081a3
+    modules:
+      - name: libplacebo
+        buildsystem: meson
+        config-opts:
+          - -Dopengl=enabled
+          - -Dvulkan=enabled
+          - -Dglslang=disabled
+          - -Dd3d11=disabled
+          - -Ddemos=False
+        sources:
+          - type: archive
+            url: https://code.videolan.org/videolan/libplacebo/-/archive/v7.360.1/libplacebo-v7.360.1.tar.gz
+            sha256: 14c0a99f4b01557ec9826ce6b1d52f6de21be274ba03fd5aab7307f18766dc39
+          - type: archive
+            url: https://github.com/pallets/jinja/archive/refs/tags/3.1.6.tar.gz
+            sha256: 2074b22a72caa65474902234b320d73463d6d4c223ee49f4b433495758356337
+            dest: 3rdparty/jinja
+          - type: archive
+            url: https://github.com/Dav1dde/glad/archive/refs/tags/v2.0.8.tar.gz
+            sha256: 44f06f9195427c7017f5028d0894f57eb216b0a8f7c4eda7ce883732aeb2d0fc
+            dest: 3rdparty/glad
+
+      - name: libass
+        config-opts:
+          - --disable-static
+        sources:
+          - type: archive
+            url: https://github.com/libass/libass/releases/download/0.17.3/libass-0.17.3.tar.gz
+            sha256: da7c348deb6fa6c24507afab2dee7545ba5dd5bbf90a137bfe9e738f7df68537
+
+  - name: sachluoi
+    buildsystem: simple
+    build-commands:
+      # Cài đặt thư mục ứng dụng
+      - install -dm755 /app/SachLuoi /app/bin
+      - cp -a * /app/SachLuoi/
+      # Wrapper script khởi động
+      - install -Dm755 flatpak/SachLuoi-wrapper.sh /app/bin/SachLuoi
+      # Desktop file
+      - install -Dm644 flatpak/vn.sachluoi.SachLuoi.desktop /app/share/applications/vn.sachluoi.SachLuoi.desktop
+      # AppStream metainfo
+      - install -Dm644 flatpak/vn.sachluoi.SachLuoi.metainfo.xml /app/share/metainfo/vn.sachluoi.SachLuoi.metainfo.xml
+      # Icons
+      - install -Dm644 flatpak/icons/512x512.png /app/share/icons/hicolor/512x512/apps/vn.sachluoi.SachLuoi.png
+      - install -Dm644 flatpak/icons/256x256.png /app/share/icons/hicolor/256x256/apps/vn.sachluoi.SachLuoi.png
+      - install -Dm644 flatpak/icons/128x128.png /app/share/icons/hicolor/128x128/apps/vn.sachluoi.SachLuoi.png
+      - install -Dm644 flatpak/icons/64x64.png /app/share/icons/hicolor/64x64/apps/vn.sachluoi.SachLuoi.png
+      - install -Dm644 flatpak/icons/48x48.png /app/share/icons/hicolor/48x48/apps/vn.sachluoi.SachLuoi.png
+      # Liên kết các thư viện chia sẻ ra /app/lib
+      - install -dm755 /app/lib
+      - ln -sf /app/SachLuoi/lib/libsachnoi_vieneu.so /app/lib/libsachnoi_vieneu.so 2>/dev/null || true
+      - ln -sf /app/SachLuoi/lib/libsea_g2p_rs.so /app/lib/libsea_g2p_rs.so 2>/dev/null || true
+    sources:
+      - type: dir
+        path: ../dist/SachLuoi-linux-x64

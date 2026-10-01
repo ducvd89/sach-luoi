@@ -13,6 +13,7 @@ import 'dart:ffi';
 import 'dart:io';
 
 import 'package:ffi/ffi.dart';
+import 'package:path/path.dart' as p;
 
 // -- chữ ký hàm trong thư viện Rust ------------------------------------------
 
@@ -62,6 +63,8 @@ class SeaG2p {
   static String get _libraryName {
     if (Platform.isWindows) return 'sea_g2p_rs.dll';
     if (Platform.isMacOS) return 'libsea_g2p_rs.dylib';
+    final bundleLib = p.join(p.dirname(Platform.resolvedExecutable), 'lib', 'libsea_g2p_rs.so');
+    if (File(bundleLib).existsSync()) return bundleLib;
     return 'libsea_g2p_rs.so';
   }
 

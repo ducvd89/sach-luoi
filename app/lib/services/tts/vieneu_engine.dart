@@ -64,6 +64,17 @@ class OnDeviceVieNeuEngine implements TtsEngine {
   static int? tongRamGb() => _tongRamGb();
 
   static int? _tongRamGb() {
+    if (Platform.isLinux) {
+      try {
+        final meminfo = File('/proc/meminfo').readAsStringSync();
+        final match = RegExp(r'MemTotal:\s+(\d+)\s+kB').firstMatch(meminfo);
+        if (match != null) {
+          final kb = int.tryParse(match.group(1)!);
+          if (kb != null) return (kb ~/ (1024 * 1024)).toInt();
+        }
+      } catch (_) {}
+      return null;
+    }
     if (!Platform.isWindows) return null;
     try {
       final kernel = DynamicLibrary.open('kernel32.dll');

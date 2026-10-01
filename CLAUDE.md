@@ -66,6 +66,14 @@ cd native/vieneu && cargo build --release
 powershell -ExecutionPolicy Bypass -File dong-goi.ps1
 ```
 
+Đóng gói Linux, AppImage & Flatpak (dựng thư viện Rust, build Linux release, AppImage và Flatpak):
+
+```bash
+./dong-goi-linux.sh
+./build-appimage.sh
+./flatpak/build-flatpak.sh
+```
+
 APK arm64 — cần Android SDK + NDK, và phải build .so trước rồi chép vào `jniLibs/`.
 
 **Build Rust cho Android phải dùng `cmake` của Android SDK**, không phải bản đi kèm Visual

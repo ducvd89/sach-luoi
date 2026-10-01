@@ -9,6 +9,7 @@ import 'dart:io';
 import 'dart:isolate';
 
 import 'package:ffi/ffi.dart';
+import 'package:path/path.dart' as p;
 
 typedef _MoC = Pointer<Void> Function(Pointer<Utf8>, Pointer<Pointer<Utf8>>);
 typedef _MoDart = Pointer<Void> Function(Pointer<Utf8>, Pointer<Pointer<Utf8>>);
@@ -31,14 +32,13 @@ void _nhanNen((SendPort, String, String?) cauHinh) {
   Pointer<Void> bo = nullptr;
   _DongDart? dong;
   try {
-    final lib = DynamicLibrary.open(
-      thuVien ??
-          (Platform.isWindows
-              ? 'sachnoi_vieneu.dll'
-              : Platform.isMacOS
-              ? 'libsachnoi_vieneu.dylib'
-              : 'libsachnoi_vieneu.so'),
-    );
+    final bundleLib = p.join(p.dirname(Platform.resolvedExecutable), 'lib', 'libsachnoi_vieneu.so');
+    final defaultLib = Platform.isWindows
+        ? 'sachnoi_vieneu.dll'
+        : Platform.isMacOS
+        ? 'libsachnoi_vieneu.dylib'
+        : (File(bundleLib).existsSync() ? bundleLib : 'libsachnoi_vieneu.so');
+    final lib = DynamicLibrary.open(thuVien ?? defaultLib);
     final mo = lib.lookupFunction<_MoC, _MoDart>('kiem_am_mo');
     final nhan = lib.lookupFunction<_NhanC, _NhanDart>('kiem_am_nhan');
     dong = lib.lookupFunction<_DongC, _DongDart>('kiem_am_dong');

@@ -1,6 +1,6 @@
 # 📖 Sách lười
 
-Ứng dụng **Windows và Android** chuyển sách **EPUB / TXT** thành **sách nói tiếng Việt**. Nghe trong
+Ứng dụng **Windows, Android và Linux (Flatpak)** chuyển sách **EPUB / TXT** thành **sách nói tiếng Việt**. Nghe trong
 ứng dụng hoặc xuất ra file, tự nhớ chỗ đang nghe.
 
 Chạy **hoàn toàn trên máy**: không cần mạng, không gửi sách đi đâu, không cần cài Python.
@@ -13,6 +13,8 @@ Chạy **hoàn toàn trên máy**: không cần mạng, không gửi sách đi �
 |---|---|
 | **Windows** | Chạy `SachLuoi-Setup-1.7.1.exe`. Không cần quyền quản trị, cài vào `%LOCALAPPDATA%`. |
 | **Android** | Cài `SachLuoi-android-arm64.apk`. Cần Android 7 trở lên, máy 64-bit. |
+| **Linux (AppImage)** | Tải file `SachLuoi-1.8.0-x86_64.AppImage`, cấp quyền chạy (`chmod +x`) và mở trực tiếp. |
+| **Linux (Flatpak)** | Cài đặt qua Flatpak: `flatpak install vn.sachluoi.SachLuoi.flatpak` hoặc `./flatpak/build-flatpak.sh`. |
 
 Sau khi cài, mở *Cài đặt → Giọng đọc* và bấm **Tải mô hình (147 MB)** một lần. Từ đó đọc được cả
 khi không có mạng.
@@ -31,7 +33,7 @@ Năm engine, đổi trong **Cài đặt**:
 | Đọc | chuẩn | tự nhiên hơn, biết cả tiếng Anh xen kẽ | chuẩn | hơi máy | tuỳ máy |
 | Tốc độ | ~2,9× thời gian thực | ~2,8× | **~19×** | nhanh hơn nhiều | nhanh |
 | Dung lượng tải | 147 MB | 478 MB | **59 MB** | 32–64 MB mỗi gói | không phải tải |
-| Nền tảng | Windows, Android | Windows, Android | Windows, Android | Windows, Android | Android |
+| Nền tảng | Windows, Android, Linux | Windows, Android, Linux | Windows, Android, Linux | Windows, Android, Linux | Android |
 
 **Chọn cái nào:** v3 Turbo cho gần như mọi trường hợp — nó chở gấp 2,5 lần lượng thông tin âm cho
 mỗi giây tiếng nên tiếng trong hơn. Đổi sang **v2** nếu sách có nhiều tên riêng nước ngoài, hoặc
@@ -175,6 +177,25 @@ Dựng APK (cần Android SDK + NDK; thư viện Rust cho aarch64 phải build t
 cd native/vieneu && cargo build --release --target aarch64-linux-android
 cp target/aarch64-linux-android/release/libsachnoi_vieneu.so ../../app/android/app/src/main/jniLibs/arm64-v8a/
 cd ../../app && flutter build apk --release --target-platform android-arm64
+```
+
+Đóng gói Linux, AppImage & Flatpak:
+
+```bash
+# 1. Dựng bundle Linux (biên dịch native Rust + Flutter release)
+./dong-goi-linux.sh
+
+# 2. Đóng gói AppImage độc lập (tự chứa libmpv, chạy trên mọi distro)
+./build-appimage.sh
+
+# 3. Dựng và cài đặt Flatpak
+./flatpak/build-flatpak.sh
+
+# Hoặc xuất file bundle độc lập .flatpak để phân phối:
+./flatpak/build-flatpak.sh --bundle
+
+# Chạy ứng dụng Flatpak
+flatpak run vn.sachluoi.SachLuoi
 ```
 
 ---

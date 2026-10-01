@@ -1033,6 +1033,7 @@ name = "sachnoi-vieneu"
 version = "0.1.0"
 dependencies = [
  "audiopus",
+ "cc",
  "llama-cpp-2",
  "mp3lame-encoder",
  "ndarray",

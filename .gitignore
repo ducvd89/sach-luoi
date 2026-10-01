@@ -5,8 +5,9 @@
 # Rust — riêng thư mục target đã gần 1 GB toàn file trung gian
 native/*/target/
 
-# Bản đóng gói: dựng lại bằng dong-goi.ps1 và flutter build apk
+# Bản đóng gói: dựng lại bằng dong-goi.ps1, dong-goi-linux.sh và flutter build apk
 dist/
+build/
 
 # Python của các script chuẩn bị dữ liệu
 tts_service/.venv*/
@@ -19,6 +20,7 @@ app/.dart_tool/
 app/.flutter-plugins
 app/.flutter-plugins-dependencies
 app/windows/flutter/ephemeral/
+app/linux/flutter/ephemeral/
 app/android/.gradle/
 app/android/local.properties
 app/android/.kotlin/
