@@ -1,260 +1,74 @@
 # 📖 Sách lười
 
-Ứng dụng **Windows, Android và Linux (Flatpak)** chuyển sách **EPUB / TXT** thành **sách nói tiếng Việt**. Nghe trong
-ứng dụng hoặc xuất ra file, tự nhớ chỗ đang nghe.
-
-Chạy **hoàn toàn trên máy**: không cần mạng, không gửi sách đi đâu, không cần cài Python.
+Ứng dụng đọc và chuyển sách **EPUB / TXT** thành **sách nói tiếng Việt**, chạy **hoàn toàn offline** trên máy tính và điện thoại (không cần mạng, không gửi dữ liệu ra ngoài, không cần cài Python).
 
 ---
 
-## Cài đặt
+## Tải về & Cài đặt
 
-| | |
+| Nền tảng | Cài đặt |
 |---|---|
-| **Windows** | Chạy `SachLuoi-Setup-1.7.1.exe`. Không cần quyền quản trị, cài vào `%LOCALAPPDATA%`. |
-| **Android** | Cài `SachLuoi-android-arm64.apk`. Cần Android 7 trở lên, máy 64-bit. |
-| **Linux (AppImage)** | Tải file `SachLuoi-1.8.0-x86_64.AppImage`, cấp quyền chạy (`chmod +x`) và mở trực tiếp. |
-| **Linux (Flatpak)** | Cài đặt qua Flatpak: `flatpak install vn.sachluoi.SachLuoi.flatpak` hoặc `./flatpak/build-flatpak.sh`. |
+| **Windows** | Chạy `SachLuoi-Setup-1.8.0.exe` (cài vào `%LOCALAPPDATA%`, không cần quyền quản trị). |
+| **Android** | Cài `SachLuoi-android-arm64.apk` (Android 7 trở lên, thiết bị 64-bit). |
+| **Linux (AppImage)** | Tải `SachLuoi-1.8.0-x86_64.AppImage`, cấp quyền chạy (`chmod +x`) và mở trực tiếp. |
+| **Linux (Flatpak)** | Cài file bundle: `flatpak install vn.sachluoi.SachLuoi.flatpak` hoặc tự dựng qua `./flatpak/build-flatpak.sh`. |
 
-Sau khi cài, mở *Cài đặt → Giọng đọc* và bấm **Tải mô hình (147 MB)** một lần. Từ đó đọc được cả
-khi không có mạng.
-
----
-
-## Giọng đọc
-
-Năm engine, đổi trong **Cài đặt**:
-
-| | VieNeu v3 Turbo | VieNeu v2 | Matcha-TTS | Giọng nhẹ (Piper) | TTS hệ thống |
-|---|---|---|---|---|---|
-| Giọng | 14 dựng sẵn + tự thêm | 9 dựng sẵn + tự thêm | **1, cố định** | 3 gói tải sẵn | giọng của máy |
-| Vùng miền | Bắc, Trung, Nam | Bắc | Bắc | Bắc | tuỳ máy |
-| Âm thanh | 48 kHz, trong nhất | 24 kHz | 22 kHz | khá, hơi máy | tuỳ máy |
-| Đọc | chuẩn | tự nhiên hơn, biết cả tiếng Anh xen kẽ | chuẩn | hơi máy | tuỳ máy |
-| Tốc độ | ~2,9× thời gian thực | ~2,8× | **~19×** | nhanh hơn nhiều | nhanh |
-| Dung lượng tải | 147 MB | 478 MB | **59 MB** | 32–64 MB mỗi gói | không phải tải |
-| Nền tảng | Windows, Android, Linux | Windows, Android, Linux | Windows, Android, Linux | Windows, Android, Linux | Android |
-
-**Chọn cái nào:** v3 Turbo cho gần như mọi trường hợp — nó chở gấp 2,5 lần lượng thông tin âm cho
-mỗi giây tiếng nên tiếng trong hơn. Đổi sang **v2** nếu sách có nhiều tên riêng nước ngoài, hoặc
-nếu bạn thấy v3 đọc đều đều: v2 lớn gấp ba nên ngắt nghỉ tự nhiên hơn. **Matcha** khi bạn cần
-nhanh và nhẹ: tải một phần ba, đọc nhanh gấp gần bảy lần hai bản trên, đủ để nghe theo kịp trên
-cả máy yếu — đổi lại chỉ có đúng một giọng và không thêm giọng riêng được. Giọng nhẹ khi máy yếu
-hoặc cần đọc thật nhanh một cuốn dài. TTS hệ thống khi không muốn tải gì thêm.
-
-**Thêm giọng của bạn.** *Cài đặt → Thêm giọng từ file ghi âm*. Hai bản VieNeu làm việc này theo hai
-cách khác nhau:
-
-| | v3 Turbo | v2 |
-|---|---|---|
-| Cần gì | file `.wav` 3–15 giây | file `.wav` 3–10 giây **kèm lời trong đoạn ghi âm** |
-| Bản ghi dài | được, ứng dụng tự chọn đoạn 8 giây sạch nhất | không cắt được, lời phải khớp cả đoạn |
-| Tải thêm lần đầu | ~70 MB | ~519 MB |
-
-v2 cần lời vì nó học giọng từ *cặp* âm thanh và lời tương ứng; v3 thì trích thẳng đặc trưng người
-nói từ sóng âm nên không cần. Chép lời sai là v2 đọc sai, không phải chỉ giống giọng ít đi.
-
-> Giọng đã nhân bản cho engine này **không chuyển sang engine kia được** — hai bên mô tả một giọng
-> theo hai cách hoàn toàn khác nhau. Muốn có cùng giọng ở cả hai thì thêm hai lần từ cùng file.
-
-> Hai giọng *Latradio* và *Việt Sử* trong `app/assets/giong.json` được nhân bản từ bản ghi của người
-> khác. Dùng riêng thì được, phát hành hay dùng công khai phải xin phép chủ giọng. Muốn bỏ thì xoá
-> hai mục đó cùng hai file wav trong `tts_service/voices/`.
+> Sau khi cài đặt, vào **Cài đặt → Giọng đọc** và bấm **Tải mô hình** một lần để nghe khi không có mạng.
 
 ---
 
-## Tính năng
+## Các mô hình giọng đọc (TTS Engines)
 
-**Đọc sách** — EPUB (v2, v3) và TXT (tự nhận bảng mã). Chương lấy từ mục lục EPUB hoặc tự nhận
-"Chương 1", "Phần II" trong TXT.
+Sách lười tích hợp 5 bộ máy đọc chạy trực tiếp trên thiết bị (on-device):
 
-**Chuẩn hoá tiếng Việt** — chỗ máy đọc hay vấp nhất:
-
-| Gốc | Đọc thành |
-|---|---|
-| `1.234.567` | một triệu hai trăm ba mươi tư nghìn năm trăm sáu mươi bảy |
-| `20/11/1954` | ngày hai mươi tháng mười một năm một nghìn chín trăm năm mươi tư |
-| `PGS.TS`, `35°C`, `21km` | Phó giáo sư tiến sĩ, ba mươi lăm độ C, hai mươi mốt ki lô mét |
-
-**Dọn quảng cáo** — bỏ tên trang web, dòng ghi công người convert, lời kêu gọi ủng hộ, và cả chương
-mục lục của sách tải trên mạng. Nhận rác theo mẫu quen thuộc lẫn theo tần suất lặp. Đo trên Phàm
-Nhân Tu Tiên (2.467 chương): bỏ được 1 mục lục + 7.474 dòng header, tiết kiệm ~3 giờ 39 phút nghe.
-
-**Nghe** — văn bản hiện bên cạnh, đoạn đang đọc tô sáng và tự cuộn; bấm vào đoạn nào nhảy tới đó.
-Tua ±15 giây, hẹn giờ tắt, đổi tốc độ 0.4×–2.0× có hiệu lực ngay. Phím tắt: `Space` phát/dừng ·
-`←` `→` tua · `↑` `↓` chuyển đoạn.
-
-**Kiểm tra trước khi phát** — dùng wav2vec2 nhận dạng âm vị tiếng Việt và đếm nhân nguyên âm,
-so với số âm tiết trong văn bản. Tải mô hình một lần tại *Cài đặt → Kiểm âm* (~122 MB), sau đó
-chạy offline. Đạt khi nhận được **100–110%** số âm dự kiến, áp dụng cả câu ngắn. Số dự kiến
-đã cộng đủ âm tiết ước lượng của các từ tiếng Anh. Bật nút cạnh hẹn giờ để kiểm cả đoạn đang nghe lẫn đoạn đọc trước. VieNeu được đọc
-lại tối đa hai lần khi lệch; Matcha, Piper và giọng hệ thống chỉ kiểm một lần. Mặc định tắt để
-không tốn thời gian nhận dạng khi nghe. Đây là phép kiểm gần đúng, không phát hiện được mọi lỗi
-đọc sai chữ có cùng số âm. Xem [chi tiết kiểm âm](kiem-am-wav2vec2.md).
-
-**Tay cầm chơi game** — lái được cả ứng dụng không cần chạm màn hình. Cần trái đi giữa các điểm
-chọn, `A` chọn, `B` quay lại, `X` mở bảng chọn chương, `Y` phát/dừng, `L`/`R` chuyển tab, cần phải
-cuộn trang ở mọi màn hình. Trỏ tới mục nằm ngoài màn hình thì trang tự cuộn tới; cuộn xong mà bấm
-hướng thì bắt đầu lại từ mục đầu tiên đang hiện. Windows đọc qua XInput, Android qua
-`KeyEvent`/`MotionEvent`.
-
-**Điều khiển ngoài ứng dụng (Android)** — hiện ở phần "Đang phát" của hệ điều hành: điều khiển từ
-màn hình khoá, khu thông báo và nút tai nghe.
-
-**Khoá cảm ứng (Android)** — nút hình khoá màu đỏ ở màn hình Nghe. Bấm vào là cả giao diện ngừng
-nhận thao tác, màn hình hạ còn 10% sáng và không tự tắt; muốn dùng lại thì trượt để mở khoá. Dành
-cho lúc bỏ máy vào túi hay để cạnh gối — một cú chạm nhầm là nhảy mất mấy đoạn. Tiếng vẫn phát bình
-thường, và nút trên tai nghe vẫn điều khiển được.
-
-**Xuất file** — chọn độ dài mỗi file, mỗi chương một file, hoặc gộp tất cả. Định dạng Opus 32/64
-kbps, AAC 64 kbps, MP3 128 kbps hoặc WAV. Tạm dừng và chạy tiếp bất cứ lúc nào, kể cả sau khi tắt
-ứng dụng. Trên máy tính chạy nhiều luồng song song: v3 Turbo đạt 8,94× thời gian thực với 6 luồng
-(đo trên máy 12 nhân), v2 thì 3,57× với 2 luồng — nó nghẽn ở băng thông bộ nhớ nên thêm luồng gần
-như không nhanh thêm, mà mỗi luồng tốn ~750 MB.
-
-**Kiểm âm khi xuất** — dùng cùng bộ wav2vec2, không đếm đỉnh sóng. Nếu lệch, hai VieNeu được đọc
-lại tối đa năm lần và chọn bản gần đúng nhất; các engine cố định chỉ kiểm một lần. Nhật ký lưu
-số âm và chuỗi âm vị nhận dạng. Thiếu mô hình hoặc nhận dạng lỗi thì vẫn xuất, ghi rõ **chưa kiểm**
-và không bắt TTS đọc lại vì lỗi của bộ kiểm.
-
-**Lưu tiến trình** — chỗ đang nghe lưu tự động. Mỗi đoạn âm thanh đã tạo được giữ lại nên nghe lại
-gần như tức thì; trần dung lượng chọn trong *Cài đặt → Dữ liệu* (mặc định 500 MB).
+| Engine | Đặc điểm & Chất lượng | Tốc độ | Dung lượng tải | Nền tảng |
+|---|---|---|---|---|
+| **VieNeu v3 Turbo** *(khuyên dùng)* | 48 kHz, âm thanh trong và tự nhiên nhất. 28 giọng đi kèm (Bắc/Trung/Nam), hỗ trợ thêm giọng từ file ghi âm (3–15 giây). | ~2,9× | 147 MB | Windows, Android, Linux |
+| **VieNeu v2** | 24 kHz, ngắt nghỉ câu tự nhiên, đọc tốt từ tiếng Anh xen kẽ. Hỗ trợ nhân bản giọng từ file ghi âm kèm lời. | ~2,8× | 478 MB | Windows, Android, Linux |
+| **Matcha-TTS** | 22 kHz, mô hình siêu nhẹ và mượt mà, tối ưu cho máy cấu hình yếu. | **~19×** | 59 MB | Windows, Android, Linux |
+| **Giọng nhẹ (Piper)** | Giọng đọc chuẩn qua sherpa-onnx, tốc độ nhanh vượt trội. | Rất nhanh | 32–64 MB/gói | Windows, Android, Linux |
+| **TTS hệ thống** | Tận dụng giọng đọc có sẵn của hệ điều hành. | Nhanh | 0 MB | Android |
 
 ---
 
-## Cấu trúc dự án
+## Tính năng chính
 
-```
-app/                  Ứng dụng Flutter (Windows + Android)
-  lib/core/             logic thuần: đọc số, chuẩn hoá, cắt đoạn, EPUB/TXT, WAV, soi âm
-  lib/models/           Book, Chunk, Progress, ExportJob, AppSettings
-  lib/services/         thư viện sách, phát, xuất file, tay cầm, media session
-  lib/services/tts/     các engine giọng nói + bộ nhớ đệm
-  lib/ui/               các màn hình
-  assets/               từ điển âm vị và hồ sơ giọng
-
-native/vieneu/        Rust: chạy ba mô hình trên máy, nhân bản giọng, mã hoá âm thanh
-  src/engine.rs         v3 Turbo qua ONNX Runtime
-  src/v2.rs             v2 qua llama.cpp + NeuCodec
-  src/matcha.rs         Matcha-TTS qua ONNX Runtime (khớp dòng chảy + Vocos)
-native/sea-g2p/       Rust: chuyển chữ sang âm vị (fork của sea-g2p, thêm cổng C)
-tts_service/          Script Python chuẩn bị dữ liệu — KHÔNG cần để chạy ứng dụng
-
-dong-goi.ps1          build Windows + tạo bộ cài
-installer.iss         kịch bản Inno Setup
-```
+- **Đọc sách đa định dạng:** Hỗ trợ sách **EPUB** (v2, v3) và **TXT** (tự động nhận diện bảng mã và tự chia chương).
+- **Chuẩn hoá tiếng Việt thông minh:** Tự động đọc đúng số tiền, ngày tháng, số thập phân, đơn vị đo lường và các từ viết tắt phổ biến (`1.234.567` ➔ một triệu hai trăm..., `20/11` ➔ ngày hai mươi...).
+- **Tự động lọc rác văn bản:** Loại bỏ quảng cáo, liên kết web, thông tin người convert để nội dung nghe liền mạch.
+- **Trình phát đồng bộ văn bản:** Đoạn đang đọc được tô sáng và tự động cuộn theo giọng nói; chạm vào đoạn bất kỳ để nhảy tới phát ngay.
+- **Kiểm âm thông minh (Wav2Vec2):** Tùy chọn đối chiếu âm thanh phát ra với văn bản để tự động phát hiện và đọc lại khi phát âm sai/vấp.
+- **Xuất sách nói thành file:** Xuất ra file **Opus**, **AAC**, **MP3** hoặc **WAV** theo từng chương hoặc gộp file, hỗ trợ xử lý đa luồng song song trên máy tính.
+- **Tự động lưu tiến trình:** Ghi nhớ chính xác vị trí đang nghe của từng cuốn sách và lưu đệm âm thanh để nghe lại tức thì.
 
 ---
 
-## Phát triển
+## Đóng gói & Phát triển
 
-Cần Rust, Flutter, Visual Studio (workload "Desktop development with C++") và `nuget.exe`
-trong PATH — gói `flutter_tts` kéo phụ thuộc WinRT qua NuGet lúc chạy CMake.
+Yêu cầu môi trường: **Flutter SDK**, **Rust** (và Android NDK / Visual Studio C++ / CMake tùy theo nền tảng đích).
 
 ```bash
-cd native/vieneu && cargo build --release
-# sea-g2p mặc định dựng bản PyO3; cổng C cần đúng feature này
-cd ../sea-g2p && cargo build --release --no-default-features --features ffi
-cd ../../app && flutter run -d windows
-```
-
-Kiểm thử (bài cần mô hình sẽ tự bỏ qua; muốn chạy đủ thì trỏ `ORT_DYLIB_PATH` vào một bản ONNX
-Runtime):
-
-```bash
-cd app && flutter test
-```
-
-Đóng gói Windows:
-
-```bash
+# Windows (PowerShell):
 powershell -ExecutionPolicy Bypass -File dong-goi.ps1
-```
 
-Dựng APK (cần Android SDK + NDK; thư viện Rust cho aarch64 phải build trước và chép vào `jniLibs/`):
-
-```bash
+# Android APK (arm64):
 cd native/vieneu && cargo build --release --target aarch64-linux-android
 cp target/aarch64-linux-android/release/libsachnoi_vieneu.so ../../app/android/app/src/main/jniLibs/arm64-v8a/
 cd ../../app && flutter build apk --release --target-platform android-arm64
-```
 
-Đóng gói Linux, AppImage & Flatpak:
-
-```bash
-# 1. Dựng bundle Linux (biên dịch native Rust + Flutter release)
-./dong-goi-linux.sh
-
-# 2. Đóng gói AppImage độc lập (tự chứa libmpv, chạy trên mọi distro)
-./build-appimage.sh
-
-# 3. Dựng và cài đặt Flatpak
-./flatpak/build-flatpak.sh
-
-# Hoặc xuất file bundle độc lập .flatpak để phân phối:
-./flatpak/build-flatpak.sh --bundle
-
-# Chạy ứng dụng Flatpak
-flatpak run vn.sachluoi.SachLuoi
+# Linux (Bundle, AppImage & Flatpak):
+./dong-goi-linux.sh        # Dựng Linux release bundle
+./build-appimage.sh        # Đóng gói AppImage độc lập (tự chứa libmpv)
+./flatpak/build-flatpak.sh  # Dựng và cài đặt Flatpak
 ```
 
 ---
 
-## Ghi chú kỹ thuật
+## Ghi công & Bản quyền
 
-**Vì sao có mã Rust.** Mô hình VieNeu sinh từng khung một; giữa hai lần gọi phải tra embedding, chạy
-16 phép nhân ma trận 768×1024, lấy mẫu token rồi đẩy KV cache. Bản gốc viết phần đó bằng numpy — đặt
-ở Rust thì nhanh ngang, để ở Dart thì vòng lặp nóng này chậm hơn vài lần. Dart chỉ gọi đúng một hàm.
+- [VieNeu-TTS](https://github.com/pnnbao97/VieNeu-TTS) & [sea-g2p](https://github.com/pnnbao97/sea-g2p) — Phạm Nguyễn Ngọc Bảo (pnnbao-ump).
+- [Matcha-TTS tiếng Việt](https://huggingface.co/Cong123779/matcha-tts-vietnamese-onnx-int8) — Cong123779.
+- [MOSS-Audio-Tokenizer-Nano](https://huggingface.co/OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano) & [NeuCodec](https://huggingface.co/neuphonic/neucodec).
+- [llama.cpp](https://github.com/ggml-org/llama.cpp), [Piper](https://github.com/rhasspy/piper), [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) & [ONNX Runtime](https://github.com/microsoft/onnxruntime).
 
-**Hai bản VieNeu chạy trên hai bộ máy khác nhau.** v3 Turbo là ONNX đa codebook chạy qua ONNX
-Runtime; v2 là Qwen3 0,3B lượng tử Q4 chạy qua llama.cpp, giải mã âm bằng NeuCodec. Chúng chỉ dùng
-chung bộ chuyển âm vị. v2 gấp ba tham số mà vẫn nhanh ngang v3 vì sinh token là bài toán **đọc bộ
-nhớ** chứ không phải bài toán tính — trọng số Q4 chỉ 189 MB so với ~300 MB của bản int8. Cũng chính
-vì thế mà v2 không hưởng lợi mấy từ việc chạy nhiều luồng: chúng giành nhau cùng một băng thông.
-
-**Mọi thứ nặng nằm ở isolate riêng.** Nạp mô hình, đọc một đoạn, nhập sách — đều chạy nền nên giao
-diện không bao giờ bị chặn.
-
-**Nhân bản giọng phải khớp từng con số.** `fbank.rs` được đối chiếu với torchaudio tới khi đặc trưng
-trích ra đạt cosine 1,0000; chỗ lệch cuối cùng nằm ở cửa sổ của bộ lấy mẫu lại.
-
-**Kết quả phải ổn định giữa các lần chạy.** Hạt giống suy từ nội dung đoạn, nếu không thì mỗi lần
-đọc lại ra một giọng khác và bộ nhớ đệm mất hết ý nghĩa.
-
-**Khoảng nghỉ nằm ngoài âm thanh đã tổng hợp.** Chèn lúc phát và lúc ghép file, nên kéo thanh trượt
-là nghe khác ngay, không phải đọc lại cả cuốn sách.
-
-**Không dùng GPU.** Mô hình xuất ra ONNX với chiều batch cố định bằng 1; chạy từng đoạn một thì card
-rời còn chậm hơn CPU (1,83× so với 2,94×).
-
-**Chỉ một bản ONNX Runtime, đến từ gói `sherpa_onnx`.** Đừng chép thêm `libonnxruntime.so` vào
-`jniLibs/` — xem chú thích trong `app/android/app/build.gradle.kts`.
-
----
-
-## Ghi công
-
-- [**VieNeu-TTS**](https://github.com/pnnbao97/VieNeu-TTS) — Phạm Nguyễn Ngọc Bảo (pnnbao-ump).
-  Dùng cả [bản v3 Turbo](https://huggingface.co/pnnbao-ump/VieNeu-TTS-v3-Turbo) (ONNX int8) và
-  [bản v2](https://huggingface.co/pnnbao-ump/VieNeu-TTS-v2) (GGUF Q4).
-  v3 Turbo revision `5f2a3e9` công bố **Apache-2.0** trong model card; bản v2 đang dùng
-  giữ giấy phép **CC BY-NC 4.0** (phi thương mại, ghi công tác giả).
-- [**sea-g2p**](https://github.com/pnnbao97/sea-g2p) — cùng tác giả, Apache-2.0. Bản trong
-  `native/sea-g2p/` là fork từ v0.7.20, chỉ thêm cổng C và tách chế độ build.
-- [**MOSS-Audio-Tokenizer-Nano**](https://huggingface.co/OpenMOSS-Team/MOSS-Audio-Tokenizer-Nano) —
-  OpenMOSS Team. Bộ giải mã âm của v3 Turbo.
-- [**NeuCodec**](https://huggingface.co/neuphonic/neucodec) — Neuphonic. Bộ giải mã âm của v2;
-  bộ mã hoá dùng bản [distill-neucodec](https://huggingface.co/neuphonic/distill-neucodec) đã xuất
-  sang ONNX.
-- [**llama.cpp**](https://github.com/ggml-org/llama.cpp) qua
-  [**llama-cpp-2**](https://crates.io/crates/llama-cpp-2) — chạy mô hình v2.
-- [**Matcha-TTS tiếng Việt**](https://huggingface.co/Cong123779/matcha-tts-vietnamese-onnx-int8) —
-  Cong123779, giấy phép **MIT**. Dùng bản int8 của bộ ba `matcha_encoder` / `matcha_decoder` /
-  `vocos`; [mã nguồn](https://github.com/congkx123789/match_TTS_VI). Dựa trên
-  [**Matcha-TTS**](https://github.com/shivammehta25/Matcha-TTS) (Shivam Mehta và cộng sự, MIT) và
-  [**Vocos**](https://github.com/gemelo-ai/vocos) (Gemelo AI, MIT).
-- [**Piper**](https://github.com/rhasspy/piper) qua
-  [**sherpa-onnx**](https://github.com/k2-fsa/sherpa-onnx).
-- [**ONNX Runtime**](https://github.com/microsoft/onnxruntime) — Microsoft, MIT.
-
-Hãy tôn trọng bản quyền sách bạn chuyển đổi và chỉ dùng cho mục đích cá nhân.
+*Vui lòng tôn trọng bản quyền sách và chỉ sử dụng cho mục đích cá nhân.*
