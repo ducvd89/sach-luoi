@@ -129,8 +129,9 @@ class ExportService {
     required String treeUri,
     required int fromChunk,
     required int toChunk,
+    Map<String, String> giongNhanVat = const {},
   }) async {
-    final id = '${DateTime.now().toIso8601String().substring(0, 10)}-'
+    final id= '${DateTime.now().toIso8601String().substring(0, 10)}-'
         '${DateTime.now().microsecondsSinceEpoch.toRadixString(36).substring(4)}';
 
     final job = ExportJob(
@@ -153,7 +154,9 @@ class ExportService {
       toChunk: toChunk,
       outputDir: outputDir,
       treeUri: treeUri,
-      nguCanh: settings.nguCanhXuat,
+      // Đọc nhiều giọng thì không nối ngữ cảnh (loại trừ nhau, xem PlayerController.dangNhieuGiong).
+      nguCanh: giongNhanVat.isNotEmpty ? NguCanh.khong : settings.nguCanhXuat,
+      giongNhanVat: giongNhanVat,
     );
 
     await _workDir(id).create(recursive: true);
@@ -317,7 +320,7 @@ class ExportService {
     for (var lan = 0; lan <= soLan; lan++) {
       final audio = await _tts.audioFor(
         engineId: job.engineId,
-        voiceId: job.voiceId,
+        voiceId: job.giongCho(chunk),
         speed: job.speed,
         text: chunk.speech,
         nguCanh: nguCanh,
@@ -536,6 +539,11 @@ class ExportService {
 
     final nguCanh = job.nguCanh;
 
+    /// Đoạn [index] khác giọng với đoạn liền trước nó: đuôi của giọng này nối vào giọng kia chỉ
+    /// kéo giọng mới lệch về giọng cũ, nên cũng không nối ngữ cảnh.
+    bool doiGiong(int index) =>
+        index > 0 && index - 1 < chunks.length && job.giongCho(chunks[index]) != job.giongCho(chunks[index - 1]);
+
     /// Đoạn này có mở đầu một lô mới không — đầu lô thì không nối ngữ cảnh.
     bool dauLo(int index) => switch (nguCanh) {
           NguCanh.khong => true,
@@ -548,17 +556,19 @@ class ExportService {
     // Chỉ đọc trước những đoạn KHÔNG cần ngữ cảnh: đoạn cần ngữ cảnh mà đọc
     // trước thì vừa ra bản không nối, vừa lấp cache bằng đúng bản ấy.
     void prefetchFrom(int index) {
-      final texts = <String>[];
+      // Gom theo giọng: mỗi lượt đọc trước chỉ có MỘT giọng. Đoạn khác giọng với đoạn liền
+      // trước cũng không nối ngữ cảnh nên đọc trước được như đầu lô.
+      final theoGiong = <String, List<String>>{};
       for (var i = index + 1; i <= min(index + _lookahead, job.toChunk); i++) {
-        if (!dauLo(i)) continue;
-        texts.add(chunks[i].speech);
+        if (!dauLo(i) && !doiGiong(i)) continue;
+        theoGiong.putIfAbsent(job.giongCho(chunks[i]), () => []).add(chunks[i].speech);
       }
-      if (texts.isNotEmpty) {
+      for (final e in theoGiong.entries) {
         _tts.prefetch(
           engineId: job.engineId,
-          voiceId: job.voiceId,
+          voiceId: e.key,
           speed: job.speed,
-          texts: texts,
+          texts: e.value,
         );
       }
     }
@@ -585,7 +595,7 @@ class ExportService {
       final chunk = chunks[index];
 
       prefetchFrom(index);
-      final doc = await _docVaSoi(job, chunk, dauLo(index) ? null : duoi);
+      final doc = await _docVaSoi(job, chunk, (dauLo(index) || doiGiong(index)) ? null : duoi);
       final audio = doc.audio;
       duoi = audio.duoi;
       if (doc.soLanDoc > 1) job.doanDocLai++;

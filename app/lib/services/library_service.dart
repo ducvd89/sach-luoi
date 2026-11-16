@@ -12,6 +12,7 @@ import 'dart:typed_data';
 
 import 'package:path/path.dart' as p;
 
+import '../core/nhan_vat.dart';
 import '../models/book.dart';
 import '../models/work_progress.dart';
 import 'import_worker.dart';
@@ -41,6 +42,7 @@ class LibraryService {
   File _metaFile(String id) => File(p.join(_storage.bookDir(id).path, 'meta.json'));
   File _chunksFile(String id) => File(p.join(_storage.bookDir(id).path, 'chunks.json'));
   File _progressFile(String id) => File(p.join(_storage.bookDir(id).path, 'progress.json'));
+  File _nhanVatFile(String id) => File(p.join(_storage.bookDir(id).path, 'nhanvat.json'));
 
   /// Danh sách sách, sách nghe gần đây nhất lên đầu.
   Future<List<Book>> listBooks() async {
@@ -81,6 +83,30 @@ class LibraryService {
     // giao diện là đứng hình vài giây, đúng lúc người dùng vừa bấm Nghe hoặc Xuất.
     if (text.length < _decodeInBackgroundOver) return decodeChunks(text);
     return Isolate.run(() => decodeChunks(text));
+  }
+
+  /// Nhân vật của sách (kết quả phân tích bằng Laya + giọng người dùng đã chọn); null là chưa
+  /// phân tích lần nào.
+  Future<NhanVatSach?> docNhanVat(String id) async {
+    final json = await Storage.readJsonMap(_nhanVatFile(id));
+    return json == null ? null : NhanVatSach.fromJson(json);
+  }
+
+  Future<void> luuNhanVat(String id, NhanVatSach nhanVat) =>
+      Storage.writeJson(_nhanVatFile(id), nhanVat.toJson());
+
+  /// Các đoạn văn từng chương của sách, đọc lại từ bản sao file gốc — đầu vào của việc phân tích
+  /// nhân vật, đếm đúng như bộ cắt đoạn (xem `doanVanSachTrongNen`).
+  Future<DoanVanSach> doanVanCuaSach(String id, {bool removeBoilerplate = true}) async {
+    final existing = await getBook(id);
+    if (existing == null) throw StateError('Không tìm thấy sách');
+    final sourceFile = File(p.join(_storage.bookDir(id).path, existing.sourceFile));
+    if (!await sourceFile.exists()) throw StateError('Không còn file gốc để phân tích nhân vật');
+    return doanVanSachTrongNen(
+      bytes: await sourceFile.readAsBytes(),
+      fileName: existing.sourceFile,
+      removeBoilerplate: removeBoilerplate,
+    );
   }
 
   Future<Progress> loadProgress(String id) async {
@@ -173,6 +199,7 @@ class LibraryService {
     required bool expandNumbers,
     bool removeBoilerplate = true,
     ProgressCallback? onProgress,
+    Map<String, String>? nguoiNoi,
   }) async {
     final existing = await getBook(id);
     if (existing == null) throw StateError('Không tìm thấy sách');
@@ -188,9 +215,8 @@ class LibraryService {
       expandNumbers: expandNumbers,
       removeBoilerplate: removeBoilerplate,
       onProgress: onProgress,
+      nguoiNoi: nguoiNoi,
     );
-
-    final ratio = existing.chunkCount == 0 ? 0.0 : existing.progress.chunkIndex / existing.chunkCount;
 
     final book = Book(
       id: existing.id,
@@ -211,7 +237,7 @@ class LibraryService {
     await Storage.writeJson(_metaFile(id), book.toJson());
 
     final progress = existing.progress
-      ..chunkIndex = (ratio * book.chunkCount).floor()
+      ..chunkIndex = chiSoSauKhiCatLai(existing, book, existing.progress.chunkIndex)
       ..offsetSeconds = 0;
     book.progress = await saveProgress(id, progress, chunkCount: book.chunkCount);
     onProgress?.call(const WorkProgress('Xong', value: 1));
@@ -222,6 +248,22 @@ class LibraryService {
     final dir = _storage.bookDir(id);
     if (await dir.exists()) await dir.delete(recursive: true);
   }
+}
+
+/// Chỗ đang nghe sau khi cắt lại sách: cùng chương, cùng vị trí TƯƠNG ĐỐI trong chương ấy.
+///
+/// Trước đây lấy tỉ lệ trên cả sách (`chunkIndex / chunkCount`). Cắt theo người nói chỉ làm nhiều
+/// đoạn hơn ở những chương đã phân tích, nên tỉ lệ toàn sách không còn trỏ vào cùng chữ — nghe ở
+/// 90% mà cắt lại xong lùi mất vài chục đoạn. Không thấy chương tương ứng thì rơi về tỉ lệ cũ.
+int chiSoSauKhiCatLai(Book cu, Book moi, int chunkIndex) {
+  final tiLe = cu.chunkCount == 0 ? 0.0 : chunkIndex / cu.chunkCount;
+  final theoToanSach = (tiLe * moi.chunkCount).floor();
+  final truoc = cu.chapters.where((c) => c.firstChunk <= chunkIndex && chunkIndex <= c.lastChunk).firstOrNull;
+  if (truoc == null) return theoToanSach;
+  final sau = moi.chapters.where((c) => c.index == truoc.index).firstOrNull;
+  if (sau == null || sau.chunkCount == 0) return theoToanSach;
+  final trongChuong = truoc.chunkCount == 0 ? 0.0 : (chunkIndex - truoc.firstChunk) / truoc.chunkCount;
+  return sau.firstChunk + (trongChuong * sau.chunkCount).floor();
 }
 
 const _viMarks = {

@@ -38,6 +38,7 @@ class Chunk {
     required this.display,
     required this.speech,
     required this.heading,
+    this.speaker = '',
   });
 
   /// Thứ tự trong toàn bộ sách.
@@ -55,12 +56,20 @@ class Chunk {
   /// True nếu đây là tiêu đề chương.
   final bool heading;
 
+  /// Nhân vật nói đoạn này; rỗng là người dẫn truyện.
+  ///
+  /// Mỗi đoạn có đúng MỘT người nói: bộ cắt đoạn không gộp qua ranh giới người nói (xem
+  /// `buildChunks`), nên giọng chọn cho đoạn là giọng của người ấy chứ không phải của một
+  /// đoạn lẫn lời dẫn và nhiều câu thoại. Sách nhập khi chưa phân tích nhân vật thì rỗng hết.
+  final String speaker;
+
   Map<String, dynamic> toJson() => {
         'i': index,
         'c': chapter,
         'd': display,
         's': speech,
         if (heading) 'h': 1,
+        if (speaker.isNotEmpty) 'v': speaker,
       };
 
   factory Chunk.fromJson(Map<String, dynamic> json) => Chunk(
@@ -69,6 +78,7 @@ class Chunk {
         display: json['d'] as String,
         speech: json['s'] as String,
         heading: json['h'] == 1,
+        speaker: json['v'] as String? ?? '',
       );
 }
 

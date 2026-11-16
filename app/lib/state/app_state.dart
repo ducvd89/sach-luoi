@@ -7,11 +7,14 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
+import '../core/nhan_vat.dart';
 import '../models/book.dart';
+import '../services/laya_native.dart';
 import '../models/export_job.dart';
 import '../models/settings.dart';
 import '../models/work_progress.dart';
 import '../services/export_service.dart';
+import '../services/import_worker.dart' show DoanVanSach;
 import '../services/khoa_cam_ung.dart';
 import '../services/library_service.dart';
 import '../services/media_session.dart';
@@ -27,6 +30,16 @@ class ExportDirException implements Exception {
   final String message;
   @override
   String toString() => message;
+}
+
+/// Giọng [v] hợp giới tính [gioi] ('nam' | 'nu') không. Giới tính của giọng lưu bằng chữ Việt
+/// ("Nam", "Nữ" — xem `_genders` ở model_store) hoặc 'male'/'female'; bản cũ so tiền tố 'm'/'f' nên
+/// KHÔNG giọng nào khớp và mọi giọng bị ghi "(khác giới)".
+bool giongHopGioi(TtsVoice v, String gioi) {
+  final g = v.gender.toLowerCase().trim();
+  final laNu = g.startsWith('nữ') || g.startsWith('nu') || g.startsWith('f');
+  final laNam = g.startsWith('nam') || g.startsWith('m');
+  return gioi == 'nu' ? laNu : laNam;
 }
 
 class AppState extends ChangeNotifier {
@@ -57,6 +70,12 @@ class AppState extends ChangeNotifier {
   Book? currentBook;
   List<ExportJob> jobs = const [];
   List<TtsVoice> voices = const [];
+
+  /// Nhân vật của sách đang mở; null là chưa phân tích.
+  NhanVatSach? nhanVat;
+
+  /// Tiến trình phân tích nhân vật (value = đã hỏi / tổng câu thoại), null khi không chạy.
+  WorkProgress? nhanVatTienDo;
 
   /// Tiến trình nhập sách đang chạy, null khi rảnh. Cả thư viện lẫn khung chính
   /// đều đọc để hiện thanh tiến trình.
@@ -404,18 +423,31 @@ class AppState extends ChangeNotifier {
   /// Dùng khi người dùng bật lại việc dọn quảng cáo hay chuẩn hoá số cho những
   /// cuốn đã nhập từ trước — không phải thêm lại sách và không mất chỗ đang nghe.
   Future<ImportResult> rebuildBook(Book book, {String label = ''}) async {
+    await _khongCoViecXuatDo(book);
+    await _chuoiLuu.catchError((Object _) {}); // đọc nhanvat.json SAU khi mọi lượt ghi đã xong
     importLabel = label;
     _setImportProgress(const WorkProgress('Đang mở file gốc…'));
     try {
+      final nv = await library.docNhanVat(book.id);
+      final theoNguoiNoi = nv != null && nv.bat;
+      final dangNghe = currentBook?.id == book.id && player.isPlaying;
       final result = await library.rebuild(
         book.id,
         expandNumbers: settings.expandNumbers,
-        removeBoilerplate: settings.removeBoilerplate,
+        // Sách ĐÃ CÓ phân tích nhân vật (dù đang tắt nhiều giọng) luôn cắt bằng cài đặt dọn quảng cáo
+        // của lần phân tích: nhãn người nói gắn theo (chương, đoạn văn) của cách dọn ấy, và cả số
+        // chương của đoạn đang nghe cũng phải cùng hệ để lần phân tích kế không nhầm chương.
+        removeBoilerplate: nv != null ? (nv.donRac ?? settings.removeBoilerplate) : settings.removeBoilerplate,
         onProgress: _setImportProgress,
+        nguoiNoi: theoNguoiNoi ? nv.nguoiNoi : null,
       );
       if (currentBook?.id == book.id) {
         currentBook = result.book;
         await player.open(result.book, settings);
+        nhanVat = nv;
+        _capNhatNhanVatChoTrinhPhat();
+        // `open` dừng phát; đang nghe dở thì nghe tiếp từ chỗ đã giữ lại.
+        if (dangNghe) unawaited(player.togglePlay());
       }
       await reloadBooks();
       return result;
@@ -426,8 +458,201 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  // -- nhân vật và giọng theo nhân vật --------------------------------------
+
+  /// Laya (mô hình chọn người nói) đã có trên máy chưa.
+  bool get coLaya => tts.modelStore.daCoLaya;
+
+  void _capNhatNhanVatChoTrinhPhat() {
+    player.datNhanVat(nhanVat, () => {for (final v in voices) v.id});
+  }
+
+  /// Chỉ số chương của đoạn đang nghe (cùng hệ chỉ số với `Chunk.chapter`).
+  int get chuongHienTai {
+    final cs = player.chunks;
+    if (cs.isEmpty) return 0;
+    return cs[player.index.clamp(0, cs.length - 1)].chapter;
+  }
+
+  // Đoạn văn của cả sách chỉ đọc lại từ file gốc khi chưa có trong bộ nhớ: mỗi lần phân tích một
+  // chương mà đọc và tách lại cả cuốn thì vài giây mỗi lần là phí.
+  String? _doanVanSachId;
+  bool? _doanVanDonRac;
+  DoanVanSach? _doanVanSach;
+
+  /// Các lượt ghi nhanvat.json xếp hàng nối đuôi nhau. `Storage.writeJsonText` ghi qua MỘT file tạm
+  /// chung rồi xoá-đổi-tên không nguyên tử, nên hai lượt ghi chồng nhau (nút "Tự chọn giọng" bắn
+  /// cả chục lượt một lúc) đè lên nhau và có thể để lại file thiếu, hoặc mất luôn. Hàng đợi này giữ
+  /// đúng một lượt ghi tại một thời điểm; mỗi lượt mã hoá trạng thái MỚI NHẤT lúc nó thật sự chạy.
+  Future<void> _chuoiLuu = Future<void>.value();
+
+  Future<void> _ghiNhanVat(String bookId, NhanVatSach nv) {
+    _chuoiLuu = _chuoiLuu.catchError((Object _) {}).then((_) => library.luuNhanVat(bookId, nv));
+    return _chuoiLuu;
+  }
+
+  /// Cắt lại sách làm ĐỔI số thứ tự các đoạn, mà việc xuất file lưu vị trí bằng số thứ tự đoạn
+  /// tuyệt đối (`fromChunk`/`toChunk`/`cursor`) và không dịch lại được. Có việc xuất dở cho sách này
+  /// thì chạy tiếp sẽ ghi lại những đoạn đã xuất và dừng sớm một đoạn bằng số đoạn thêm vào.
+  Future<void> _khongCoViecXuatDo(Book book) async {
+    jobs = await exports.listJobs();
+    final dang = jobs.any((j) => j.bookId == book.id && (j.isActive || j.status == JobStatus.paused));
+    if (dang) {
+      throw StateError('Sách này còn việc xuất file đang dở. Cắt lại sách làm đổi số thứ tự các đoạn '
+          'nên việc xuất sẽ lệch — hoàn tất hoặc huỷ việc xuất trước.');
+    }
+  }
+
+  Future<DoanVanSach> _doanVanCuaSach(Book book, bool donRac) async {
+    if (_doanVanSach == null || _doanVanSachId != book.id || _doanVanDonRac != donRac) {
+      _doanVanSach = await library.doanVanCuaSach(book.id, removeBoilerplate: donRac);
+      _doanVanSachId = book.id;
+      _doanVanDonRac = donRac;
+    }
+    return _doanVanSach!;
+  }
+
+  /// Phân tích nhân vật của MỘT chương (mặc định chương đang nghe) bằng Laya rồi gộp vào danh bạ
+  /// nhân vật của sách.
+  ///
+  /// Chỉ một chương vì hỏi Laya từng câu thoại (~0,1 giây mỗi câu) cho cả cuốn dày mất hàng chục
+  /// phút. Nhân vật đã gặp ở chương trước GIỮ NGUYÊN giọng và giới tính khi gặp lại, nên mỗi chương
+  /// kế chỉ cần xử lý những người mới. Đang đọc nhiều giọng thì áp dụng luôn (cắt lại sách).
+  Future<void> phanTichNhanVat(Book book, {int? chuong}) async {
+    if (!coLaya) {
+      throw StateError('Chưa có mô hình Laya. Đặt laya.onnx, tokenizer.json và '
+          'rl_agent_config.json vào ${tts.modelStore.layaDir.path}');
+    }
+    final c = chuong ?? chuongHienTai;
+    nhanVatTienDo = const WorkProgress('Đang đọc sách…', value: 0);
+    notifyListeners();
+    try {
+      final cu = await library.docNhanVat(book.id);
+      // Nhãn đã lưu gắn theo chỉ số (chương, đoạn văn) của lần dọn quảng cáo lúc phân tích; chương
+      // mới PHẢI dùng cùng cài đặt ấy, không thì nhãn cũ và mới thuộc hai cách đánh số khác nhau.
+      final donRac = cu?.donRac ?? settings.removeBoilerplate;
+      final sach = await _doanVanCuaSach(book, donRac);
+      final doanVan = sach.doanVan;
+      if (c < 0 || c >= doanVan.length) throw StateError('Sách không có chương số ${c + 1}');
+      // Số chương của đoạn đang nghe (`Chunk.chapter`) và số chương của đoạn văn đưa cho Laya đến từ
+      // hai lần dọn quảng cáo có thể khác cài đặt. Đối chiếu tiêu đề: lệch thì dừng chứ không phân
+      // tích nhầm chương rồi đánh dấu là xong.
+      final chuongCuaSach = book.chapters.where((x) => x.index == c).firstOrNull;
+      if (chuongCuaSach != null &&
+          sach.tieuDe[c].trim().isNotEmpty &&
+          chuongCuaSach.title.trim() != sach.tieuDe[c].trim()) {
+        throw StateError('Số thứ tự chương của sách không còn khớp với lúc phân tích (cài đặt dọn quảng '
+            'cáo đã đổi). Bấm "Dọn lại" trong thư viện rồi phân tích lại.');
+      }
+      final kq = await phanTichTrongNen(
+        doanVan: doanVan,
+        thuMucLaya: tts.modelStore.layaDir.path,
+        chuong: {c},
+        gioiDaBiet: {for (final n in cu?.nhanVat ?? const <NhanVat>[]) n.ten: n.gioi},
+        tienDo: (xong, tong) {
+          nhanVatTienDo = WorkProgress('Đang phân tích chương ${c + 1} ($xong/$tong câu thoại)',
+              value: tong == 0 ? 1.0 : xong / tong);
+          notifyListeners();
+        },
+      );
+      // Hợp vào bản ĐANG MỞ (nếu có) chứ không phải bản `cu` đọc từ đĩa trước khi chạy: trong lúc phân
+      // tích (nửa phút đến vài phút) người dùng vẫn chọn giọng, và hợp vào bản cũ rồi ghi đè là mất
+      // hết những lựa chọn ấy.
+      final nv = (currentBook?.id == book.id ? nhanVat : null) ?? cu ?? NhanVatSach(donRac: donRac);
+      nv.hopNhatChuong(kq, {c});
+      tuChonGiongChoNguoiMoi(nv);
+      await _ghiNhanVat(book.id, nv);
+      if (currentBook?.id == book.id) {
+        nhanVat = nv;
+        _capNhatNhanVatChoTrinhPhat();
+      }
+      if (nv.bat) {
+        nhanVatTienDo = null;
+        await rebuildBook(book, label: 'Áp dụng nhân vật chương ${c + 1}');
+      }
+    } finally {
+      nhanVatTienDo = null;
+      notifyListeners();
+    }
+  }
+
+  /// Tự chọn giọng cho nhân vật CHƯA có giọng: cùng giới tính, tránh giọng người dẫn và giọng đã
+  /// dùng cho người khác (hết giọng chưa dùng thì mới lặp lại). Người nghe chỉ chỉnh khi muốn đổi.
+  /// Nhân vật đã có giọng (kể cả do người dùng chọn) giữ nguyên.
+  void tuChonGiongChoNguoiMoi(NhanVatSach nv) {
+    final daDung = {settings.voiceNghe, for (final n in nv.nhanVat) if (n.giong.isNotEmpty) n.giong};
+    for (final n in nv.nhanVat) {
+      if (n.giong.isNotEmpty) continue;
+      final hop = voices.where((v) => giongHopGioi(v, n.gioi)).toList();
+      final ung = hop.where((v) => !daDung.contains(v.id)).firstOrNull ?? hop.firstOrNull;
+      if (ung == null) continue;
+      daDung.add(ung.id);
+      n.giong = ung.id;
+    }
+  }
+
+  Future<void> _luuNhanVat() async {
+    final b = currentBook, nv = nhanVat;
+    if (b == null || nv == null) return;
+    _capNhatNhanVatChoTrinhPhat();
+    notifyListeners();
+    await _ghiNhanVat(b.id, nv);
+  }
+
+  /// Chọn giọng cho NHIỀU nhân vật một lượt ([giongTheoTen]: tên -> mã giọng) và ghi file đúng một
+  /// lần. Gọi [datGiongNhanVat] trong vòng lặp thì bắn cả chục lượt ghi chồng nhau.
+  Future<void> datGiongNhieuNhanVat(Map<String, String> giongTheoTen) async {
+    final nv = nhanVat;
+    if (nv == null) return;
+    for (final e in giongTheoTen.entries) {
+      nv.tim(e.key)?.giong = e.value;
+    }
+    await _luuNhanVat();
+  }
+
+  /// Chọn giọng cho một nhân vật; [giong] rỗng là bỏ chọn (về giọng mặc định).
+  Future<void> datGiongNhanVat(String ten, String giong) async {
+    final n = nhanVat?.tim(ten);
+    if (n == null) return;
+    n.giong = giong;
+    await _luuNhanVat();
+  }
+
+  /// Sửa giới tính một nhân vật ('nam' hoặc 'nu'). Laya đoán giới tính nhân vật nữ kém (khoảng
+  /// một nửa), nên giao diện cho sửa tay.
+  Future<void> datGioiNhanVat(String ten, String gioi) async {
+    final n = nhanVat?.tim(ten);
+    if (n == null) return;
+    n.gioi = gioi;
+    await _luuNhanVat();
+  }
+
+  /// Bật hoặc tắt đọc nhiều giọng. Bật thì CẮT LẠI sách theo người nói (mỗi đoạn một người, để
+  /// gán được giọng); tắt thì cắt lại như thường. Giữ nguyên chỗ đang nghe.
+  Future<void> batNhieuGiong(Book book, bool bat) async {
+    final nv = nhanVat;
+    if (nv == null || nv.bat == bat) return;
+    await _khongCoViecXuatDo(book);
+    nv.bat = bat;
+    await _ghiNhanVat(book.id, nv);
+    try {
+      await rebuildBook(book, label: bat ? 'Cắt lại theo nhân vật' : 'Cắt lại như thường');
+    } catch (_) {
+      // Cắt lại hỏng (mất file gốc...) thì các đoạn vẫn như cũ: đừng để cờ nói ngược lại, nếu không
+      // giao diện và việc xuất file tin là đang đọc nhiều giọng trong khi đoạn nào cũng không có
+      // người nói.
+      nv.bat = !bat;
+      await _ghiNhanVat(book.id, nv);
+      _capNhatNhanVatChoTrinhPhat();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
   Future<void> openBook(Book book) async {
     currentBook = book;
+    nhanVat = await library.docNhanVat(book.id);
+    _capNhatNhanVatChoTrinhPhat();
     await player.open(book, settings);
     jobs = await exports.listJobs();
     notifyListeners();
@@ -519,9 +744,22 @@ class AppState extends ChangeNotifier {
       treeUri: cay,
       fromChunk: fromChunk,
       toChunk: toChunk,
+      giongNhanVat: _bangGiongNhanVat(book),
     );
     await resumeExport(job);
     return job;
+  }
+
+  /// Bảng "nhân vật -> giọng" để chụp vào job xuất file. Chỉ khi sách đang bật nhiều giọng, và chỉ
+  /// những giọng còn dùng được với engine hiện tại; sách chưa cắt theo người nói thì rỗng.
+  Map<String, String> _bangGiongNhanVat(Book book) {
+    final nv = nhanVat;
+    if (nv == null || !nv.bat || currentBook?.id != book.id) return const {};
+    final hopLe = {for (final v in voices) v.id};
+    return {
+      for (final n in nv.nhanVat)
+        if (n.giong.isNotEmpty && hopLe.contains(n.giong)) n.ten: n.giong,
+    };
   }
 
   Future<void> resumeExport(ExportJob job) async {

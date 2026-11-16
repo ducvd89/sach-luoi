@@ -1,6 +1,7 @@
 /// Màn hình nghe: danh sách chương, nội dung đang đọc và thanh điều khiển.
 library;
 
+import 'nhan_vat_page.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -265,6 +266,7 @@ class _PlayerBar extends StatelessWidget {
               _SleepButton(),
               _SoiAmButton(),
               _KhoaCamUngButton(),
+              _NhanVatButton(),
             ],
           ),
         ],
@@ -339,6 +341,27 @@ class _SpeedSelector extends StatelessWidget {
 /// cần nói.
 ///
 /// Engine cố định vẫn kiểm được; chỉ bước đọc lại phụ thuộc khả năng engine.
+/// Mở trang Nhân vật (chọn giọng theo nhân vật). Màu vàng khi sách đang đọc nhiều giọng, giống
+/// cách nút kiểm âm bên cạnh thể hiện TRẠNG THÁI đang có chứ không phải việc sẽ làm khi bấm.
+class _NhanVatButton extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final bat = state.nhanVat?.bat ?? false;
+    final mau = bat ? SacNut.chinh.first : Theme.of(context).colorScheme.onSurface;
+    return Tooltip(
+      message: bat ? 'Đang đọc nhiều giọng theo nhân vật' : 'Nhân vật và giọng đọc',
+      child: TextButton.icon(
+        style: TextButton.styleFrom(
+            foregroundColor: mau, padding: const EdgeInsets.symmetric(horizontal: 10), minimumSize: const Size(0, 40)),
+        onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const NhanVatPage())),
+        icon: const Icon(Icons.groups_2_outlined, size: 20),
+        label: const Text('Nhân vật'),
+      ),
+    );
+  }
+}
+
 class _SoiAmButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -546,14 +569,16 @@ class _ChonGiongNghe extends StatelessWidget {
           child: BangChonGiong(
             voices: state.voices,
             voiceId: settings.voiceNghe,
-            nguCanh: settings.nguCanhNghe,
+            nguCanh: state.player.dangNhieuGiong ? NguCanh.khong : settings.nguCanhNghe,
             // Đang nghe vẫn đổi giọng được — đoạn kế được tổng hợp trước bằng
             // giọng mới trong lúc đoạn này còn đang phát. Chỉ khoá đúng lúc việc
             // tổng hợp trước đó đang chạy, và luôn khoá cách nối ngữ cảnh vì nó
             // gắn liền với đoạn đang phát.
             dangTaiGiong: dangDoiGiong != null,
             khoaGiong: dangDoiGiong != null ? 'Đang chuẩn bị giọng mới cho đoạn sau…' : null,
-            khoaNguCanh: khongHoTroNguCanh
+            khoaNguCanh: state.player.dangNhieuGiong
+                ? 'Đang đọc nhiều giọng nên không nối ngữ cảnh. Tắt "Đọc nhiều giọng" ở trang Nhân vật để dùng.'
+                : khongHoTroNguCanh
                 ? 'Chỉ VieNeu hỗ trợ nối ngữ cảnh'
                 : (state.player.isPlaying ? 'Tạm dừng nghe rồi mới đổi được' : null),
             onVoice: (v) => AppScope.read(context).setVoiceNghe(v),

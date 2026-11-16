@@ -26,6 +26,10 @@ pub mod matcha;
 // Kiểm âm chạy riêng với TTS nhưng dùng cùng ONNX Runtime trên Android.
 pub mod kiem_am;
 
+// Laya: chọn người nói và đoán giới tính nhân vật (ONNX float16).
+pub mod ffi_laya;
+pub mod laya;
+
 pub mod engine;
 pub mod enroll;
 pub mod fbank;

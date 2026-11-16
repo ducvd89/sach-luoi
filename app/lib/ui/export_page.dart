@@ -254,14 +254,16 @@ class _ExportPageState extends State<ExportPage> {
                 BangChonGiong(
                   voices: state.voices,
                   voiceId: settings.voiceXuat,
-                  nguCanh: settings.nguCanhXuat,
+                  nguCanh: (state.nhanVat?.bat ?? false) ? NguCanh.khong : settings.nguCanhXuat,
                   // Khoá khi có job đang chạy: đổi giữa chừng thì nửa file một
                   // giọng. Tạm dừng, đổi, chạy tiếp là phần còn lại theo mức mới.
                   khoaGiong: state.runningJob != null
                       ? 'Tạm dừng việc xuất file rồi mới đổi được'
                       : null,
                   // Chỉ VieNeu nối được ngữ cảnh giữa các đoạn.
-                  khoaNguCanh: settings.engineId != 'vieneu'
+                  khoaNguCanh: (state.nhanVat?.bat ?? false)
+                      ? 'Đang đọc nhiều giọng nên không nối ngữ cảnh. Tắt "Đọc nhiều giọng" ở trang Nhân vật để dùng.'
+                      : settings.engineId != 'vieneu'
                       ? 'Chỉ VieNeu hỗ trợ nối ngữ cảnh'
                       : (state.runningJob != null
                           ? 'Tạm dừng việc xuất file rồi mới đổi được'

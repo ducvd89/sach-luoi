@@ -8,7 +8,7 @@
 
 | Nền tảng | Cài đặt |
 |---|---|
-| **Windows** | Chạy `SachLuoi-Setup-1.8.0.exe` (cài vào `%LOCALAPPDATA%`, không cần quyền quản trị). |
+| **Windows** | Chạy `SachLuoi-Setup-2.1.0.exe` (cài vào `%LOCALAPPDATA%`, không cần quyền quản trị). |
 | **Android** | Cài `SachLuoi-android-arm64.apk` (Android 7 trở lên, thiết bị 64-bit). |
 | **Linux (AppImage)** | Tải `SachLuoi-1.8.0-x86_64.AppImage`, cấp quyền chạy (`chmod +x`) và mở trực tiếp. |
 | **Linux (Flatpak)** | Cài file bundle: `flatpak install vn.sachluoi.SachLuoi.flatpak` hoặc tự dựng qua `./flatpak/build-flatpak.sh`. |

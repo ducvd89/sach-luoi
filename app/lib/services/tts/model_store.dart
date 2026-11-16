@@ -232,6 +232,15 @@ class ModelStore {
   File get dictFile => File(p.join(root.path, 'sea_g2p.bin'));
   File get voicesFile => File(p.join(root.path, 'giong.json'));
 
+  /// Laya (chọn người nói, đoán giới tính nhân vật): `laya.onnx` float16 645 MB cùng
+  /// `tokenizer.json` và `rl_agent_config.json`. KHÔNG nằm trong gói app và chưa có gói tải về:
+  /// phải đặt tay vào thư mục này cho tới khi gói được đưa lên kho `sach-luoi-models`.
+  Directory get layaDir => Directory(p.join(root.path, 'laya'));
+  bool get daCoLaya =>
+      File(p.join(layaDir.path, 'laya.onnx')).existsSync() &&
+      File(p.join(layaDir.path, 'tokenizer.json')).existsSync() &&
+      File(p.join(layaDir.path, 'rl_agent_config.json')).existsSync();
+
   Directory get enrollDir => Directory(p.join(root.path, 'enroll'));
   File get speakerEncoder => File(p.join(enrollDir.path, 'speaker_encoder.onnx'));
   File get codecEncoder => File(p.join(enrollDir.path, 'moss_audio_tokenizer_encode.onnx'));

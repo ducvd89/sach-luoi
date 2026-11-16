@@ -384,6 +384,34 @@ String suaChuHoaTenRieng(String text, Map<String, String> bang) {
   });
 }
 
+/// Các đoạn văn của một chương, đúng như bộ cắt đoạn nhìn thấy chúng.
+///
+/// Dùng chung cho [buildChunks] và việc phân tích nhân vật: nhãn người nói gắn theo
+/// (chương, chỉ số đoạn văn), nên hai bên mà đếm đoạn văn khác nhau dù một đoạn thôi là mọi
+/// nhãn phía sau lệch chỗ mà không có gì báo. Chỉ số tính trên các đoạn KHÔNG rỗng, sau khi
+/// đã chuẩn hoá và bỏ tiêu đề lặp.
+List<String> doanVanCuaChuong(RawChapter raw) {
+  final title = normalizeForDisplay(raw.title);
+  var body = normalizeForDisplay(raw.text);
+  if (title.isNotEmpty) body = _dropRepeatedTitle(body, title);
+  final ra = <String>[];
+  for (final p in body.split(RegExp(r'\n{2,}'))) {
+    final d = p.replaceAll('\n', ' ').trim();
+    if (d.isEmpty) continue;
+    // Đoạn mở đầu bằng chữ THƯỜNG là phần nối tiếp của câu đang dở ở đoạn trước: bản scan/OCR hay
+    // ngắt cứng dòng giữa câu rồi bọc mỗi dòng vào một <p> ("…Lục Vô Song nhảy dựng trên thuyền,
+    // chỏ" / "miệng về phía ông già nói:"). Không nối thì câu dẫn bị chặt đôi (người nói nằm ở nửa
+    // trên, dấu ":" ở nửa dưới) và lời thoại dài bị cắt làm nhiều đoạn, đọc bằng nhiều giọng. Sách
+    // chuẩn không bắt đầu đoạn bằng chữ thường nên nối chỉ ảnh hưởng sách bị ngắt dòng.
+    if (ra.isNotEmpty && RegExp(r'^\p{Ll}', unicode: true).hasMatch(d)) {
+      ra[ra.length - 1] = '${ra.last} $d';
+    } else {
+      ra.add(d);
+    }
+  }
+  return ra;
+}
+
 /// Kết quả cắt sách: danh sách đoạn và thông tin từng chương.
 class ChunkResult {
   ChunkResult(this.chunks, this.chapters);
@@ -401,6 +429,7 @@ ChunkResult buildChunks(
   int targetChars = chunkTargetChars,
   int mergeUnderChars = chunkMergeUnderChars,
   void Function(int done, int total)? onChapter,
+  String Function(int chuong, int doanVan)? nguoiNoi,
 }) {
   // Trần đến từ mô hình nên KHÔNG được nới theo targetChars. Bản trước lấy
   // max(targetChars + 120, chunkMaxChars), tức là cứ nâng mục tiêu là trần tự
@@ -419,6 +448,8 @@ ChunkResult buildChunks(
     final raw = rawChapters[chapterIndex];
     final firstChunk = chunks.length;
     var charCount = 0;
+    // Người nói của đoạn văn đang xử lý; rỗng là người dẫn. Tiêu đề chương luôn là người dẫn.
+    var nguoiHienTai = '';
 
     void push(String rawDisplay, bool heading) {
       final display = _ensureTerminal(rawDisplay);
@@ -462,6 +493,7 @@ ChunkResult buildChunks(
         display: display,
         speech: speech,
         heading: heading,
+        speaker: heading ? '' : nguoiHienTai,
       ));
       charCount += display.length;
     }
@@ -473,16 +505,7 @@ ChunkResult buildChunks(
       push('${title.replaceAll(RegExp(r'[.:\s]+$'), '')}.', true);
     }
 
-    var body = normalizeForDisplay(raw.text);
-
-    // EPUB thường lặp lại tiêu đề ngay đầu nội dung (thẻ <h1>) — bỏ đi để
-    // người nghe không phải nghe tên chương hai lần.
-    //
-    // Xét vài dòng đầu chứ không chỉ dòng thứ nhất: nhiều sách còn chèn "Quyển
-    // 3" hay tên tác giả phía trên tiêu đề, đẩy nó xuống dưới.
-    if (title.isNotEmpty) {
-      body = _dropRepeatedTitle(body, title);
-    }
+    final doanVan = doanVanCuaChuong(raw);
 
     var buffer = '';
     void flush() {
@@ -491,9 +514,18 @@ ChunkResult buildChunks(
       buffer = '';
     }
 
-    for (final paragraph in body.split(RegExp(r'\n{2,}'))) {
-      final clean = paragraph.replaceAll('\n', ' ').trim();
-      if (clean.isEmpty) continue;
+    for (var chiSo = 0; chiSo < doanVan.length; chiSo++) {
+      final clean = doanVan[chiSo];
+
+      // Đổi người nói thì chốt buffer TRƯỚC khi đổi: mọi chữ trong một đoạn phải cùng một
+      // người, nên một câu thoại không bao giờ bị gộp với lời dẫn hay với câu thoại của người
+      // khác (nhiều truyện convert từ web mỗi câu một <p>, mà bộ cắt vốn gộp những đoạn ngắn
+      // như vậy lại với nhau).
+      final nguoi = nguoiNoi?.call(chapterIndex, chiSo) ?? '';
+      if (nguoi != nguoiHienTai) {
+        flush();
+        nguoiHienTai = nguoi;
+      }
 
       // Xử lý đoạn văn này trên một buffer cục bộ, bắt đầu từ đúng chỗ buffer
       // đang mang theo (để đoạn ngắn nối được với đoạn ngắn liền trước). Mẩu

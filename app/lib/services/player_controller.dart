@@ -14,6 +14,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:path/path.dart' as p;
 
 import '../core/wav.dart';
+import '../core/nhan_vat.dart';
 import '../models/book.dart';
 import '../models/settings.dart';
 import 'library_service.dart';
@@ -63,6 +64,34 @@ class PlayerController extends ChangeNotifier {
   File? _fileGhepTruoc;
   int _loadToken = 0;
   AppSettings _settings = AppSettings();
+
+  /// Nhân vật của sách đang mở và các giọng hợp lệ của engine hiện tại. Giọng đã chọn cho nhân
+  /// vật chỉ có giá trị với engine đã chọn nó: đổi engine thì mã giọng có thể không còn tồn tại,
+  /// nên phải hỏi lại mỗi lần (xem [_giongCho]) chứ không lưu lại.
+  NhanVatSach? _nhanVat;
+  Set<String> Function()? _giongHopLe;
+
+  void datNhanVat(NhanVatSach? nhanVat, Set<String> Function() giongHopLe) {
+    _nhanVat = nhanVat;
+    _giongHopLe = giongHopLe;
+  }
+
+  /// Đang đọc nhiều giọng. Khi đó KHÔNG nối ngữ cảnh: đoạn kế thường là giọng khác nên không có
+  /// đuôi nào dùng được, còn đoạn cùng giọng thì cách nhau bởi lời của người khác — nối vào đuôi cũ
+  /// thì giọng bị kéo lệch. Hai tính năng loại trừ nhau; giao diện khoá ô nối ngữ cảnh.
+  bool get dangNhieuGiong => _nhanVat?.bat ?? false;
+
+  /// Giọng đọc đoạn [i]: giọng đã chọn cho người nói đoạn ấy nếu đang bật nhiều giọng và giọng đó
+  /// còn dùng được với engine hiện tại, không thì giọng nghe mặc định. Người dẫn truyện luôn là
+  /// giọng mặc định.
+  String _giongCho(int i) {
+    final nv = _nhanVat;
+    if (nv != null && nv.bat && i >= 0 && i < chunks.length) {
+      final g = nv.giongCua(chunks[i].speaker);
+      if (g.isNotEmpty && (_giongHopLe?.call().contains(g) ?? false)) return g;
+    }
+    return _settings.voiceNghe;
+  }
 
   final List<StreamSubscription<dynamic>> _subscriptions = [];
 
@@ -263,15 +292,20 @@ class PlayerController extends ChangeNotifier {
       // bằng đúng giọng đã sinh ra đuôi đó. Nhảy lung tung, hay giọng vừa đổi
       // giữa chừng, thì bỏ — đuôi của giọng cũ nối vào giọng mới chỉ làm giọng
       // mới bị kéo lệch về giọng cũ.
+      // Chụp giọng MỘT lần ở đây: tổng hợp mất vài giây, người dùng đổi giọng nhân vật trong lúc ấy
+      // thì đuôi sinh ra bởi giọng cũ không được ghi nhãn là của giọng mới (đoạn kế sẽ nối nhầm
+      // vào đuôi của một giọng khác).
+      final giongDoan = _giongCho(target);
       final noiTiep = _settings.nguCanhNghe != NguCanh.khong &&
+          !dangNhieuGiong &&
           target == _doanCoDuoi + 1 &&
-          _duoiGiong == _settings.voiceNghe &&
+          _duoiGiong == giongDoan &&
           _duoiEngine == _settings.engineId;
       Future<CachedAudio> xin() => _docCoSoi(
             chunks[target].speech,
             noiTiep ? _duoi : null,
             engineId: _settings.engineId,
-            voiceId: _settings.voiceNghe,
+            voiceId: giongDoan,
           );
 
       CachedAudio audio;
@@ -293,7 +327,7 @@ class PlayerController extends ChangeNotifier {
 
       _duoi = audio.duoi;
       _doanCoDuoi = audio.duoi.isEmpty ? -2 : target;
-      _duoiGiong = _settings.voiceNghe;
+      _duoiGiong = giongDoan;
       _duoiEngine = _settings.engineId;
       _durations[target] = audio.seconds;
 
@@ -411,7 +445,9 @@ class PlayerController extends ChangeNotifier {
   /// xỉ chính đoạn đang phát, tức là mô hình vẫn đang chạy hết công suất đúng
   /// lúc trình phát mở đoạn kế, và đầu đoạn bị hụt tiếng. Một đoạn mất khoảng
   /// 1,4 giây rồi máy rảnh, thừa sức sẵn sàng trước khi cần tới.
-  static const _sauDocTruoc = 1;
+
+  /// Trần số đoạn khi các đoạn ngắn (đọc nhiều giọng) — vẫn bị [_nganSachDocTruoc] chặn trước.
+  static const _sauDocTruocNgan = 8;
 
   /// Đọc lại tối đa mấy lần khi soi âm lúc nghe.
   ///
@@ -478,15 +514,33 @@ class PlayerController extends ChangeNotifier {
   /// nào cũng phải chờ tổng hợp từ đầu.
   void _prefetchAround(int from) {
     final noiDuoc = _tts.engine(_settings.engineId).noiNguCanh;
-    if (_settings.nguCanhNghe == NguCanh.khong || !noiDuoc) {
+    if (_settings.nguCanhNghe == NguCanh.khong || !noiDuoc || dangNhieuGiong) {
       unawaited(_docTruocLanLuot(from, _loadToken));
       return;
     }
     unawaited(_docTruocTheoChuoi(from, _loadToken));
   }
 
-  /// Đọc trước bao nhiêu đoạn khi các đoạn độc lập nhau.
-  static const _sauDocTruocDocLap = 3;
+  /// Đọc trước bao nhiêu đoạn khi các đoạn độc lập nhau (trần; thực tế dừng sớm theo
+  /// [_nganSachDocTruoc]).
+  static const _sauDocTruocDocLap = 8;
+
+  /// Đọc trước theo LƯỢNG CHỮ chứ không theo số đoạn. Đọc nhiều giọng cắt sách theo người nói nên
+  /// đoạn rất ngắn (câu "Dạ." ~1 giây âm thanh), mà mỗi lượt tổng hợp tốn cố định ~1,4 giây dù
+  /// ngắn đến đâu: đọc trước "1 đoạn" hay "3 đoạn" chỉ che được vài giây nghe nên cứ sang câu kế là
+  /// chờ. Ngần này chữ ≈ hai đoạn thường (~35 giây nghe), máy tổng hợp mất ~12 giây cho cả mớ.
+  static const _nganSachDocTruoc = 500;
+
+  /// Còn đọc trước tiếp đoạn [i] được không: tổng chữ các đoạn đã xếp hàng (từ [from]+1 tới trước
+  /// [i]) chưa chạm ngân sách, và [i] chưa quá [tran] đoạn.
+  bool _conNganSach(int from, int i, int tran, {int nganSach = _nganSachDocTruoc}) {
+    if (i > from + tran || i >= chunks.length) return false;
+    var chu = 0;
+    for (var k = from + 1; k < i; k++) {
+      chu += chunks[k].speech.length;
+    }
+    return chu < nganSach;
+  }
 
   /// Đọc trước lần lượt: đọc xong đoạn này mới bắt đầu đoạn kế.
   ///
@@ -509,12 +563,11 @@ class PlayerController extends ChangeNotifier {
     // Chụp giọng/engine ngay từ đầu: đổi giọng giữa chừng không tăng
     // [_loadToken], nên đọc thẳng từ _settings mỗi vòng thì có thể lỡ nhịp.
     final engineId = _settings.engineId;
-    final voiceId = _settings.voiceNghe;
 
-    for (var i = from + 1; i <= min(from + _sauDocTruocDocLap, chunks.length - 1); i++) {
+    for (var i = from + 1; _conNganSach(from, i, _sauDocTruocDocLap); i++) {
       if (token != _loadToken) return; // người dùng đã nhảy sang chỗ khác
       try {
-        await _docCoSoi(chunks[i].speech, null, engineId: engineId, voiceId: voiceId);
+        await _docCoSoi(chunks[i].speech, null, engineId: engineId, voiceId: _giongCho(i));
       } catch (_) {
         return; // hỏng hoặc bị huỷ: lúc thật sự cần sẽ đọc lại
       }
@@ -545,21 +598,28 @@ class PlayerController extends ChangeNotifier {
     // _settings mỗi vòng thì đọc trước có thể lỡ đổi giọng giữa chừng mà vẫn
     // nối vào đuôi của giọng cũ.
     final engineId = _settings.engineId;
-    final voiceId = _settings.voiceNghe;
 
     var ngu = _duoi;
-    for (var i = from + 1; i <= min(from + _sauDocTruoc, chunks.length - 1); i++) {
+    // Giọng đã sinh ra [ngu]. Đoạn kế khác giọng thì đuôi ấy KHÔNG được nối vào (đuôi của giọng cũ
+    // kéo giọng mới lệch về giọng cũ), nhưng việc đọc trước vẫn đi tiếp: đoạn đó đọc không ngữ
+    // cảnh, và đuôi của chính nó mở dây mới cho đoạn sau.
+    var giongTruoc = _duoiGiong;
+    // Chuỗi nối ngữ cảnh: đoạn dài thì chỉ 1 đoạn (chỉ MỘT đoạn dài là đủ, xem số đo ở trên); đoạn ngắn của đọc nhiều
+    // giọng thì đi tiếp tới hết 256 chữ (một đoạn thường đã đủ chặn, giữ đúng số đo cũ).
+    for (var i = from + 1; _conNganSach(from, i, _sauDocTruocNgan, nganSach: 256); i++) {
       // Người dùng nhảy sang chỗ khác thì bỏ dở, đừng đốt CPU cho đoạn không ai
       // còn nghe nữa.
-      if (token != _loadToken || ngu.isEmpty) return;
+      final giong = _giongCho(i);
+      if (token != _loadToken || (giong == giongTruoc && ngu.isEmpty)) return;
       try {
         final audio = await _docCoSoi(
           chunks[i].speech,
-          ngu,
+          giong == giongTruoc ? ngu : null,
           engineId: engineId,
-          voiceId: voiceId,
+          voiceId: giong,
         );
         ngu = audio.duoi;
+        giongTruoc = giong;
       } catch (_) {
         // Đọc trước hỏng thì thôi, lúc thật sự cần sẽ đọc lại và báo lỗi tử tế.
         return;
