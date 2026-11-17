@@ -4,6 +4,7 @@
 /// dụng rồi mở lại chạy tiếp mà không mất công đã làm.
 library;
 
+import '../core/nhan_vat.dart';
 import 'book.dart';
 import 'settings.dart';
 
@@ -202,6 +203,7 @@ class ExportJob {
     this.treeUri = '',
     this.nguCanh = NguCanh.loLon,
     this.giongNhanVat = const {},
+    this.nguoiNoi = const {},
     this.status = JobStatus.queued,
     int? cursor,
     this.doneChunks = 0,
@@ -232,10 +234,14 @@ class ExportJob {
   /// xuất và phần chạy tiếp phải cùng một bảng phân vai. Rỗng là đọc cả sách bằng [voiceId].
   final Map<String, String> giongNhanVat;
 
+  /// Nhãn người nói ("chương:đoạn văn:câu" -> tên) chụp cùng lúc với [giongNhanVat], cùng lý do.
+  final Map<String, String> nguoiNoi;
+
   /// Giọng đọc đoạn [chunk]: giọng của nhân vật nói đoạn ấy nếu job có chọn, không thì [voiceId].
   String giongCho(Chunk chunk) {
-    if (chunk.speaker.isEmpty) return voiceId;
-    final g = giongNhanVat[chunk.speaker] ?? '';
+    final ten = nguoiNoiCuaDoan(nguoiNoi, chunk);
+    if (ten.isEmpty) return voiceId;
+    final g = giongNhanVat[ten] ?? '';
     return g.isEmpty ? voiceId : g;
   }
   final double speed;
@@ -329,6 +335,7 @@ class ExportJob {
         'voiceId': voiceId,
         'voiceName': voiceName,
         if (giongNhanVat.isNotEmpty) 'giongNhanVat': giongNhanVat,
+        if (nguoiNoi.isNotEmpty) 'nguoiNoi': nguoiNoi,
         'speed': speed,
         'pauseMs': pauseMs,
         'formatId': formatId,
@@ -362,6 +369,9 @@ class ExportJob {
         engineId: migrateEngineId(json['engineId'] as String? ?? 'vieneu'),
         voiceId: json['voiceId'] as String,
         voiceName: json['voiceName'] as String? ?? '',
+        nguoiNoi: {
+          for (final e in (json['nguoiNoi'] as Map? ?? const {}).entries) e.key as String: e.value as String,
+        },
         giongNhanVat: {
           for (final e in (json['giongNhanVat'] as Map? ?? const {}).entries) e.key as String: e.value as String,
         },

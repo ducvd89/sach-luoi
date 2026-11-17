@@ -19,6 +19,8 @@ library;
 
 import 'dart:math';
 
+import '../models/book.dart';
+
 /// Trần độ dài đoạn trích đưa cho Laya (ký tự). Trạng thái được cắt Ở ĐUÔI khi quá dài, mà câu thoại
 /// cần xác định nằm SAU đoạn văn trong chuỗi — một đoạn kể dài trong cửa sổ là đủ để câu thoại bị
 /// cắt mất mà Laya vẫn trả lời (với một đáp án chẳng dựa vào câu nào) và nhãn sai được lưu.
@@ -85,12 +87,16 @@ class KetQuaNhanVat {
 
   final List<NhanVat> nhanVat;
 
-  /// Khoá "chương:đoạn văn" -> tên người nói. Đoạn văn không có trong bảng là người dẫn.
+  /// Khoá "chương:đoạn văn:câu thoại" -> tên người nói. Câu thoại không có trong bảng là người
+  /// dẫn. `câu thoại` là chỉ số trong [cacCauThoai] của đoạn văn ấy.
+  ///
+  /// Bản 2.1.0 khoá theo "chương:đoạn văn" (cả đoạn văn một người); khoá cũ vẫn đọc được qua
+  /// [nguoiCua] — nó áp cho mọi câu thoại của đoạn văn ấy.
   final Map<String, String> nguoiNoi;
 
-  static String khoa(int chuong, int doanVan) => '$chuong:$doanVan';
+  static String khoa(int chuong, int doanVan, int cau) => '$chuong:$doanVan:$cau';
 
-  String nguoiCua(int chuong, int doanVan) => nguoiNoi[khoa(chuong, doanVan)] ?? '';
+  String nguoiCua(int chuong, int doanVan, int cau) => traNguoiNoi(nguoiNoi, chuong, doanVan, cau);
 
   Map<String, dynamic> toJson() => {
         'nhanVat': [for (final n in nhanVat) n.toJson()],
@@ -163,8 +169,8 @@ class NhanVatSach {
           if (e.key.startsWith('$chuong:')) e.value,
       };
 
-  /// Đang đọc nhiều giọng. Chỉ có nghĩa khi các đoạn của sách đã cắt theo người nói
-  /// (`Chunk.speaker`); sách chưa cắt lại thì bật cờ này cũng không đổi gì.
+  /// Đang đọc nhiều giọng. Tắt thì MỌI đoạn đọc bằng giọng người dẫn; bật thì đoạn lời nói đọc bằng
+  /// giọng người nói của nó. Bật/tắt KHÔNG cắt lại sách: mỗi lời nói đã là một đoạn riêng từ lúc nhập.
   bool bat;
 
   /// Cài đặt "bỏ quảng cáo và mục lục" lúc phân tích. Nhãn người nói gắn theo (chương, đoạn
@@ -256,8 +262,10 @@ final _tenMotAm = RegExp(r'\p{Lu}\p{Ll}+', unicode: true);
 
 const _dongTuNoi = '(?:nói|hỏi|đáp|kêu|la|gắt|quát|thì thầm|thưa|trả lời|reo|cười|lầm bầm|'
     'càu nhàu|thở dài|ngạc nhiên|cãi|thét|rên|rít|bảo|gọi|nạt|lên tiếng)';
-final _dongTuDauDong = RegExp('^\\s*\\p{Lu}.{0,80}?$_dongTuNoi', unicode: true);
-final _tuNoiSauThoai = RegExp('[”"»]\\s*,?\\s*(.+?)\\s+$_dongTuNoi', unicode: true);
+// `(?![\p{L}])` sau động từ: không chặn thì "la" khớp trong "lau", "lang" — "Harry lau mồ hôi"
+// sau câu thoại bị tính là Harry nói.
+final _dongTuDauDong = RegExp('^\\s*\\p{Lu}.{0,80}?$_dongTuNoi(?![\\p{L}])', unicode: true);
+final _tuNoiSauThoai = RegExp('[”"»]\\s*,?\\s*(.+?)\\s+$_dongTuNoi(?![\\p{L}])', unicode: true);
 
 /// Đoạn văn mở đầu bằng dấu mở thoại: “ " « hoặc gạch đầu dòng kiểu truyện dịch cũ ("- Xin sư phụ"
 /// và cả "-Kìa" dính liền, hay gặp ở bản scan). Gạch dính liền SỐ ("-5 độ") thì không phải thoại.
@@ -266,6 +274,128 @@ bool laDoanThoai(String doan) {
   if (d.isEmpty) return false;
   if ('“"«'.contains(d[0])) return true;
   return RegExp(r'^[—–-]\s*[\p{L}“"«]', unicode: true).hasMatch(d);
+}
+
+/// Một câu thoại trong đoạn văn: [dau]–[cuoi] là cả mẩu thuộc người nói (gồm dấu ngoặc và dấu câu
+/// dính liền phía sau, như `”.` hay `”,`), [noiDau]–[noiCuoi] là phần trong ngoặc. Vị trí tính bằng
+/// đơn vị mã UTF-16 như mọi chỉ số chuỗi của Dart.
+typedef CauThoai = ({int dau, int cuoi, int noiDau, int noiCuoi});
+
+/// Ngoặc mở tới ngoặc đóng; thiếu ngoặc đóng `”`/`»` thì tới hết đoạn văn (lời thoại dài nhiều đoạn
+/// văn chỉ đóng ngoặc ở đoạn cuối). Ngoặc thẳng `"` phải có cặp, vì không phân biệt mở với đóng.
+final _mauTrich = RegExp(r'“[^”]*”?|«[^»]*»?|"[^"]*"');
+final _dauSauTrich = RegExp(r'[.,;:!?…]+');
+final _gachDauThoai = RegExp(r'^[—–-]\s*[\p{L}“"«]', unicode: true);
+
+/// Các câu thoại trong đoạn văn [doan], theo thứ tự. Đoạn văn gạch đầu dòng ("- Xin sư phụ") là MỘT
+/// câu thoại cả đoạn.
+///
+/// Bản 2.1.0 chỉ nhận đoạn văn MỞ ĐẦU bằng ngoặc kép là thoại, và gán cả đoạn cho một người. Sách
+/// viết thoại lẫn trong đoạn kể thì gần như không có câu thoại nào: Lộc Đỉnh Ký hồi 1 có 246 câu
+/// trong ngoặc ở 107 đoạn văn, mà chỉ 2 đoạn mở đầu bằng ngoặc — Laya được hỏi đúng 2 câu.
+///
+/// Chỉ số câu thoại ([KetQuaNhanVat.khoa]) là vị trí trong danh sách này, nên bộ cắt
+/// ([buildChunks]) và việc phân tích PHẢI cùng gọi hàm này trên cùng đoạn văn.
+List<CauThoai> cacCauThoai(String doan) {
+  if (_gachDauThoai.hasMatch(doan.trimLeft())) {
+    final dau = doan.length - doan.trimLeft().length;
+    return [(dau: dau, cuoi: doan.length, noiDau: dau, noiCuoi: doan.length)];
+  }
+  final ra = <CauThoai>[];
+  for (final m in _mauTrich.allMatches(doan)) {
+    final dong = m.end > m.start + 1 && '”»"'.contains(doan[m.end - 1]) && !(doan[m.start] == '"' && m.end - m.start < 2);
+    var cuoi = m.end;
+    final duoi = _dauSauTrich.matchAsPrefix(doan, cuoi);
+    if (duoi != null) cuoi = duoi.end;
+    ra.add((dau: m.start, cuoi: cuoi, noiDau: m.start + 1, noiCuoi: dong ? m.end - 1 : m.end));
+  }
+  return ra;
+}
+
+final _hetCauTrong = RegExp(r'[.!?…]["”»]?$');
+
+/// Câu thoại thứ [q] có phải LỜI NÓI không — để không hỏi Laya về tiếng động (“bình” một tiếng), tên
+/// chiêu thức hay tên sách trong ngoặc. Là lời nói khi: đứng đầu đoạn văn, hoặc ngay sau dấu hai
+/// chấm ("Vi Tiểu Bảo nói: “…”"), hoặc tự kết bằng dấu câu.
+///
+/// Đo trên 1.042 câu trong ngoặc của Lộc Đỉnh Ký hồi 8, 10, 11 (nhãn Opus): giữ 939/960 lời nói thật,
+/// bỏ 38/82 câu không phải lời nói; số lọt qua phần lớn là lời của đám đông hay người vô danh, mà
+/// với chúng Laya thường không đủ chắc nên vẫn về người dẫn.
+bool laLoiNoi(String doan, List<CauThoai> cau, int q) {
+  final c = cau[q];
+  final truoc = doan.substring(0, c.dau).trimRight();
+  if (truoc.isEmpty || truoc.endsWith(':')) return true;
+  return _hetCauTrong.hasMatch(doan.substring(c.noiDau, c.noiCuoi).trim());
+}
+
+/// Người nói của câu thoại [cau] (đoạn văn [doanVan], chương [chuong]) trong bảng [bang]: khoá ba
+/// phần, rồi khoá hai phần của bản 2.1.0 (cả đoạn văn một người).
+String traNguoiNoi(Map<String, String> bang, int chuong, int doanVan, int cau) =>
+    bang['$chuong:$doanVan:$cau'] ?? bang['$chuong:$doanVan'] ?? '';
+
+/// Người nói đoạn [c] theo bảng nhãn [nhan] ("chương:đoạn văn:câu"); rỗng là người dẫn. Đoạn cắt bằng
+/// bản 2.1.0 không có [Chunk.cau] mà ghi thẳng người nói vào [Chunk.speaker] — vẫn đọc được.
+String nguoiNoiCuaDoan(Map<String, String> nhan, Chunk c) {
+  if (c.cau.isEmpty) return c.speaker;
+  final k = c.cau.indexOf(':');
+  if (k < 0) return '';
+  return traNguoiNoi(nhan, c.chapter, int.tryParse(c.cau.substring(0, k)) ?? -1,
+      int.tryParse(c.cau.substring(k + 1)) ?? -1);
+}
+
+/// Đoạn văn [doan] cắt thành các mẩu cho bộ cắt đoạn: mỗi LỜI NÓI ([laLoiNoi]) một mẩu riêng mang
+/// chỉ số câu thoại của nó, phần còn lại (lời dẫn, câu trong ngoặc không phải lời nói) là mẩu lời
+/// dẫn (chỉ số -1). Đoạn văn không có lời nói nào thì trả nguyên đoạn văn, nên sách không có thoại
+/// cắt y như trước từng ký tự.
+///
+/// Cắt như vậy NGAY TỪ LÚC NHẬP, bất kể có đọc nhiều giọng hay không: mỗi lời nói đã là một đoạn
+/// riêng, nên phân tích nhân vật hay bật/tắt nhiều giọng chỉ đổi GIỌNG đọc từng đoạn, không cắt lại
+/// sách (bản 2.1.0 cắt lại cả cuốn mỗi lần bật/tắt, số thứ tự đoạn đổi theo — chỗ đang nghe, cache
+/// và việc xuất file dở đều lệch).
+List<(String, int)> manhCauThoai(String doan) {
+  final cau = cacCauThoai(doan);
+  final ra = <(String, int)>[];
+  var tu = 0;
+  void them(int den, int q) {
+    final s = doan.substring(tu, den).trim();
+    if (s.isNotEmpty) ra.add((s, q));
+    tu = den;
+  }
+  for (var q = 0; q < cau.length; q++) {
+    if (!laLoiNoi(doan, cau, q)) continue;
+    them(cau[q].dau, -1);
+    them(cau[q].cuoi, q);
+  }
+  if (ra.isEmpty) return [(doan, -1)];
+  them(doan.length, -1);
+  return ra;
+}
+
+/// Các lời nói trong đoạn văn [d] (chỉ số câu thoại) — những câu Laya phải gán người nói.
+List<int> _cauHoi(String d) {
+  final cau = cacCauThoai(d);
+  return [for (var q = 0; q < cau.length; q++) if (laLoiNoi(d, cau, q)) q];
+}
+
+/// Mệnh đề dẫn ngay trước câu thoại thứ [q]: phần sau dấu kết câu cuối cùng, từ hết câu thoại trước
+/// (hay đầu đoạn) tới ngoặc mở. "…sơ hở. Vi Tiểu Bảo nói:" → "Vi Tiểu Bảo nói:".
+String _menhDeDan(String doan, List<CauThoai> cau, int q) {
+  final tu = q == 0 ? 0 : cau[q - 1].cuoi;
+  final s = doan.substring(tu, cau[q].dau);
+  final cuoiCau = RegExp(r'[.!?…”»"]+\s+').allMatches(s).lastOrNull;
+  return (cuoiCau == null ? s : s.substring(cuoiCau.end)).trim();
+}
+
+/// Đoạn trích quanh câu thoại NẰM TRONG đoạn kể: chữ của cả chương, từ 450 ký tự trước ngoặc mở tới
+/// 200 ký tự sau ngoặc đóng — đúng cách dựng dữ liệu luyện Laya cho Lộc Đỉnh Ký (`gop.py`), khác cách
+/// cho Harry Potter (theo dòng) vì bên ấy mỗi câu thoại là một dòng.
+String doanTrichQuanhCau(List<String> ds, int i, CauThoai c) {
+  var dauDoan = 0;
+  for (var k = 0; k < i; k++) {
+    dauDoan += ds[k].length + 1;
+  }
+  final van = ds.join('\n');
+  return van.substring(max(0, dauDoan + c.dau - 450), min(van.length, dauDoan + c.noiCuoi + 1 + 200));
 }
 
 String _vietHoaChucDanh(String s) => s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
@@ -314,7 +444,9 @@ String? _tenDauTien(String dong, Set<String> tuThuong, {bool dauDong = false}) {
   // Gần đầu dòng nhất; cùng vị trí thì lấy dạng DÀI hơn ("Lục Vô Song" thắng "Lục").
   ung.sort((a, b) => a.$1 != b.$1 ? a.$1.compareTo(b.$1) : b.$2.length.compareTo(a.$2.length));
   if (!dauDong) return ung.first.$2;
-  final tuDem = RegExp(r'^\s*\p{Lu}\p{Ll}*\s').firstMatch(dong);
+  // `unicode: true` là BẮT BUỘC: thiếu nó thì `\p{Lu}` khớp nguyên văn chữ "p{Lu}", tuDem luôn
+  // null và luật "một từ đệm trước tên" ("Rồi Lục Vô Song nói") chưa bao giờ chạy (2.1.0).
+  final tuDem = RegExp(r'^\s*\p{Lu}\p{Ll}*\s', unicode: true).firstMatch(dong);
   final choPhep = tuDem == null ? 0 : tuDem.end;
   for (final u in ung) {
     if (u.$1 == 0 || (u.$1 <= choPhep && tuThuong.contains(tuDem!.group(0)!.trim().toLowerCase()))) return u.$2;
@@ -352,7 +484,20 @@ List<(String, int)> timUngVien(List<List<String>> doanVanTheoChuong, {Set<int>? 
     final ds = doanVanTheoChuong[c];
     cDangXet = c;
     for (var i = 0; i < ds.length; i++) {
-      if (!laDoanThoai(ds[i])) continue;
+      if (!laDoanThoai(ds[i])) {
+        // Lời nói nằm TRONG đoạn kể ("Đứa nhỏ hỏi: “Cha…”. Văn sĩ nói: “…”"): người nói là chủ ngữ
+        // của mệnh đề dẫn ngay trước ngoặc mở, hoặc đứng sau ngoặc đóng ("…”, Fred hỏi").
+        final cau = cacCauThoai(ds[i]);
+        for (var q = 0; q < cau.length; q++) {
+          if (!laLoiNoi(ds[i], cau, q)) continue;
+          final dan = _menhDeDan(ds[i], cau, q);
+          if (dan.endsWith(':')) them(_tenDauTien(dan, tuThuong));
+          final sau = ds[i].substring(cau[q].dau, q + 1 < cau.length ? cau[q + 1].dau : ds[i].length);
+          final m = _tuNoiSauThoai.firstMatch(sau);
+          if (m != null) them(_tenDauTien(m.group(1)!, tuThuong, dauDong: true));
+        }
+        continue;
+      }
       if (i > 0 && ds[i - 1].trimRight().endsWith(':')) {
         them(_tenDauTien(ds[i - 1], tuThuong));
       }
@@ -476,7 +621,10 @@ Future<KetQuaNhanVat> phanTichNhanVat(
   var tong = 0;
   for (var c = 0; c < doanVanTheoChuong.length; c++) {
     if (chuong != null && !chuong.contains(c)) continue;
-    tong += doanVanTheoChuong[c].where(laDoanThoai).length;
+    for (final d in doanVanTheoChuong[c]) {
+      final h = _cauHoi(d).length;
+      tong += laDoanThoai(d) ? min(1, h) : h;
+    }
   }
   final nguoiNoi = <String, String>{};
   final dem = <String, int>{};
@@ -490,8 +638,9 @@ Future<KetQuaNhanVat> phanTichNhanVat(
     final xep = [...ten]..sort((a, b) => ungVien.firstWhere((e) => e.$1 == b).$2.compareTo(ungVien.firstWhere((e) => e.$1 == a).$2));
     final hangDau = xep.take(3).toList();
     for (var i = 0; i < ds.length; i++) {
-      if (!laDoanThoai(ds[i])) continue;
-      if (huy?.call() ?? false) return _ketQua(ten, dem, nguoiNoi, gioiDaBiet);
+      final cau = cacCauThoai(ds[i]);
+      final hoi = _cauHoi(ds[i]);
+      if (hoi.isEmpty) continue;
       final cuaSo = ds.sublist(max(0, i - 6), min(ds.length, i + 3)).join('\n');
       final lua = <String>[
         for (final t in ten)
@@ -501,24 +650,33 @@ Future<KetQuaNhanVat> phanTichNhanVat(
         if (!lua.contains(t)) lua.add(t);
       }
       final chon = lua.take(toiDaUngVien).toList();
-      xong++;
-      if (chon.length >= 2) {
-        final p = await laya.chon(
-          huongDanNguoiNoi,
-          doanTrichQuanhThoai(ds, i),
-          ds[i],
-          [for (final t in chon) (t, t)],
-        );
-        var best = 0;
-        for (var k = 1; k < p.length; k++) {
-          if (p[k] > p[best]) best = k;
+      // Đoạn văn MỞ ĐẦU bằng thoại (kiểu Harry Potter: mỗi lời thoại một dòng) hỏi MỘT lần cả đoạn,
+      // đúng cách đã đo 2.1.0 (84/90), rồi gán cho mọi lời nói trong đoạn. Lời nói nằm trong đoạn
+      // kể thì hỏi TỪNG câu với đoạn trích theo ký tự — cách dựng dữ liệu luyện cho Lộc Đỉnh Ký.
+      final mot = laDoanThoai(ds[i]);
+      for (final q in mot ? [hoi.first] : hoi) {
+        if (huy?.call() ?? false) return _ketQua(ten, dem, nguoiNoi, gioiDaBiet);
+        xong++;
+        if (chon.length >= 2) {
+          final p = await laya.chon(
+            huongDanNguoiNoi,
+            mot ? doanTrichQuanhThoai(ds, i) : doanTrichQuanhCau(ds, i, cau[q]),
+            mot ? ds[i] : ds[i].substring(cau[q].noiDau - 1, min(ds[i].length, cau[q].noiCuoi + 1)),
+            [for (final t in chon) (t, t)],
+          );
+          var best = 0;
+          for (var k = 1; k < p.length; k++) {
+            if (p[k] > p[best]) best = k;
+          }
+          if (p[best] >= nguongTinCay) {
+            for (final qq in mot ? hoi : [q]) {
+              nguoiNoi[KetQuaNhanVat.khoa(c, i, qq)] = chon[best];
+              dem[chon[best]] = (dem[chon[best]] ?? 0) + 1;
+            }
+          }
         }
-        if (p[best] >= nguongTinCay) {
-          nguoiNoi[KetQuaNhanVat.khoa(c, i)] = chon[best];
-          dem[chon[best]] = (dem[chon[best]] ?? 0) + 1;
-        }
+        tienDo?.call(xong, tong);
       }
-      tienDo?.call(xong, tong);
     }
   }
   // Chữ cả cuốn chỉ cần khi có nhân vật MỚI cần đoán giới tính (dựng chuỗi này tốn vài chục ms

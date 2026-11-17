@@ -429,7 +429,6 @@ class AppState extends ChangeNotifier {
     _setImportProgress(const WorkProgress('Đang mở file gốc…'));
     try {
       final nv = await library.docNhanVat(book.id);
-      final theoNguoiNoi = nv != null && nv.bat;
       final dangNghe = currentBook?.id == book.id && player.isPlaying;
       final result = await library.rebuild(
         book.id,
@@ -439,7 +438,6 @@ class AppState extends ChangeNotifier {
         // chương của đoạn đang nghe cũng phải cùng hệ để lần phân tích kế không nhầm chương.
         removeBoilerplate: nv != null ? (nv.donRac ?? settings.removeBoilerplate) : settings.removeBoilerplate,
         onProgress: _setImportProgress,
-        nguoiNoi: theoNguoiNoi ? nv.nguoiNoi : null,
       );
       if (currentBook?.id == book.id) {
         currentBook = result.book;
@@ -566,10 +564,8 @@ class AppState extends ChangeNotifier {
         nhanVat = nv;
         _capNhatNhanVatChoTrinhPhat();
       }
-      if (nv.bat) {
-        nhanVatTienDo = null;
-        await rebuildBook(book, label: 'Áp dụng nhân vật chương ${c + 1}');
-      }
+      // KHÔNG cắt lại sách: mỗi lời nói đã là một đoạn riêng từ lúc nhập, trình phát tra người nói
+      // của từng đoạn từ nhãn vừa lưu.
     } finally {
       nhanVatTienDo = null;
       notifyListeners();
@@ -627,26 +623,21 @@ class AppState extends ChangeNotifier {
     await _luuNhanVat();
   }
 
-  /// Bật hoặc tắt đọc nhiều giọng. Bật thì CẮT LẠI sách theo người nói (mỗi đoạn một người, để
-  /// gán được giọng); tắt thì cắt lại như thường. Giữ nguyên chỗ đang nghe.
+  /// Bật hoặc tắt đọc nhiều giọng: chỉ đổi GIỌNG, không cắt lại sách — mỗi lời nói đã là một đoạn
+  /// riêng từ lúc nhập. Tắt thì mọi đoạn đọc bằng giọng người dẫn.
+  ///
+  /// Ngoại lệ một lần: sách nhập trước khi có luật tách lời nói ([Book.catThoai] false) thì cắt lại
+  /// MỘT lần lúc bật, để có đoạn riêng cho từng lời nói. Từ đó về sau bật/tắt không cắt gì nữa.
   Future<void> batNhieuGiong(Book book, bool bat) async {
     final nv = nhanVat;
     if (nv == null || nv.bat == bat) return;
-    await _khongCoViecXuatDo(book);
+    if (bat && !book.catThoai) {
+      await rebuildBook(book, label: 'Tách lời nói thành đoạn riêng');
+    }
     nv.bat = bat;
     await _ghiNhanVat(book.id, nv);
-    try {
-      await rebuildBook(book, label: bat ? 'Cắt lại theo nhân vật' : 'Cắt lại như thường');
-    } catch (_) {
-      // Cắt lại hỏng (mất file gốc...) thì các đoạn vẫn như cũ: đừng để cờ nói ngược lại, nếu không
-      // giao diện và việc xuất file tin là đang đọc nhiều giọng trong khi đoạn nào cũng không có
-      // người nói.
-      nv.bat = !bat;
-      await _ghiNhanVat(book.id, nv);
-      _capNhatNhanVatChoTrinhPhat();
-      notifyListeners();
-      rethrow;
-    }
+    _capNhatNhanVatChoTrinhPhat();
+    notifyListeners();
   }
 
   Future<void> openBook(Book book) async {
@@ -745,13 +736,14 @@ class AppState extends ChangeNotifier {
       fromChunk: fromChunk,
       toChunk: toChunk,
       giongNhanVat: _bangGiongNhanVat(book),
+      nguoiNoi: _bangGiongNhanVat(book).isEmpty ? const {} : Map.of(nhanVat!.nguoiNoi),
     );
     await resumeExport(job);
     return job;
   }
 
   /// Bảng "nhân vật -> giọng" để chụp vào job xuất file. Chỉ khi sách đang bật nhiều giọng, và chỉ
-  /// những giọng còn dùng được với engine hiện tại; sách chưa cắt theo người nói thì rỗng.
+  /// những giọng còn dùng được với engine hiện tại.
   Map<String, String> _bangGiongNhanVat(Book book) {
     final nv = nhanVat;
     if (nv == null || !nv.bat || currentBook?.id != book.id) return const {};

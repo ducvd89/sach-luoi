@@ -6,8 +6,8 @@
 /// dùng, vì đều đã đo:
 ///  - Laya đoán giới tính nhân vật nữ kém (khoảng một nửa bị đoán nam), nên giới tính sửa tay được
 ///    và giọng gợi ý theo giới tính chỉ là gợi ý.
-///  - Bật đọc nhiều giọng là CẮT LẠI sách theo người nói (mỗi đoạn một người) — đoạn nhiều hơn
-///    và ngắn hơn, nên tổng hợp lâu hơn một chút so với đọc liền bằng một giọng.
+///  - Bật/tắt đọc nhiều giọng KHÔNG cắt lại sách: mỗi lời nói đã là một đoạn riêng từ lúc nhập. Tắt
+///    thì mọi đoạn đọc bằng giọng người dẫn.
 library;
 
 import 'package:flutter/material.dart';
@@ -100,8 +100,8 @@ class _NoiDung extends StatelessWidget {
             title: const Text('Đọc nhiều giọng'),
             subtitle: Text(
               nv.bat
-                  ? 'Đang đọc theo nhân vật (tạm không dùng nối ngữ cảnh). Nhân vật chưa chọn giọng đọc bằng giọng người dẫn.'
-                  : 'Bật sẽ cắt lại sách theo người nói rồi đọc mỗi người một giọng.',
+                  ? 'Đang đọc theo nhân vật (không nối ngữ cảnh). Lời dẫn và nhân vật chưa chọn giọng đọc bằng giọng người dẫn.'
+                  : 'Đang đọc mọi đoạn bằng giọng người dẫn. Bật để đọc mỗi nhân vật một giọng.',
               style: TextStyle(fontSize: 12.5, color: hint),
             ),
           ),

@@ -66,7 +66,7 @@ void main() {
         final j = ds.indexWhere((d) => d.contains(dau));
         if (j < 0) continue; // đoạn văn đã bị nối/đổi chữ: không đối chiếu được
         tong++;
-        final laya = kq.nguoiNoi[KetQuaNhanVat.khoa(e.value, j)];
+        final laya = kq.nguoiNoi.entries.where((x) => x.key.startsWith('${e.value}:$j:')).firstOrNull?.value;
         if (laya == null) {
           bo++;
         } else if (khoaTen(laya) == khoaTen(m.value as String)) {

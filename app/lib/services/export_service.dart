@@ -130,6 +130,7 @@ class ExportService {
     required int fromChunk,
     required int toChunk,
     Map<String, String> giongNhanVat = const {},
+    Map<String, String> nguoiNoi = const {},
   }) async {
     final id= '${DateTime.now().toIso8601String().substring(0, 10)}-'
         '${DateTime.now().microsecondsSinceEpoch.toRadixString(36).substring(4)}';
@@ -157,6 +158,7 @@ class ExportService {
       // Đọc nhiều giọng thì không nối ngữ cảnh (loại trừ nhau, xem PlayerController.dangNhieuGiong).
       nguCanh: giongNhanVat.isNotEmpty ? NguCanh.khong : settings.nguCanhXuat,
       giongNhanVat: giongNhanVat,
+      nguoiNoi: nguoiNoi,
     );
 
     await _workDir(id).create(recursive: true);

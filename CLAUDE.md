@@ -404,6 +404,31 @@ mặc định của nó là `python` (PyO3) — build trần `cargo build --rele
 `app/test/sea_g2p_test.dart` — nó so từng ký tự âm vị với kết quả sinh từ bản Python, vì âm
 vị lệch một ký tự là mô hình đọc sai mà tai rất khó bắt.
 
+### Đọc nhiều giọng: câu thoại là từng LỜI NÓI, sách cắt một lần
+
+`core/nhan_vat.dart` tìm nhân vật và hỏi Laya ai nói câu nào; `core/chunker.dart` cắt sách. Ba điều
+đã đo và phải giữ:
+
+- **Câu thoại là từng câu trong ngoặc** (`cacCauThoai`, `laLoiNoi`), không phải cả đoạn văn mở đầu
+  bằng ngoặc như bản 2.1.0. Sách viết thoại lẫn trong đoạn kể thì 2.1.0 không thấy gì: Lộc Đỉnh Ký
+  hồi 1 có 246 câu trong ngoặc ở 107 đoạn văn mà chỉ 2 đoạn mở đầu bằng ngoặc, cả cuốn ra 4 ứng
+  viên; giờ ra 27. Câu trong ngoặc là LỜI NÓI khi đứng đầu đoạn văn, ngay sau dấu hai chấm, hoặc
+  tự kết bằng dấu câu — tiếng động (“bình” một tiếng), tên chiêu ở lại lời dẫn. Đo trên 1.042 câu
+  của Lộc Đỉnh Ký hồi 8, 10, 11 (nhãn Opus): giữ 939/960 lời nói, bỏ 38/82 câu không phải lời nói.
+- **Đoạn văn mở đầu bằng thoại** (kiểu Harry Potter) vẫn hỏi Laya một lần cả đoạn như 2.1.0; lời
+  nói trong đoạn kể hỏi từng câu với đoạn trích 450 ký tự trước – 200 sau trên chữ cả chương, đúng
+  cách dựng dữ liệu luyện Lộc Đỉnh Ký. Nhãn khoá "chương:đoạn văn:câu"; khoá hai phần cũ vẫn đọc
+  được (áp cho cả đoạn văn).
+- **Mỗi lời nói là một Chunk riêng NGAY TỪ LÚC NHẬP** (`Chunk.cau` = "đoạn văn:câu"), người nói tra
+  lúc phát (`nguoiNoiCuaDoan`). Bật/tắt nhiều giọng hay phân tích thêm chương KHÔNG cắt lại sách —
+  2.1.0 cắt lại cả cuốn mỗi lần, số thứ tự đoạn đổi theo nên cache, chỗ đang nghe và việc xuất dở
+  đều lệch. Tắt nhiều giọng thì mọi đoạn đọc bằng giọng người dẫn. Sách nhập trước luật này
+  (`Book.catThoai` false) cắt lại MỘT lần ở lần bật đầu. Sách có thoại vì thế nhiều đoạn hơn
+  (Harry Potter 6.150 → 10.961, Lộc Đỉnh Ký 22.305 → 44.494); sách không có lời nói nào cắt y cũ.
+
+Bản iOS/macOS viết thuần Swift ở repo `sach-luoi-darwin` cắt ra ĐÚNG cùng bộ đoạn, kể cả chỉ số lời
+nói — sửa luật ở đây thì phải sửa cả bên ấy.
+
 ### Nghe và xuất file
 
 Tốc độ đọc áp bằng cách chỉnh **tốc độ phát**, không tổng hợp lại — nên đổi tốc độ nghe

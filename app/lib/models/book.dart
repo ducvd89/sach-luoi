@@ -39,6 +39,7 @@ class Chunk {
     required this.speech,
     required this.heading,
     this.speaker = '',
+    this.cau = '',
   });
 
   /// Thứ tự trong toàn bộ sách.
@@ -63,6 +64,15 @@ class Chunk {
   /// đoạn lẫn lời dẫn và nhiều câu thoại. Sách nhập khi chưa phân tích nhân vật thì rỗng hết.
   final String speaker;
 
+  /// Lời nói mà đoạn này đọc: "đoạn văn:câu thoại" trong chương [chapter] — chỉ số của
+  /// `cacCauThoai` trên đoạn văn ấy. Rỗng là lời dẫn. Bộ cắt tách mỗi lời nói thành đoạn riêng NGAY
+  /// TỪ LÚC NHẬP, nên người nói tra lúc phát từ nhãn của sách (`nguoiNoiCuaDoan`) chứ không nằm
+  /// trong đoạn: phân tích thêm chương hay bật/tắt nhiều giọng không phải cắt lại sách.
+  ///
+  /// [speaker] là dạng của bản 2.1.0 (người nói ghi thẳng vào đoạn khi cắt lại); còn đọc để sách
+  /// cắt bằng bản ấy vẫn nghe được.
+  final String cau;
+
   Map<String, dynamic> toJson() => {
         'i': index,
         'c': chapter,
@@ -70,6 +80,7 @@ class Chunk {
         's': speech,
         if (heading) 'h': 1,
         if (speaker.isNotEmpty) 'v': speaker,
+        if (cau.isNotEmpty) 'q': cau,
       };
 
   factory Chunk.fromJson(Map<String, dynamic> json) => Chunk(
@@ -79,6 +90,7 @@ class Chunk {
         speech: json['s'] as String,
         heading: json['h'] == 1,
         speaker: json['v'] as String? ?? '',
+        cau: json['q'] as String? ?? '',
       );
 }
 
@@ -165,6 +177,7 @@ class Book {
     required this.chunkCount,
     required this.charCount,
     required this.expandNumbers,
+    this.catThoai = false,
     Progress? progress,
   }) : progress = progress ?? Progress();
 
@@ -179,6 +192,10 @@ class Book {
   final int chunkCount;
   final int charCount;
   final bool expandNumbers;
+
+  /// Đã cắt theo luật tách lời nói (mỗi lời nói một đoạn, `Chunk.cau`). Sách nhập trước khi có luật
+  /// ấy thì false: đọc vẫn được nhưng không đọc nhiều giọng được tới khi cắt lại MỘT lần.
+  final bool catThoai;
   Progress progress;
 
   /// Thời lượng ước lượng của cả sách ở tốc độ chuẩn.
@@ -198,6 +215,7 @@ class Book {
         'chunkCount': chunkCount,
         'charCount': charCount,
         'expandNumbers': expandNumbers,
+        if (catThoai) 'catThoai': true,
       };
 
   factory Book.fromJson(Map<String, dynamic> json) => Book(
@@ -212,5 +230,6 @@ class Book {
         chunkCount: json['chunkCount'] as int,
         charCount: json['charCount'] as int,
         expandNumbers: json['expandNumbers'] as bool? ?? true,
+        catThoai: json['catThoai'] as bool? ?? false,
       );
 }

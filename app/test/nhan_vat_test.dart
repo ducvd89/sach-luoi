@@ -76,7 +76,7 @@ void main() {
 
   test('gán người nói cho từng câu thoại và bỏ trống lời dẫn', () async {
     final kq = await phanTichNhanVat([_chuong], _LayaGia());
-    String ai(int i) => kq.nguoiCua(0, i);
+    String ai(int i) => kq.nguoiCua(0, i, 0);
     expect([ai(1), ai(3), ai(5), ai(7), ai(9), ai(11)],
         ['Fred', 'Harry', 'Fred', 'Bà Weasley', 'Harry', 'Bà Weasley']);
     for (final i in [0, 2, 4, 6, 8, 10, 12]) {

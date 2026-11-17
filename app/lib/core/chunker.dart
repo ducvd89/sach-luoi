@@ -12,6 +12,7 @@
 /// cho tới khi đủ dài, không thì chunk vỡ vụn thành từng câu một.
 library;
 
+import 'nhan_vat.dart';
 import '../models/book.dart';
 import 'text_normalizer.dart';
 
@@ -429,7 +430,6 @@ ChunkResult buildChunks(
   int targetChars = chunkTargetChars,
   int mergeUnderChars = chunkMergeUnderChars,
   void Function(int done, int total)? onChapter,
-  String Function(int chuong, int doanVan)? nguoiNoi,
 }) {
   // Trần đến từ mô hình nên KHÔNG được nới theo targetChars. Bản trước lấy
   // max(targetChars + 120, chunkMaxChars), tức là cứ nâng mục tiêu là trần tự
@@ -448,8 +448,8 @@ ChunkResult buildChunks(
     final raw = rawChapters[chapterIndex];
     final firstChunk = chunks.length;
     var charCount = 0;
-    // Người nói của đoạn văn đang xử lý; rỗng là người dẫn. Tiêu đề chương luôn là người dẫn.
-    var nguoiHienTai = '';
+    // Lời nói đang cắt ("đoạn văn:câu thoại"); rỗng là lời dẫn. Tiêu đề chương luôn là lời dẫn.
+    var cauHienTai = '';
 
     void push(String rawDisplay, bool heading) {
       final display = _ensureTerminal(rawDisplay);
@@ -493,7 +493,7 @@ ChunkResult buildChunks(
         display: display,
         speech: speech,
         heading: heading,
-        speaker: heading ? '' : nguoiHienTai,
+        cau: heading ? '' : cauHienTai,
       ));
       charCount += display.length;
     }
@@ -514,19 +514,8 @@ ChunkResult buildChunks(
       buffer = '';
     }
 
-    for (var chiSo = 0; chiSo < doanVan.length; chiSo++) {
-      final clean = doanVan[chiSo];
-
-      // Đổi người nói thì chốt buffer TRƯỚC khi đổi: mọi chữ trong một đoạn phải cùng một
-      // người, nên một câu thoại không bao giờ bị gộp với lời dẫn hay với câu thoại của người
-      // khác (nhiều truyện convert từ web mỗi câu một <p>, mà bộ cắt vốn gộp những đoạn ngắn
-      // như vậy lại với nhau).
-      final nguoi = nguoiNoi?.call(chapterIndex, chiSo) ?? '';
-      if (nguoi != nguoiHienTai) {
-        flush();
-        nguoiHienTai = nguoi;
-      }
-
+    // Một mẩu văn bản: một đoạn văn trọn vẹn, hoặc một phần của nó (lời dẫn / một lời nói).
+    void catManh(String clean) {
       // Xử lý đoạn văn này trên một buffer cục bộ, bắt đầu từ đúng chỗ buffer
       // đang mang theo (để đoạn ngắn nối được với đoạn ngắn liền trước). Mẩu
       // nào tràn quá targetChars thì chốt luôn vào [pieces]; phần còn dư sau
@@ -573,6 +562,24 @@ ChunkResult buildChunks(
       // nhiên ở ranh giới đoạn văn thật, thay vì kéo sang đoạn kế chỉ vì chưa
       // chạm mốc targetChars.
       if (buffer.length >= targetChars * 0.6) flush();
+    }
+
+    // Mỗi LỜI NÓI là một đoạn riêng, ngay từ lúc nhập (`manhCauThoai`): chốt bộ đệm trước và sau
+    // nó, để lời nói không bao giờ gộp với lời dẫn hay với lời của người khác — đọc nhiều giọng
+    // chỉ việc tra người nói của từng đoạn, không phải cắt lại sách. Lời dẫn thì vẫn gộp qua ranh
+    // giới đoạn văn như trước. Đoạn văn không có lời nói nào đi đúng đường cũ, từng ký tự.
+    for (var chiSo = 0; chiSo < doanVan.length; chiSo++) {
+      for (final (manh, q) in manhCauThoai(doanVan[chiSo])) {
+        if (q < 0) {
+          catManh(manh);
+          continue;
+        }
+        flush();
+        cauHienTai = '$chiSo:$q';
+        catManh(manh);
+        flush();
+        cauHienTai = '';
+      }
     }
     flush();
 

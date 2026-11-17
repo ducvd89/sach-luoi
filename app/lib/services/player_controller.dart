@@ -87,7 +87,7 @@ class PlayerController extends ChangeNotifier {
   String _giongCho(int i) {
     final nv = _nhanVat;
     if (nv != null && nv.bat && i >= 0 && i < chunks.length) {
-      final g = nv.giongCua(chunks[i].speaker);
+      final g = nv.giongCua(nguoiNoiCuaDoan(nv.nguoiNoi, chunks[i]));
       if (g.isNotEmpty && (_giongHopLe?.call().contains(g) ?? false)) return g;
     }
     return _settings.voiceNghe;

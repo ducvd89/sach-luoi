@@ -175,6 +175,7 @@ class LibraryService {
       chunkCount: parsed.chunkCount,
       charCount: parsed.charCount,
       expandNumbers: expandNumbers,
+      catThoai: true,
     );
 
     onProgress?.call(const WorkProgress('Đang lưu vào thư viện…', value: 0.94));
@@ -199,7 +200,6 @@ class LibraryService {
     required bool expandNumbers,
     bool removeBoilerplate = true,
     ProgressCallback? onProgress,
-    Map<String, String>? nguoiNoi,
   }) async {
     final existing = await getBook(id);
     if (existing == null) throw StateError('Không tìm thấy sách');
@@ -215,7 +215,6 @@ class LibraryService {
       expandNumbers: expandNumbers,
       removeBoilerplate: removeBoilerplate,
       onProgress: onProgress,
-      nguoiNoi: nguoiNoi,
     );
 
     final book = Book(
@@ -230,6 +229,7 @@ class LibraryService {
       chunkCount: parsed.chunkCount,
       charCount: parsed.charCount,
       expandNumbers: expandNumbers,
+      catThoai: true,
     );
 
     onProgress?.call(const WorkProgress('Đang lưu vào thư viện…', value: 0.94));

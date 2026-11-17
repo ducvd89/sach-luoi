@@ -70,7 +70,6 @@ Future<ParsedResult> parseBookInBackground({
   required bool expandNumbers,
   bool removeBoilerplate = true,
   ProgressCallback? onProgress,
-  Map<String, String>? nguoiNoi,
 }) async {
   final receive = ReceivePort();
   final done = Completer<ParsedResult>();
@@ -98,7 +97,7 @@ Future<ParsedResult> parseBookInBackground({
   try {
     await Isolate.spawn(
       _parseEntry,
-      _Request(receive.sendPort, bytes, fileName, expandNumbers, removeBoilerplate, nguoiNoi),
+      _Request(receive.sendPort, bytes, fileName, expandNumbers, removeBoilerplate),
       onError: receive.sendPort,
       onExit: receive.sendPort,
       debugName: 'nhap-sach',
@@ -112,16 +111,12 @@ Future<ParsedResult> parseBookInBackground({
 }
 
 class _Request {
-  const _Request(this.port, this.bytes, this.fileName, this.expandNumbers, this.removeBoilerplate,
-      [this.nguoiNoi]);
+  const _Request(this.port, this.bytes, this.fileName, this.expandNumbers, this.removeBoilerplate);
   final SendPort port;
   final Uint8List bytes;
   final String fileName;
   final bool expandNumbers;
   final bool removeBoilerplate;
-
-  /// Khoá "chương:đoạn văn" -> người nói; null là sách không phân tích nhân vật.
-  final Map<String, String>? nguoiNoi;
 }
 
 class _Failure {
@@ -179,9 +174,6 @@ void _parseEntry(_Request request) {
     final result = buildChunks(
       chapters,
       expandNumbers: request.expandNumbers,
-      nguoiNoi: request.nguoiNoi == null
-          ? null
-          : (chuong, doanVan) => request.nguoiNoi!['$chuong:$doanVan'] ?? '',
       onChapter: (done, total) => report(
         'Đang cắt đoạn và chuẩn hoá văn bản ($done/$total chương)',
         _parseShare + _chunkShare * ratio(done, total),
