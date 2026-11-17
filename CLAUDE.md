@@ -419,6 +419,11 @@ vị lệch một ký tự là mô hình đọc sai mà tai rất khó bắt.
   nói trong đoạn kể hỏi từng câu với đoạn trích 450 ký tự trước – 200 sau trên chữ cả chương, đúng
   cách dựng dữ liệu luyện Lộc Đỉnh Ký. Nhãn khoá "chương:đoạn văn:câu"; khoá hai phần cũ vẫn đọc
   được (áp cho cả đoạn văn).
+- **Ứng viên nhận cả tên + chức vị** ("Khang thân vương", "Tiền lão bản", "Trần Tổng đà chủ" —
+  `dsChucVi`) và **danh xưng dùng thay tên** ("tiểu quận chúa", "thái hậu" — `dsVaiDanh`), giới tính
+  theo chức vị; "Họ + chức vị" gộp vào người tên đầy đủ cùng họ nếu chương chỉ có một người như thế.
+  Đo trên Lộc Đỉnh Ký hồi 8, 10, 11 (952 lời nói, nhãn Opus) trước khi có luật này: 67% đúng, 23% sai
+  giọng, và 147/219 câu sai là vì người nói thật không có trong danh sách ứng viên.
 - **Mỗi lời nói là một Chunk riêng NGAY TỪ LÚC NHẬP** (`Chunk.cau` = "đoạn văn:câu"), người nói tra
   lúc phát (`nguoiNoiCuaDoan`). Bật/tắt nhiều giọng hay phân tích thêm chương KHÔNG cắt lại sách —
   2.1.0 cắt lại cả cuốn mỗi lần, số thứ tự đoạn đổi theo nên cache, chỗ đang nghe và việc xuất dở

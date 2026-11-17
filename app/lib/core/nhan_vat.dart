@@ -398,6 +398,39 @@ String doanTrichQuanhCau(List<String> ds, int i, CauThoai c) {
   return van.substring(max(0, dauDoan + c.dau - 450), min(van.length, dauDoan + c.noiCuoi + 1 + 200));
 }
 
+/// Chức vị đứng SAU tên ("Khang thân vương", "Tiền lão bản", "Thần Chiếu thượng nhân", "Trần Tổng đà
+/// chủ"). Truyện dịch gọi nhân vật như thế suốt cả hồi, mà phần chức vị viết thường nên luật tên
+/// (chuỗi âm tiết viết hoa) chỉ bắt được "Khang" — rồi "Khang" bị loại vì "khang" là từ thường, và
+/// lời của Khang thân vương rơi vào ứng viên dự phòng: đo trên Lộc Đỉnh Ký hồi 10, 34 câu của ông bị
+/// gán cho Khang Hy. Dài trước ngắn ("tổng đà chủ" trước mọi thứ); KHÔNG có "đà chủ" trần, vì thế thì
+/// "Trần Tổng đà chủ" bị đọc thành tên "Trần Tổng" + chức "đà chủ".
+const dsChucVi = [
+  'tổng đà chủ', 'thân vương', 'vương gia', 'quận chúa', 'công chúa', 'lão bản', 'lão công',
+  'công công', 'thượng nhân', 'đại sư', 'đạo nhân', 'hương chủ', 'sư phó', 'sư thái', 'phu nhân',
+  'cô nương', 'công tử', 'tướng quân', 'đại nhân', 'tiên sinh',
+];
+
+/// Danh xưng dùng THAY tên ("tiểu quận chúa nói:", "Thái hậu quát:") — chỉ những danh xưng gần như
+/// luôn trỏ một người trong một hồi. Đo trên Lộc Đỉnh Ký hồi 10–11: 89 câu của "tiểu quận chúa" (Mộc
+/// Kiếm Bình) bị gán cho Khang Hy vì danh xưng viết thường không thành ứng viên.
+const dsVaiDanh = [
+  'tiểu quận chúa', 'quận chúa', 'công chúa', 'thái hậu', 'hoàng thượng', 'hoàng hậu', 'vương gia',
+  'tổng đà chủ',
+];
+
+/// Mẫu khớp một cụm chữ thường, cho phép viết hoa chữ cái đầu ("Tổng đà chủ" giữa câu).
+String _hoaDau(String s) => '[${s[0]}${s[0].toUpperCase()}]${RegExp.escape(s.substring(1))}';
+
+final _tenChucVi = RegExp(
+    '(\\p{Lu}\\p{Ll}+(?: \\p{Lu}\\p{Ll}+){0,2}) (${dsChucVi.map(_hoaDau).join('|')})(?![\\p{L}])',
+    unicode: true);
+final _vaiDanh = RegExp('(?<![\\p{L}])(${dsVaiDanh.map(_hoaDau).join('|')})(?![\\p{L}])', unicode: true);
+
+bool _coChucVi(String ten) {
+  final t = ten.toLowerCase();
+  return dsChucVi.any((c) => t.endsWith(' $c')) || dsVaiDanh.contains(t);
+}
+
 String _vietHoaChucDanh(String s) => s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
 
 /// Khoá để gộp các dạng viết của cùng một tên: "Dương-Qua", "Dương Qua", "dương qua" là một.
@@ -439,6 +472,20 @@ String? _tenDauTien(String dong, Set<String> tuThuong, {bool dauDong = false}) {
   }
   for (final m in _tenMotAm.allMatches(dong)) {
     if (!tuThuong.contains(m.group(0)!.toLowerCase())) ung.add((m.start, m.group(0)!));
+  }
+  // Tên + chức vị: phần tên bỏ từ mở câu đứng đầu như nhánh nhiều âm tiết ("Rồi Khang thân vương").
+  for (final m in _tenChucVi.allMatches(dong)) {
+    var am = m.group(1)!.split(' ');
+    var batDau = m.start;
+    while (am.isNotEmpty && _tuMoCau.contains(am.first.toLowerCase())) {
+      batDau += am.first.length + 1;
+      am = am.sublist(1);
+    }
+    if (am.isEmpty) continue;
+    ung.add((batDau, '${am.join(' ')} ${m.group(2)!.toLowerCase()}'));
+  }
+  for (final m in _vaiDanh.allMatches(dong)) {
+    ung.add((m.start, _vietHoaChucDanh(m.group(1)!.toLowerCase())));
   }
   if (ung.isEmpty) return null;
   // Gần đầu dòng nhất; cùng vị trí thì lấy dạng DÀI hơn ("Lục Vô Song" thắng "Lục").
@@ -555,7 +602,34 @@ String _gioiTheoChucDanh(String ten) {
   final dau = ten.split(' ').first.toLowerCase();
   if (dau == 'bà' || dau == 'cô') return 'nu';
   if (const {'ông', 'chú', 'lão', 'thầy', 'cụ', 'bác'}.contains(dau) && ten.contains(' ')) return 'nam';
+  // Chức vị / danh xưng nói luôn giới tính ("Khang thân vương", "tiểu quận chúa").
+  final t = ten.toLowerCase();
+  bool laChuc(String c) => t == c || t.endsWith(' $c');
+  if (const ['quận chúa', 'công chúa', 'thái hậu', 'hoàng hậu', 'phu nhân', 'cô nương', 'sư thái'].any(laChuc)) {
+    return 'nu';
+  }
+  if ([...dsChucVi, ...dsVaiDanh].any(laChuc)) return 'nam';
   return '';
+}
+
+/// Tên "Họ + chức vị" ("Trần tổng đà chủ") là BÍ DANH của nhân vật có tên đầy đủ cùng họ, nếu trong
+/// các chương đang phân tích có ĐÚNG MỘT người như thế (Trần Cận Nam) — để cùng một người không bị
+/// đọc bằng hai giọng. Hai người cùng họ (Trần Cận Nam, Trần Viên Viên) thì không đoán, giữ nguyên.
+/// Đo trên Lộc Đỉnh Ký hồi 8: 24 câu của Trần Cận Nam từng mang tên "Trần Tổng".
+Map<String, String> _biDanh(List<String> ten, String vanChuong) {
+  final ra = <String, String>{};
+  for (final t in ten) {
+    if (!_coChucVi(t)) continue;
+    final am = t.split(' ');
+    if (am.length < 2 || !RegExp(r'^\p{Lu}', unicode: true).hasMatch(am.first)) continue;
+    if (dsVaiDanh.contains(t.toLowerCase())) continue;
+    final cung = [
+      for (final b in ten)
+        if (b != t && !_coChucVi(b) && b.split(' ').length >= 2 && b.split(' ').first == am.first && _coTen(b, vanChuong)) b,
+    ];
+    if (cung.length == 1) ra[t] = cung.single;
+  }
+  return ra;
 }
 
 /// Đoán giới tính một nhân vật bằng Laya: trung bình xác suất "nữ" trên tối đa [soMau] mẫu, mỗi
@@ -616,7 +690,15 @@ Future<KetQuaNhanVat> phanTichNhanVat(
 }) async {
   final ungVien = timUngVien(doanVanTheoChuong, chuong: chuong);
   if (ungVien.length < 2) return KetQuaNhanVat([], {});
-  final ten = [for (final (t, _) in ungVien) t];
+  final vanChuong = [
+    for (var c = 0; c < doanVanTheoChuong.length; c++)
+      if (chuong == null || chuong.contains(c)) doanVanTheoChuong[c].join('\n'),
+  ].join('\n');
+  final biDanh = _biDanh([for (final (t, _) in ungVien) t], vanChuong);
+  // Bí danh không làm lựa chọn riêng: nó có mặt trong cửa sổ là người mang tên thật có mặt.
+  final ten = [for (final (t, _) in ungVien) if (!biDanh.containsKey(t)) t];
+  bool coMat(String t, String van) =>
+      _coTen(t, van) || biDanh.entries.any((e) => e.value == t && _coTen(e.key, van));
 
   var tong = 0;
   for (var c = 0; c < doanVanTheoChuong.length; c++) {
@@ -644,7 +726,7 @@ Future<KetQuaNhanVat> phanTichNhanVat(
       final cuaSo = ds.sublist(max(0, i - 6), min(ds.length, i + 3)).join('\n');
       final lua = <String>[
         for (final t in ten)
-          if (_coTen(t, cuaSo)) t,
+          if (coMat(t, cuaSo)) t,
       ];
       for (final t in hangDau) {
         if (!lua.contains(t)) lua.add(t);
